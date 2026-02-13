@@ -1,0 +1,7 @@
+{
+  "name": "Copy of 食譜箱",
+  "description": "A smart offline recipe organizer with AI-powered image generation and editing using Gemini 3 Pro and Gemini 2.5 Flash.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
