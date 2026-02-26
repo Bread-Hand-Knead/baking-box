@@ -1,5 +1,6 @@
 {
-  "name": "食譜靈感箱",
+  "name": "baking-box",
+  "homepage": "https://bread-hand-knead.github.io/baking-box/",
   "private": true,
   "version": "0.0.0",
   "type": "module",
