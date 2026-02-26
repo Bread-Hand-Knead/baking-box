@@ -82,6 +82,7 @@ export interface Recipe {
   category: string;
   createdAt: number;
   isBakingRecipe: boolean;
+  isTried?: boolean;
   tags?: string[];
   notes?: string;
   executionLogs?: ExecutionLog[];
@@ -103,4 +104,13 @@ export enum AppView {
 export interface GeminiImageConfig {
   size?: ImageSize;
   aspectRatio?: AspectRatio;
+}
+
+declare global {
+  interface Window {
+    aistudio: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
+  }
 }

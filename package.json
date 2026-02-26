@@ -1,11 +1,12 @@
 {
-  "name": "copy-of-食譜箱",
+  "name": "食譜靈感箱",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "lint": "tsc --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {

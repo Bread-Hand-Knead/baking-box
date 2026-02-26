@@ -27,10 +27,15 @@ const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, onClick }) => {
           alt={recipe.title}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
         />
-        <div className="absolute top-3 right-3">
+        <div className="absolute top-3 right-3 flex flex-col gap-2 items-end">
           <span className="px-3 py-1 bg-white/90 backdrop-blur-sm text-xs font-semibold text-slate-700 rounded-full shadow-sm">
             {recipe.category}
           </span>
+          {recipe.isTried && (
+            <span className="px-3 py-1 bg-orange-100/90 backdrop-blur-sm text-[10px] font-black text-orange-600 rounded-full shadow-sm border border-orange-200">
+              待嘗試
+            </span>
+          )}
         </div>
       </div>
       <div className="p-4 flex flex-col flex-grow">
