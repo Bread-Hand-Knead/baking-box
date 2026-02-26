@@ -41,7 +41,7 @@ const RecipeCard: React.FC<{ recipe: Recipe; onClick: (r: Recipe) => void }> = (
         <span className="text-[10px] font-bold text-orange-400 bg-orange-50 px-2 py-0.5 rounded-md">{recipe.category}</span>
       </div>
       <p className="text-xs text-slate-400 font-bold mb-3">師傅：{recipe.master}</p>
-      <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed h-8">{recipe.description || '點擊查看詳細配方與製作步驟...'}</p>
+      <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed h-8">{recipe.description || '點擊查看詳細配方...'}</p>
     </div>
   </div>
 );
@@ -870,29 +870,59 @@ const App: React.FC = () => {
           )}
 
           {view === AppView.DETAIL && selectedRecipe && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 print-area">
-              <div className="relative aspect-video rounded-[48px] overflow-hidden shadow-2xl border-4 border-white print:rounded-2xl print:shadow-none print:border-none">
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 print-area">
+              {/* 圖片區塊：增加返回按鈕的對比度 */}
+              <div className="relative aspect-video rounded-[32px] sm:rounded-[48px] overflow-hidden shadow-xl border-4 border-white print:rounded-2xl print:shadow-none print:border-none">
                 <img src={selectedRecipe.imageUrl || 'https://picsum.photos/800/450?random=' + selectedRecipe.id} className="w-full h-full object-cover" alt={selectedRecipe.title} />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent print:hidden" />
-                <div className="absolute bottom-6 left-8 right-8 text-white print:relative print:bottom-0 print:left-0 print:text-black print:mt-4">
-                  <span className="px-3 py-1 bg-[#E67E22] rounded-full text-[10px] font-black uppercase tracking-widest print:bg-white print:text-slate-500 print:border print:border-slate-200">{selectedRecipe.category}</span>
-                  <div className="flex items-center gap-3 flex-wrap mt-2">
-                    <h2 className="text-4xl font-black print:text-3xl">{selectedRecipe.title}</h2>
+                <button 
+                  onClick={() => setView(AppView.LIST)} 
+                  className="absolute top-4 left-4 w-10 h-10 bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white text-lg transition-all hover:bg-black/50 no-print shadow-lg"
+                >
+                  ←
+                </button>
+              </div>
+
+              {/* 標題資訊區塊：從圖片分離，改為白底黑字 */}
+              <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-orange-50 shadow-sm -mt-10 sm:-mt-14 relative z-10 print:mt-0 print:shadow-none print:border-none print:p-0">
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-3 py-1 bg-orange-50 text-orange-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-orange-100 print:bg-white print:text-slate-500 print:border-slate-200">
+                      {selectedRecipe.category}
+                    </span>
                     {selectedRecipe.isTried && (
-                      <span className="px-3 py-1 bg-orange-100/80 backdrop-blur-sm text-orange-600 text-[10px] font-black rounded-full uppercase tracking-widest border border-orange-200/50">待嘗試</span>
+                      <span className="px-3 py-1 bg-orange-100 text-orange-600 text-[10px] font-black rounded-full uppercase tracking-widest border border-orange-200">
+                        待嘗試
+                      </span>
                     )}
                   </div>
+                  
+                  <h2 className="text-3xl sm:text-4xl font-black text-slate-800 leading-tight print:text-3xl">
+                    {selectedRecipe.title}
+                  </h2>
+
                   {selectedRecipe.tags && selectedRecipe.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {selectedRecipe.tags.map((tag, idx) => (<span key={idx} className="px-2 py-0.5 bg-white/20 backdrop-blur-md rounded-lg text-[10px] font-bold border border-white/30 print:bg-slate-50 print:text-slate-500 print:border-slate-200">#{tag}</span>))}
+                    <div className="flex flex-wrap gap-2">
+                      {selectedRecipe.tags.map((tag, idx) => (
+                        <span key={idx} className="px-2 py-0.5 bg-slate-50 text-slate-500 rounded-lg text-[10px] font-bold border border-slate-200 print:bg-slate-50 print:text-slate-500 print:border-slate-200">
+                          #{tag}
+                        </span>
+                      ))}
                     </div>
                   )}
-                  <div className="mt-3 space-y-1.5 print:text-slate-600">
-                    <p className="text-base font-bold opacity-95 flex items-center gap-1.5 print:text-sm">師傅：{selectedRecipe.master} ｜ 分類：{selectedRecipe.category}</p>
-                    {(selectedRecipe.sourceDate || selectedRecipe.recordDate) && (<p className="text-sm font-bold text-white/80 print:text-xs print:text-slate-400">{selectedRecipe.sourceDate && <span>分享日：{selectedRecipe.sourceDate}</span>}{selectedRecipe.sourceDate && selectedRecipe.recordDate && <span className="mx-2 opacity-50">｜</span>}{selectedRecipe.recordDate && <span>紀錄日：{selectedRecipe.recordDate}</span>}</p>)}
+
+                  <div className="pt-4 border-t border-slate-50 space-y-2 print:text-slate-600">
+                    <p className="text-base font-bold text-slate-600 flex items-center gap-1.5 print:text-sm">
+                      師傅：{selectedRecipe.master} ｜ 分類：{selectedRecipe.category}
+                    </p>
+                    {(selectedRecipe.sourceDate || selectedRecipe.recordDate) && (
+                      <p className="text-xs font-bold text-slate-400 print:text-xs print:text-slate-400">
+                        {selectedRecipe.sourceDate && <span>分享日：{selectedRecipe.sourceDate}</span>}
+                        {selectedRecipe.sourceDate && selectedRecipe.recordDate && <span className="mx-2 opacity-50">｜</span>}
+                        {selectedRecipe.recordDate && <span>紀錄日：{selectedRecipe.recordDate}</span>}
+                      </p>
+                    )}
                   </div>
                 </div>
-                <button onClick={() => setView(AppView.LIST)} className="absolute top-6 left-6 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white text-lg transition-all hover:bg-white/40 no-print">←</button>
               </div>
 
               <div className="space-y-4">
