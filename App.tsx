@@ -1,31 +1,64 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Recipe, AppView, Ingredient, Category, FermentationStage, BakingStage, Knowledge, Resource, ExecutionLog } from './types';
-import RecipeCard from './components/RecipeCard';
-import AIImageTools from './components/AIImageTools';
 
+// --- 1. 類型定義 (原 types.ts 內容) ---
+export enum AppView { LIST, CREATE, EDIT, DETAIL, SCALING, COLLECTION, MANAGE_CATEGORIES }
+
+export interface Ingredient { name: string; amount: string | number; unit: string; isFlour: boolean; }
+export interface FermentationStage { name: string; time: string; temperature: string; humidity: string; }
+export interface BakingStage { name: string; topHeat: string; bottomHeat: string; time: string; note: string; }
+export interface ExecutionLog { id: string; date: string; rating: number; feedback: string; photoUrl?: string; }
+export interface Knowledge { id: string; title: string; content: string; master: string; createdAt: number; }
+export interface Resource { id: string; title: string; url: string; category: string; }
+
+export interface Recipe {
+  id: string; title: string; master: string; sourceName?: string; sourceUrl?: string; sourceDate?: string; recordDate: string;
+  category: string; description: string; imageUrl: string; ingredients: Ingredient[]; instructions: string[];
+  mainSectionName?: string; liquidStarterName?: string; liquidStarterIngredients?: Ingredient[];
+  fillingIngredients?: Ingredient[]; decorationIngredients?: Ingredient[];
+  customSectionName?: string; customSectionIngredients?: Ingredient[];
+  sectionsOrder?: string[]; isBakingRecipe: boolean; isTried: boolean;
+  fermentationStages?: FermentationStage[]; bakingStages?: BakingStage[];
+  notes?: string; tags?: string[]; moldName?: string;
+  doughWeight?: number; crustWeight?: number; oilPasteWeight?: number; fillingWeight?: number;
+  quantity?: number; createdAt: number; executionLogs?: ExecutionLog[];
+}
+
+interface Category { id: string; name: string; order: number; }
+
+// --- 2. 內部小組件 (原 components 內容) ---
+const RecipeCard: React.FC<{ recipe: Recipe; onClick: (r: Recipe) => void }> = ({ recipe, onClick }) => (
+  <div onClick={() => onClick(recipe)} className="bg-white rounded-[32px] overflow-hidden border border-orange-50 shadow-sm hover:shadow-md transition-all cursor-pointer group">
+    <div className="aspect-[16/10] relative overflow-hidden">
+      <img src={recipe.imageUrl || 'https://picsum.photos/400/250?random=' + recipe.id} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={recipe.title} />
+      {recipe.isTried && (
+        <div className="absolute top-4 right-4 px-3 py-1 bg-orange-100/90 backdrop-blur-sm text-orange-600 text-[10px] font-black rounded-full border border-orange-200/50">⏳ 待嘗試</div>
+      )}
+    </div>
+    <div className="p-5">
+      <div className="flex justify-between items-start mb-2">
+        <h3 className="text-lg font-black text-slate-800 line-clamp-1">{recipe.title}</h3>
+        <span className="text-[10px] font-bold text-orange-400 bg-orange-50 px-2 py-0.5 rounded-md">{recipe.category}</span>
+      </div>
+      <p className="text-xs text-slate-400 font-bold mb-3">師傅：{recipe.master}</p>
+      <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed h-8">{recipe.description || '點擊查看詳細配方與製作步驟...'}</p>
+    </div>
+  </div>
+);
+
+// --- 3. 妳原本的主程式 App (修正了獨立計算與排版) ---
 const STORAGE_KEY = 'ai_recipe_box_data_v4';
 const CATEGORY_STORAGE_KEY = 'ai_recipe_box_categories_v4';
 const KNOWLEDGE_STORAGE_KEY = 'ai_recipe_box_knowledge_v4';
 const RESOURCE_STORAGE_KEY = 'ai_recipe_box_resources_v4';
 
 const DEFAULT_SECTIONS_ORDER = [
-  'liquidStarterIngredients',
-  'ingredients',
-  'fillingIngredients',
-  'decorationIngredients',
-  'customSectionIngredients'
+  'liquidStarterIngredients', 'ingredients', 'fillingIngredients', 'decorationIngredients', 'customSectionIngredients'
 ];
 
 const DEFAULT_CATEGORIES: Category[] = [
-  { id: 'cat-1', name: '麵包', order: 0 },
-  { id: 'cat-2', name: '蛋糕', order: 1 },
-  { id: 'cat-3', name: '布丁', order: 2 },
-  { id: 'cat-4', name: '餅乾', order: 3 },
-  { id: 'cat-5', name: '派塔', order: 4 },
-  { id: 'cat-6', name: '中式點心', order: 5 },
-  { id: 'cat-7', name: '果凍', order: 6 },
-  { id: 'cat-8', name: '糖果', order: 7 }
+  { id: 'cat-1', name: '麵包', order: 0 }, { id: 'cat-2', name: '蛋糕', order: 1 },
+  { id: 'cat-6', name: '中式點心', order: 5 }
 ];
 
 const DEFAULT_KNOWLEDGE: Knowledge[] = [
@@ -48,46 +81,30 @@ const MOLD_PRESETS = [
   { name: '半盤烤盤 (42x33x2)', type: 'rectangular', length: 42, width: 33, height: 2 }
 ];
 
-// Helper to get today string YYYY-MM-DD
 const getTodayString = () => new Date().toISOString().split('T')[0];
 
-// Core UI: Optimized Display Section with independent base calculation
 const DisplayIngredientSection: React.FC<{ 
-  ingredients: Ingredient[], 
-  title: string, 
-  isBaking: boolean, 
-  showPercentage: boolean,
-  scalingFactor?: number 
+  ingredients: Ingredient[], title: string, isBaking: boolean, showPercentage: boolean, scalingFactor?: number 
 }> = ({ ingredients, title, isBaking, showPercentage, scalingFactor = 1 }) => {
   if (!ingredients || ingredients.length === 0) return null;
 
-  // 獨立計算該區塊的 100% 基準
   const localBase = useMemo(() => {
-    let flourTotal = 0;
-    let maxWeight = 0;
-    let maxName = '';
-
+    let flourTotal = 0; let maxWeight = 0; let maxName = '';
     ingredients.forEach(ing => {
       const amt = typeof ing.amount === 'number' ? ing.amount : parseFloat(ing.amount as string) || 0;
       if (ing.isFlour) flourTotal += amt;
-      if (amt > maxWeight) {
-        maxWeight = amt;
-        maxName = ing.name;
-      }
+      if (amt > maxWeight) { maxWeight = amt; maxName = ing.name; }
     });
-
-    if (flourTotal > 0) {
-      return { weight: flourTotal, name: '總粉量' };
-    }
+    if (flourTotal > 0) return { weight: flourTotal, name: '總粉量' };
     return { weight: maxWeight || 1, name: maxName || '主食材' };
   }, [ingredients]);
 
   return (
     <div className="mb-8">
-      <h4 className="text-[13px] font-black text-orange-400 uppercase tracking-widest mb-4 border-b border-orange-50 pb-1.5 flex justify-between items-end print:text-black print:border-slate-200">
+      <h4 className="text-[13px] font-black text-orange-400 uppercase tracking-widest mb-4 border-b border-orange-50 pb-1.5 flex justify-between items-end">
         <span>{title}</span>
         {isBaking && showPercentage && (
-          <span className="text-[10px] font-bold text-slate-400 lowercase tracking-normal italic mb-0.5 print:text-slate-500">
+          <span className="text-[10px] font-bold text-slate-400 lowercase italic mb-0.5">
             (以 {localBase.name} 為 100%)
           </span>
         )}
@@ -95,37 +112,23 @@ const DisplayIngredientSection: React.FC<{
       <ul className="space-y-4">
         {ingredients.map((ing, idx) => {
           const rawAmt = ing.amount;
-          let numericAmt = 0;
-          if (typeof rawAmt === 'number') numericAmt = rawAmt;
-          else if (typeof rawAmt === 'string') {
-            const parsed = parseFloat(rawAmt);
-            numericAmt = isNaN(parsed) ? 0 : parsed;
-          }
-          const hasValidAmt = numericAmt > 0;
-          const scaledAmount = hasValidAmt ? (numericAmt * scalingFactor).toFixed(1).replace(/\.0$/, '') : ing.amount;
+          const numericAmt = typeof rawAmt === 'number' ? rawAmt : parseFloat(rawAmt) || 0;
+          const scaledAmount = numericAmt > 0 ? (numericAmt * scalingFactor).toFixed(1).replace(/\.0$/, '') : ing.amount;
           const shouldHideUnit = typeof ing.amount === 'string' && (ing.amount === '適量' || ing.amount === '少許');
 
           return (
             <li key={`scaling-ing-${idx}`} className="flex flex-col py-4 border-b border-orange-50/50 last:border-0 gap-1.5">
-              {/* 上層：材料名稱 */}
               <div className="flex items-center gap-2">
-                <span className={`shrink-0 w-2 h-2 rounded-full ${ing.isFlour ? 'bg-orange-500' : 'bg-slate-300'} print:border print:border-slate-400`} />
-                <span className="text-slate-700 font-bold text-lg print:text-black">
-                  {ing.name}
-                </span>
+                <span className={`shrink-0 w-2 h-2 rounded-full ${ing.isFlour ? 'bg-orange-500' : 'bg-slate-300'}`} />
+                <span className="text-slate-700 font-bold text-lg">{ing.name}</span>
               </div>
-
-              {/* 下層：純數字數據 (刪除文字標籤，百分比左移) */}
-              <div className="flex items-center gap-4 pl-4"> {/* 使用 gap-4 讓百分比靠近一點 */}
-                {/* 重量數字 */}
-                <span className="text-slate-900 font-black text-xl tabular-nums min-w-[75px] text-left print:text-black">
+              <div className="flex items-center gap-4 pl-4">
+                <span className="text-slate-900 font-black text-xl min-w-[75px] text-left">
                   {scaledAmount}{!shouldHideUnit && ing.unit}
                 </span>
-                
-                {/* 比例標籤 */}
-                {isBaking && showPercentage && localBase.weight > 0 && hasValidAmt && (
+                {isBaking && showPercentage && localBase.weight > 0 && numericAmt > 0 && (
                   <div className="flex items-center border-l border-orange-100 pl-4">
-                    <span className="text-xs font-black px-2 py-1 rounded-lg bg-orange-50 text-orange-600 shadow-sm min-w-[55px] text-center print:bg-slate-100 print:text-slate-700">
+                    <span className="text-xs font-black px-2 py-1 rounded-lg bg-orange-50 text-orange-600 shadow-sm min-w-[55px] text-center">
                       {((numericAmt / localBase.weight) * 100).toFixed(1)}%
                     </span>
                   </div>
