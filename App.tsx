@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { GoogleGenAI } from "@google/genai";
 
 // --- 1. 類型定義 (原 types.ts 內容) ---
 export enum AppView { LIST, CREATE, EDIT, DETAIL, SCALING, COLLECTION, MANAGE_CATEGORIES }
@@ -10,6 +11,9 @@ export interface BakingStage { name: string; topHeat: string; bottomHeat: string
 export interface ExecutionLog { id: string; date: string; rating: number; feedback: string; photoUrl?: string; }
 export interface Knowledge { id: string; title: string; content: string; master: string; createdAt: number; }
 export interface Resource { id: string; title: string; url: string; category: string; }
+
+export type ImageSize = '1K' | '2K' | '4K';
+export type AspectRatio = '1:1' | '3:4' | '4:3' | '9:16' | '16:9';
 
 export interface Recipe {
   id: string; title: string; master: string; sourceName?: string; sourceUrl?: string; sourceDate?: string; recordDate: string;
@@ -27,6 +31,161 @@ export interface Recipe {
 interface Category { id: string; name: string; order: number; }
 
 // --- 2. 內部小組件 (原 components 內容) ---
+const AIImageTools: React.FC<{
+  currentImageUrl: string;
+  onImageGenerated: (url: string) => void;
+  title: string;
+}> = ({ currentImageUrl, onImageGenerated, title }) => {
+  const [prompt, setPrompt] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<'generate' | 'edit'>('generate');
+  const [size, setSize] = useState<ImageSize>('1K');
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
+
+  const handleGenerate = async () => {
+    if (!prompt.trim()) return;
+    setIsGenerating(true);
+    setError(null);
+
+    try {
+      const isKeySelected = await checkApiKeySelection();
+      if (!isKeySelected) {
+        await openApiKeySelection();
+      }
+
+      const imageUrl = await generateRecipeImage(prompt, size, aspectRatio);
+      onImageGenerated(imageUrl);
+      setPrompt('');
+    } catch (err: any) {
+      if (err.message === 'API_KEY_ERROR') {
+        setError("請選擇有效的 API 金鑰以使用高品質生成功能。");
+        await openApiKeySelection();
+      } else {
+        setError("生成圖片失敗，請稍後再試。");
+      }
+      console.error(err);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleEdit = async () => {
+    if (!prompt.trim() || !currentImageUrl) return;
+    setIsGenerating(true);
+    setError(null);
+
+    try {
+      const imageUrl = await editRecipeImage(currentImageUrl, prompt);
+      onImageGenerated(imageUrl);
+      setPrompt('');
+    } catch (err: any) {
+      setError("編輯圖片失敗，請確保原始圖片有效。");
+      console.error(err);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  return (
+    <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 no-print">
+      <div className="flex gap-2 mb-4 bg-slate-200/50 p-1 rounded-xl">
+        <button
+          onClick={() => setMode('generate')}
+          className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all ${
+            mode === 'generate' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          AI 生成 (Pro)
+        </button>
+        <button
+          onClick={() => setMode('edit')}
+          className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all ${
+            mode === 'edit' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          AI 編輯 (Flash)
+        </button>
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
+            {mode === 'generate' ? '描述你想要的畫面' : '你想要如何修改？'}
+          </label>
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder={mode === 'generate' ? `例如：一張俯瞰 ${title} 的照片，放在質樸的木桌上，光線柔和...` : "例如：添加復古濾鏡、移除背景、加入幾片薄荷葉作為裝飾..."}
+            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all resize-none text-sm h-24"
+          />
+        </div>
+
+        {mode === 'generate' && (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">品質</label>
+              <select 
+                value={size}
+                onChange={(e) => setSize(e.target.value as ImageSize)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
+              >
+                <option value="1K">1K (標準)</option>
+                <option value="2K">2K (高畫質)</option>
+                <option value="4K">4K (超高畫質)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">比例</label>
+              <select 
+                value={aspectRatio}
+                onChange={(e) => setAspectRatio(e.target.value as AspectRatio)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
+              >
+                <option value="1:1">正方形 (1:1)</option>
+                <option value="3:4">3:4</option>
+                <option value="4:3">4:3</option>
+                <option value="9:16">9:16</option>
+                <option value="16:9">16:9</option>
+              </select>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="p-3 bg-red-50 text-red-600 text-xs rounded-lg border border-red-100">
+            {error}
+          </div>
+        )}
+
+        <button
+          onClick={mode === 'generate' ? handleGenerate : handleEdit}
+          disabled={isGenerating || !prompt.trim()}
+          className="w-full py-3 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl font-bold shadow-lg shadow-orange-200 hover:shadow-orange-300 active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all flex items-center justify-center gap-2"
+        >
+          {isGenerating ? (
+            <>
+              <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              AI 思考中...
+            </>
+          ) : (
+            mode === 'generate' ? '生成圖片' : '應用 AI 編輯'
+          )}
+        </button>
+        
+        {mode === 'generate' && (
+          <p className="text-[10px] text-center text-slate-400 mt-2">
+            此功能需要付費版 Gemini API 金鑰。 <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="underline hover:text-slate-600">帳單說明</a>
+          </p>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const RecipeCard: React.FC<{ recipe: Recipe; onClick: (r: Recipe) => void }> = ({ recipe, onClick }) => (
   <div onClick={() => onClick(recipe)} className="bg-white rounded-[32px] overflow-hidden border border-orange-50 shadow-sm hover:shadow-md transition-all cursor-pointer group">
     <div className="aspect-[16/10] relative overflow-hidden">
@@ -82,6 +241,88 @@ const MOLD_PRESETS = [
 ];
 
 const getTodayString = () => new Date().toISOString().split('T')[0];
+
+// --- Gemini Service Logic ---
+const checkApiKeySelection = async (): Promise<boolean> => {
+  if (typeof (window as any).aistudio?.hasSelectedApiKey === 'function') {
+    return await (window as any).aistudio.hasSelectedApiKey();
+  }
+  return true;
+};
+
+const openApiKeySelection = async (): Promise<void> => {
+  if (typeof (window as any).aistudio?.openSelectKey === 'function') {
+    await (window as any).aistudio.openSelectKey();
+  }
+};
+
+const generateRecipeImage = async (
+  prompt: string, 
+  size: ImageSize = '1K', 
+  aspectRatio: AspectRatio = '1:1'
+): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+  
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-image-preview',
+      contents: {
+        parts: [{ text: prompt }]
+      },
+      config: {
+        imageConfig: {
+          aspectRatio,
+          imageSize: size
+        }
+      }
+    });
+
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
+    }
+    throw new Error("No image data returned from Gemini Pro");
+  } catch (error: any) {
+    if (error.message?.includes("Requested entity was not found")) {
+      throw new Error("API_KEY_ERROR");
+    }
+    throw error;
+  }
+};
+
+const editRecipeImage = async (
+  base64Image: string, 
+  prompt: string
+): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+  
+  const base64Data = base64Image.split(',')[1];
+  const mimeType = base64Image.split(';')[0].split(':')[1] || 'image/png';
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash-image',
+    contents: {
+      parts: [
+        {
+          inlineData: {
+            data: base64Data,
+            mimeType: mimeType
+          }
+        },
+        { text: prompt }
+      ]
+    }
+  });
+
+  for (const part of response.candidates?.[0]?.content?.parts || []) {
+    if (part.inlineData) {
+      return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+    }
+  }
+  
+  throw new Error("No image data returned from Gemini Flash");
+};
 
 const DisplayIngredientSection: React.FC<{ 
   ingredients: Ingredient[], title: string, isBaking: boolean, showPercentage: boolean, scalingFactor?: number 
@@ -194,8 +435,9 @@ const IngredientList: React.FC<{
           {formRecipe.isBakingRecipe && (
             <button type="button" onClick={() => handleUpdateIngredient(fieldKey, idx, 'isFlour', !ing.isFlour)} className={`shrink-0 w-7 h-7 rounded-lg text-[10px] font-black transition-all ${ing.isFlour ? 'bg-orange-500 text-white shadow-sm' : 'bg-slate-100 text-slate-400'}`}>粉</button>
           )}
-          <input type="text" value={ing.name} onChange={(e) => handleUpdateIngredient(fieldKey, idx, 'name', e.target.value)} className="flex-grow px-3 py-2 rounded-xl border border-slate-100 bg-slate-50/50 text-xs outline-none focus:bg-white focus:ring-1 focus:ring-orange-200 transition-all" placeholder="名稱" />
-          <input type="text" value={ing.amount} onChange={(e) => handleUpdateIngredient(fieldKey, idx, 'amount', e.target.value)} className="w-16 px-3 py-2 rounded-xl border border-slate-100 bg-slate-50/50 text-xs text-right outline-none focus:bg-white focus:ring-1 focus:ring-orange-200 transition-all" placeholder="重量" />
+          <input type="text" value={ing.name ?? ''} onChange={(e) => handleUpdateIngredient(fieldKey, idx, 'name', e.target.value)} className="flex-grow px-3 py-2 rounded-xl border border-slate-100 bg-slate-50/50 text-xs outline-none focus:bg-white focus:ring-1 focus:ring-orange-200 transition-all" placeholder="名稱" />
+          <input type="text" value={ing.amount ?? ''} onChange={(e) => handleUpdateIngredient(fieldKey, idx, 'amount', e.target.value)} className="w-16 px-3 py-2 rounded-xl border border-slate-100 bg-slate-50/50 text-xs text-right outline-none focus:bg-white focus:ring-1 focus:ring-orange-200 transition-all" placeholder="重量" />
+          <input type="text" value={ing.unit ?? ''} onChange={(e) => handleUpdateIngredient(fieldKey, idx, 'unit', e.target.value)} className="w-12 px-3 py-2 rounded-xl border border-slate-100 bg-slate-50/50 text-xs outline-none focus:bg-white focus:ring-1 focus:ring-orange-200 transition-all" placeholder="單位" />
           <button type="button" onClick={() => setFormRecipe(prev => ({ ...prev, [fieldKey]: (prev[fieldKey] as Ingredient[]).filter((_, i) => i !== idx) }))} className="text-red-300 hover:text-red-500 p-1 transition-colors">🗑️</button>
         </div>
       ))}
@@ -495,7 +737,7 @@ const App: React.FC = () => {
             </div>
             <div className="space-y-4">
               <div className="relative group">
-                <input type="text" placeholder="搜尋食譜或師傅..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-white border border-orange-100 rounded-2xl focus:ring-2 focus:ring-orange-400 outline-none shadow-sm text-sm transition-all" />
+                <input type="text" placeholder="搜尋食譜或師傅..." value={searchQuery || ''} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-white border border-orange-100 rounded-2xl focus:ring-2 focus:ring-orange-400 outline-none shadow-sm text-sm transition-all" />
                 <span className="absolute left-4 top-3.5 text-orange-300 transition-colors group-focus-within:text-orange-500">🔍</span>
               </div>
               <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
@@ -524,7 +766,7 @@ const App: React.FC = () => {
                 <div>
                   <label className="block text-sm font-bold text-slate-500 mb-2">1. 選擇食譜</label>
                   <select 
-                    value={scalingRecipeId} 
+                    value={scalingRecipeId || ''} 
                     onChange={(e) => {
                       setScalingRecipeId(e.target.value);
                       const r = recipes.find(rec => rec.id === e.target.value);
@@ -634,9 +876,9 @@ const App: React.FC = () => {
               <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-6">
                 <div className="space-y-3">
                   <h3 className="text-sm font-black text-slate-700">✍️ 新增心得或技巧</h3>
-                  <input type="text" placeholder="標題 (例如：鹽可頌滾圓)" value={newNote.title} onChange={e => setNewNote(p => ({ ...p, title: e.target.value }))} className="w-full px-4 py-2 bg-orange-50/30 rounded-xl text-sm outline-none border border-orange-50 focus:border-orange-200 transition-all" />
-                  <input type="text" placeholder="師傅/老師名稱" value={newNote.master} onChange={e => setNewNote(p => ({ ...p, master: e.target.value }))} className="w-full px-4 py-2 bg-orange-50/30 rounded-xl text-sm outline-none border border-orange-50 focus:border-orange-200 transition-all" />
-                  <textarea placeholder="重點內容或連結..." value={newNote.content} onChange={e => setNewNote(p => ({ ...p, content: e.target.value }))} className="w-full px-4 py-3 bg-orange-50/30 rounded-xl text-sm outline-none border border-orange-50 h-24 transition-all focus:border-orange-200" />
+                  <input type="text" placeholder="標題 (例如：鹽可頌滾圓)" value={newNote.title || ''} onChange={e => setNewNote(p => ({ ...p, title: e.target.value }))} className="w-full px-4 py-2 bg-orange-50/30 rounded-xl text-sm outline-none border border-orange-50 focus:border-orange-200 transition-all" />
+                  <input type="text" placeholder="師傅/老師名稱" value={newNote.master || ''} onChange={e => setNewNote(p => ({ ...p, master: e.target.value }))} className="w-full px-4 py-2 bg-orange-50/30 rounded-xl text-sm outline-none border border-orange-50 focus:border-orange-200 transition-all" />
+                  <textarea placeholder="重點內容或連結..." value={newNote.content || ''} onChange={e => setNewNote(p => ({ ...p, content: e.target.value }))} className="w-full px-4 py-3 bg-orange-50/30 rounded-xl text-sm outline-none border border-orange-50 h-24 transition-all focus:border-orange-200" />
                   <button onClick={handleAddNote} className="w-full py-3 bg-[#E67E22] text-white rounded-xl font-bold text-sm shadow-md active:scale-95 transition-all hover:bg-orange-600">新增筆記</button>
                 </div>
                 <div className="pt-6 space-y-4 border-t border-orange-50">
@@ -666,13 +908,13 @@ const App: React.FC = () => {
                 <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-6">
                   {/* 第一排：配方名稱、師傅 */}
                   <div className="grid grid-cols-2 gap-4">
-                    <input type="text" value={formRecipe.title} onChange={e => setFormRecipe(p => ({ ...p, title: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-50 outline-none text-sm focus:border-orange-200" placeholder="配方名稱" />
-                    <input type="text" value={formRecipe.master} onChange={e => setFormRecipe(p => ({ ...p, master: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-50 outline-none text-sm focus:border-orange-200" placeholder="師傅" />
+                    <input type="text" value={formRecipe.title || ''} onChange={e => setFormRecipe(p => ({ ...p, title: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-50 outline-none text-sm focus:border-orange-200" placeholder="配方名稱" />
+                    <input type="text" value={formRecipe.master || ''} onChange={e => setFormRecipe(p => ({ ...p, master: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-50 outline-none text-sm focus:border-orange-200" placeholder="師傅" />
                   </div>
 
                   {/* 第二排：分類下拉選單 */}
                   <div className="w-full">
-                    <select value={formRecipe.category} onChange={e => setFormRecipe(p => ({ ...p, category: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200">
+                    <select value={formRecipe.category || ''} onChange={e => setFormRecipe(p => ({ ...p, category: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200">
                       {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                     </select>
                   </div>
@@ -683,19 +925,19 @@ const App: React.FC = () => {
                       <div className="relative">
                         {/* 標籤字體加大到 text-[13px] 並且改為更飽滿的 font-black */}
                         <label className="block text-[13px] font-black text-slate-500 uppercase mb-1.5 ml-1">⚖️ 皮重(g)</label>
-                        <input type="number" value={formRecipe.crustWeight || ''} onChange={e => setFormRecipe(p => ({ ...p, crustWeight: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
+                        <input type="number" value={formRecipe.crustWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, crustWeight: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
                       </div>
                       <div className="relative">
                         <label className="block text-[13px] font-black text-slate-500 uppercase mb-1.5 ml-1">🧈 油酥重(g)</label>
-                        <input type="number" value={formRecipe.oilPasteWeight || ''} onChange={e => setFormRecipe(p => ({ ...p, oilPasteWeight: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
+                        <input type="number" value={formRecipe.oilPasteWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, oilPasteWeight: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
                       </div>
                       <div className="relative">
                         <label className="block text-[13px] font-black text-slate-500 uppercase mb-1.5 ml-1">🌰 餡重(g)</label>
-                        <input type="number" value={formRecipe.fillingWeight || ''} onChange={e => setFormRecipe(p => ({ ...p, fillingWeight: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
+                        <input type="number" value={formRecipe.fillingWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, fillingWeight: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
                       </div>
                       <div className="relative">
                         <label className="block text-[13px] font-black text-slate-500 uppercase mb-1.5 ml-1">🔢 製作份數</label>
-                        <input type="number" value={formRecipe.quantity || ''} onChange={e => setFormRecipe(p => ({ ...p, quantity: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
+                        <input type="number" value={formRecipe.quantity ?? ''} onChange={e => setFormRecipe(p => ({ ...p, quantity: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
                       </div>
                     </div>
                   ) : (
@@ -703,15 +945,15 @@ const App: React.FC = () => {
                       <div className="relative">
                         {/* 一般模式下的標籤也同步加大，讓視覺更一致 */}
                         <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">⚖️ 麵團/糊 (g)</label>
-                        <input type="number" value={formRecipe.doughWeight || ''} onChange={e => setFormRecipe(p => ({ ...p, doughWeight: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
+                        <input type="number" value={formRecipe.doughWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, doughWeight: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
                       </div>
                       <div className="relative">
                         <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">🌰 內餡 (g)</label>
-                        <input type="number" value={formRecipe.fillingWeight || ''} onChange={e => setFormRecipe(p => ({ ...p, fillingWeight: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
+                        <input type="number" value={formRecipe.fillingWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, fillingWeight: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
                       </div>
                       <div className="relative">
                         <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">🔢 製作份數</label>
-                        <input type="number" value={formRecipe.quantity || ''} onChange={e => setFormRecipe(p => ({ ...p, quantity: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
+                        <input type="number" value={formRecipe.quantity ?? ''} onChange={e => setFormRecipe(p => ({ ...p, quantity: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
                       </div>
                     </div>
                   )}
@@ -785,9 +1027,25 @@ const App: React.FC = () => {
 
                 <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-4">
                   <label className="block text-xs font-black text-orange-600 uppercase tracking-widest">📸 圖片預覽與 AI 工具</label>
-                  <div className="aspect-video bg-orange-50/30 rounded-2xl border-2 border-dashed border-orange-100 flex items-center justify-center overflow-hidden">{formRecipe.imageUrl ? (<img src={formRecipe.imageUrl} className="w-full h-full object-cover" alt="預覽" />) : (<span className="text-orange-200 text-sm font-bold">尚未上傳圖片</span>)}</div>
-                  <div className="grid grid-cols-2 gap-4"><button onClick={() => recipeImageInputRef.current?.click()} className="py-3 bg-white border border-orange-100 rounded-xl text-xs font-black text-orange-600 shadow-sm active:scale-95">上傳圖片</button><button disabled className="py-3 bg-slate-100 border border-slate-200 rounded-xl text-xs font-black text-slate-400 cursor-not-allowed">AI 修圖 (稍後推出)</button></div>
+                  <div className="aspect-video bg-orange-50/30 rounded-2xl border-2 border-dashed border-orange-100 flex items-center justify-center overflow-hidden">
+                    {formRecipe.imageUrl ? (
+                      <img src={formRecipe.imageUrl} className="w-full h-full object-cover" alt="預覽" />
+                    ) : (
+                      <span className="text-orange-200 text-sm font-bold">尚未上傳圖片</span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 gap-4">
+                    <button onClick={() => recipeImageInputRef.current?.click()} className="py-3 bg-white border border-orange-100 rounded-xl text-xs font-black text-orange-600 shadow-sm active:scale-95">
+                      上傳圖片
+                    </button>
+                  </div>
                   <input type="file" ref={recipeImageInputRef} onChange={handleImageUpload} className="hidden" accept="image/*" />
+                  
+                  <AIImageTools 
+                    currentImageUrl={formRecipe.imageUrl || ''} 
+                    onImageGenerated={(url) => setFormRecipe(prev => ({ ...prev, imageUrl: url }))} 
+                    title={formRecipe.title || '這份食譜'}
+                  />
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -796,8 +1054,8 @@ const App: React.FC = () => {
                     <div className="space-y-3">
                       {formRecipe.fermentationStages?.map((stage, idx) => (
                         <div key={`edit-ferment-${idx}`} className="bg-white p-4 rounded-2xl border border-orange-50 space-y-3 shadow-sm">
-                          <div className="flex gap-2"><input type="text" value={stage.name} onChange={(e) => handleUpdateFermentationStage(idx, 'name', e.target.value)} className="flex-grow px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-lg text-xs" placeholder="階段名稱" /><button onClick={() => setFormRecipe(p => ({ ...p, fermentationStages: p.fermentationStages?.filter((_, i) => i !== idx) }))} className="text-red-200 text-xs">移除</button></div>
-                          <div className="grid grid-cols-3 gap-2"><div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-lg text-[10px]"><span className="opacity-50">⏲️</span><input type="text" value={stage.time} onChange={(e) => handleUpdateFermentationStage(idx, 'time', e.target.value)} className="w-full bg-transparent text-center" placeholder="分" /></div><div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-lg text-[10px]"><span className="opacity-50">🌡️</span><input type="text" value={stage.temperature} onChange={(e) => handleUpdateFermentationStage(idx, 'temperature', e.target.value)} className="w-full bg-transparent text-center" placeholder="°C" /></div><div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-lg text-[10px]"><span className="opacity-50">💧</span><input type="text" value={stage.humidity} onChange={(e) => handleUpdateFermentationStage(idx, 'humidity', e.target.value)} className="w-full bg-transparent text-center" placeholder="%" /></div></div>
+                          <div className="flex gap-2"><input type="text" value={stage.name || ''} onChange={(e) => handleUpdateFermentationStage(idx, 'name', e.target.value)} className="flex-grow px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-lg text-xs" placeholder="階段名稱" /><button onClick={() => setFormRecipe(p => ({ ...p, fermentationStages: p.fermentationStages?.filter((_, i) => i !== idx) }))} className="text-red-200 text-xs">移除</button></div>
+                          <div className="grid grid-cols-3 gap-2"><div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-lg text-[10px]"><span className="opacity-50">⏲️</span><input type="text" value={stage.time || ''} onChange={(e) => handleUpdateFermentationStage(idx, 'time', e.target.value)} className="w-full bg-transparent text-center" placeholder="分" /></div><div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-lg text-[10px]"><span className="opacity-50">🌡️</span><input type="text" value={stage.temperature || ''} onChange={(e) => handleUpdateFermentationStage(idx, 'temperature', e.target.value)} className="w-full bg-transparent text-center" placeholder="°C" /></div><div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-lg text-[10px]"><span className="opacity-50">💧</span><input type="text" value={stage.humidity || ''} onChange={(e) => handleUpdateFermentationStage(idx, 'humidity', e.target.value)} className="w-full bg-transparent text-center" placeholder="%" /></div></div>
                         </div>
                       ))}
                     </div>
@@ -808,7 +1066,7 @@ const App: React.FC = () => {
                       {formRecipe.bakingStages?.map((stage, idx) => (
                         <div key={`edit-bake-${idx}`} className="bg-white p-4 rounded-2xl border border-orange-50 space-y-3 shadow-sm">
                           <div className="flex justify-between items-center border-b border-orange-50 pb-2"><input type="text" value={stage.name || ''} onChange={(e) => handleUpdateBakingStage(idx, 'name', e.target.value)} className="text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-slate-50 px-2 py-0.5 rounded w-24" /><button onClick={() => setFormRecipe(p => ({ ...p, bakingStages: p.bakingStages?.filter((_, i) => i !== idx) }))} className="text-red-200 text-xs">移除</button></div>
-                          <div className="grid grid-cols-3 gap-2"><div className="flex flex-col items-center bg-slate-50 p-1.5 rounded-lg text-[9px]"><span className="opacity-50">上火</span><input type="text" value={stage.topHeat} onChange={(e) => handleUpdateBakingStage(idx, 'topHeat', e.target.value)} className="w-full bg-transparent text-center text-xs" /></div><div className="flex flex-col items-center bg-slate-50 p-1.5 rounded-lg text-[9px]"><span className="opacity-50">下火</span><input type="text" value={stage.bottomHeat} onChange={(e) => handleUpdateBakingStage(idx, 'bottomHeat', e.target.value)} className="w-full bg-transparent text-center text-xs" /></div><div className="flex flex-col items-center bg-slate-50 p-1.5 rounded-lg text-[9px]"><span className="opacity-50">時間</span><input type="text" value={stage.time} onChange={(e) => handleUpdateBakingStage(idx, 'time', e.target.value)} className="w-full bg-transparent text-center text-xs" /></div></div>
+                          <div className="grid grid-cols-3 gap-2"><div className="flex flex-col items-center bg-slate-50 p-1.5 rounded-lg text-[9px]"><span className="opacity-50">上火</span><input type="text" value={stage.topHeat || ''} onChange={(e) => handleUpdateBakingStage(idx, 'topHeat', e.target.value)} className="w-full bg-transparent text-center text-xs" /></div><div className="flex flex-col items-center bg-slate-50 p-1.5 rounded-lg text-[9px]"><span className="opacity-50">下火</span><input type="text" value={stage.bottomHeat || ''} onChange={(e) => handleUpdateBakingStage(idx, 'bottomHeat', e.target.value)} className="w-full bg-transparent text-center text-xs" /></div><div className="flex flex-col items-center bg-slate-50 p-1.5 rounded-lg text-[9px]"><span className="opacity-50">時間</span><input type="text" value={stage.time || ''} onChange={(e) => handleUpdateBakingStage(idx, 'time', e.target.value)} className="w-full bg-transparent text-center text-xs" /></div></div>
                           <input type="text" value={stage.note || ''} onChange={(e) => handleUpdateBakingStage(idx, 'note', e.target.value)} className="w-full px-2 py-1 bg-slate-50 border border-slate-100 rounded-lg text-[10px]" placeholder="階段備註" />
                         </div>
                       ))}
@@ -850,7 +1108,7 @@ const App: React.FC = () => {
             <div className="max-w-2xl mx-auto bg-white p-8 rounded-[40px] shadow-sm border border-orange-50 animate-in zoom-in-95">
               <h2 className="text-xl font-black text-[#E67E22] mb-6">分類管理與排序</h2>
               <div className="flex gap-2 mb-8">
-                <input type="text" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} className="flex-grow px-4 py-2 rounded-xl bg-orange-50/30 border border-orange-50 outline-none text-sm" placeholder="輸入新分類..." />
+                <input type="text" value={newCatName || ''} onChange={(e) => setNewCatName(e.target.value)} className="flex-grow px-4 py-2 rounded-xl bg-orange-50/30 border border-orange-50 outline-none text-sm" placeholder="輸入新分類..." />
                 <button onClick={() => { if(!newCatName.trim()) return; setCategories(prev=>[...prev,{id:'cat-'+Date.now(), name:newCatName.trim(), order:categories.length}]); setNewCatName(''); }} className="bg-[#E67E22] text-white px-5 py-2 rounded-xl font-bold text-sm">新增</button>
               </div>
               <div className="space-y-3">
@@ -1052,10 +1310,10 @@ const App: React.FC = () => {
                     {isAddingLog && (
                       <div className="p-6 bg-orange-50/30 rounded-2xl border border-orange-100 space-y-4 animate-in fade-in zoom-in-95 no-print">
                         <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1"><label className="text-[10px] font-black text-orange-400 uppercase">製作日期</label><input type="date" value={newLog.date} onChange={e => setNewLog(p => ({...p, date: e.target.value}))} className="w-full px-3 py-2 bg-white rounded-xl border border-orange-100 outline-none text-sm" /></div>
-                          <div className="space-y-1"><label className="text-[10px] font-black text-orange-400 uppercase">評分</label><select value={newLog.rating} onChange={e => setNewLog(p => ({...p, rating: parseInt(e.target.value)}))} className="w-full px-3 py-2 bg-white rounded-xl border border-orange-100 outline-none text-sm font-bold"><option value="5">⭐⭐⭐⭐⭐</option><option value="4">⭐⭐⭐⭐</option><option value="3">⭐⭐⭐</option><option value="2">⭐⭐</option><option value="1">⭐</option></select></div>
+                          <div className="space-y-1"><label className="text-[10px] font-black text-orange-400 uppercase">製作日期</label><input type="date" value={newLog.date || ''} onChange={e => setNewLog(p => ({...p, date: e.target.value}))} className="w-full px-3 py-2 bg-white rounded-xl border border-orange-100 outline-none text-sm" /></div>
+                          <div className="space-y-1"><label className="text-[10px] font-black text-orange-400 uppercase">評分</label><select value={newLog.rating || 5} onChange={e => setNewLog(p => ({...p, rating: parseInt(e.target.value)}))} className="w-full px-3 py-2 bg-white rounded-xl border border-orange-100 outline-none text-sm font-bold"><option value="5">⭐⭐⭐⭐⭐</option><option value="4">⭐⭐⭐⭐</option><option value="3">⭐⭐⭐</option><option value="2">⭐⭐</option><option value="1">⭐</option></select></div>
                         </div>
-                        <div className="space-y-1"><label className="text-[10px] font-black text-orange-400 uppercase">實作心得</label><textarea value={newLog.feedback} onChange={e => setNewLog(p => ({...p, feedback: e.target.value}))} className="w-full px-3 py-2 bg-white rounded-xl border border-orange-100 outline-none text-sm min-h-[80px]" placeholder="今日口感如何？" /></div>
+                        <div className="space-y-1"><label className="text-[10px] font-black text-orange-400 uppercase">實作心得</label><textarea value={newLog.feedback || ''} onChange={e => setNewLog(p => ({...p, feedback: e.target.value}))} className="w-full px-3 py-2 bg-white rounded-xl border border-orange-100 outline-none text-sm min-h-[80px]" placeholder="今日口感如何？" /></div>
                         <button onClick={handleAddLog} className="w-full py-3 bg-[#E67E22] text-white rounded-2xl font-black text-sm shadow-md hover:bg-orange-600 transition-all">儲存這筆紀錄</button>
                       </div>
                     )}
