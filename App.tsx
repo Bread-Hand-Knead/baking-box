@@ -996,18 +996,27 @@ const App: React.FC = () => {
                               移除
                             </button>
                           </div>
-                          <div className="grid grid-cols-3 gap-2">
-                            <div className="flex items-center gap-1 bg-slate-50 px-2 h-14 sm:h-auto sm:py-1 rounded-lg text-base sm:text-[10px]">
-                              <span className="opacity-50 text-lg sm:text-xs">⏲️</span>
-                              <input type="text" value={stage.time || ''} onChange={(e) => handleUpdateFermentationStage(idx, 'time', e.target.value)} className="w-full bg-transparent text-center focus:outline-none" placeholder="分" />
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-2">
+                            <div className="flex items-center gap-3 sm:gap-1 bg-slate-50 px-4 sm:px-2 h-14 sm:h-auto sm:py-1 rounded-lg text-base sm:text-[10px]">
+                              <span className="opacity-50 text-xl sm:text-xs">⏲️</span>
+                              <div className="flex-grow flex items-center">
+                                <span className="text-slate-400 mr-2 sm:hidden">時間:</span>
+                                <input type="text" value={stage.time || ''} onChange={(e) => handleUpdateFermentationStage(idx, 'time', e.target.value)} className="w-full bg-transparent text-left sm:text-center focus:outline-none" placeholder="分" />
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1 bg-slate-50 px-2 h-14 sm:h-auto sm:py-1 rounded-lg text-base sm:text-[10px]">
-                              <span className="opacity-50 text-lg sm:text-xs">🌡️</span>
-                              <input type="text" value={stage.temperature || ''} onChange={(e) => handleUpdateFermentationStage(idx, 'temperature', e.target.value)} className="w-full bg-transparent text-center focus:outline-none" placeholder="°C" />
+                            <div className="flex items-center gap-3 sm:gap-1 bg-slate-50 px-4 sm:px-2 h-14 sm:h-auto sm:py-1 rounded-lg text-base sm:text-[10px]">
+                              <span className="opacity-50 text-xl sm:text-xs">🌡️</span>
+                              <div className="flex-grow flex items-center">
+                                <span className="text-slate-400 mr-2 sm:hidden">溫度:</span>
+                                <input type="text" value={stage.temperature || ''} onChange={(e) => handleUpdateFermentationStage(idx, 'temperature', e.target.value)} className="w-full bg-transparent text-left sm:text-center focus:outline-none" placeholder="°C" />
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1 bg-slate-50 px-2 h-14 sm:h-auto sm:py-1 rounded-lg text-base sm:text-[10px]">
-                              <span className="opacity-50 text-lg sm:text-xs">💧</span>
-                              <input type="text" value={stage.humidity || ''} onChange={(e) => handleUpdateFermentationStage(idx, 'humidity', e.target.value)} className="w-full bg-transparent text-center focus:outline-none" placeholder="%" />
+                            <div className="flex items-center gap-3 sm:gap-1 bg-slate-50 px-4 sm:px-2 h-14 sm:h-auto sm:py-1 rounded-lg text-base sm:text-[10px]">
+                              <span className="opacity-50 text-xl sm:text-xs">💧</span>
+                              <div className="flex-grow flex items-center">
+                                <span className="text-slate-400 mr-2 sm:hidden">濕度:</span>
+                                <input type="text" value={stage.humidity || ''} onChange={(e) => handleUpdateFermentationStage(idx, 'humidity', e.target.value)} className="w-full bg-transparent text-left sm:text-center focus:outline-none" placeholder="%" />
+                              </div>
                             </div>
                           </div>
                         </div>
