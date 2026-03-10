@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { GoogleGenAI } from "@google/genai";
 
 // --- 1. 類型定義 (原 types.ts 內容) ---
 export enum AppView { LIST, CREATE, EDIT, DETAIL, SCALING, COLLECTION, MANAGE_CATEGORIES }
@@ -11,9 +10,6 @@ export interface BakingStage { name: string; topHeat: string; bottomHeat: string
 export interface ExecutionLog { id: string; date: string; rating: number; feedback: string; photoUrl?: string; }
 export interface Knowledge { id: string; title: string; content: string; master: string; createdAt: number; }
 export interface Resource { id: string; title: string; url: string; category: string; }
-
-export type ImageSize = '1K' | '2K' | '4K';
-export type AspectRatio = '1:1' | '3:4' | '4:3' | '9:16' | '16:9';
 
 export interface Recipe {
   id: string; title: string; master: string; sourceName?: string; sourceUrl?: string; sourceDate?: string; recordDate: string;
@@ -31,161 +27,6 @@ export interface Recipe {
 interface Category { id: string; name: string; order: number; }
 
 // --- 2. 內部小組件 (原 components 內容) ---
-const AIImageTools: React.FC<{
-  currentImageUrl: string;
-  onImageGenerated: (url: string) => void;
-  title: string;
-}> = ({ currentImageUrl, onImageGenerated, title }) => {
-  const [prompt, setPrompt] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<'generate' | 'edit'>('generate');
-  const [size, setSize] = useState<ImageSize>('1K');
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
-
-  const handleGenerate = async () => {
-    if (!prompt.trim()) return;
-    setIsGenerating(true);
-    setError(null);
-
-    try {
-      const isKeySelected = await checkApiKeySelection();
-      if (!isKeySelected) {
-        await openApiKeySelection();
-      }
-
-      const imageUrl = await generateRecipeImage(prompt, size, aspectRatio);
-      onImageGenerated(imageUrl);
-      setPrompt('');
-    } catch (err: any) {
-      if (err.message === 'API_KEY_ERROR') {
-        setError("請選擇有效的 API 金鑰以使用高品質生成功能。");
-        await openApiKeySelection();
-      } else {
-        setError("生成圖片失敗，請稍後再試。");
-      }
-      console.error(err);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleEdit = async () => {
-    if (!prompt.trim() || !currentImageUrl) return;
-    setIsGenerating(true);
-    setError(null);
-
-    try {
-      const imageUrl = await editRecipeImage(currentImageUrl, prompt);
-      onImageGenerated(imageUrl);
-      setPrompt('');
-    } catch (err: any) {
-      setError("編輯圖片失敗，請確保原始圖片有效。");
-      console.error(err);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  return (
-    <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 no-print">
-      <div className="flex gap-2 mb-4 bg-slate-200/50 p-1 rounded-xl">
-        <button
-          onClick={() => setMode('generate')}
-          className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all ${
-            mode === 'generate' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          AI 生成 (Pro)
-        </button>
-        <button
-          onClick={() => setMode('edit')}
-          className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all ${
-            mode === 'edit' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          AI 編輯 (Flash)
-        </button>
-      </div>
-
-      <div className="space-y-4">
-        <div>
-          <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
-            {mode === 'generate' ? '描述你想要的畫面' : '你想要如何修改？'}
-          </label>
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder={mode === 'generate' ? `例如：一張俯瞰 ${title} 的照片，放在質樸的木桌上，光線柔和...` : "例如：添加復古濾鏡、移除背景、加入幾片薄荷葉作為裝飾..."}
-            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all resize-none text-sm h-24"
-          />
-        </div>
-
-        {mode === 'generate' && (
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">品質</label>
-              <select 
-                value={size}
-                onChange={(e) => setSize(e.target.value as ImageSize)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
-              >
-                <option value="1K">1K (標準)</option>
-                <option value="2K">2K (高畫質)</option>
-                <option value="4K">4K (超高畫質)</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">比例</label>
-              <select 
-                value={aspectRatio}
-                onChange={(e) => setAspectRatio(e.target.value as AspectRatio)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
-              >
-                <option value="1:1">正方形 (1:1)</option>
-                <option value="3:4">3:4</option>
-                <option value="4:3">4:3</option>
-                <option value="9:16">9:16</option>
-                <option value="16:9">16:9</option>
-              </select>
-            </div>
-          </div>
-        )}
-
-        {error && (
-          <div className="p-3 bg-red-50 text-red-600 text-xs rounded-lg border border-red-100">
-            {error}
-          </div>
-        )}
-
-        <button
-          onClick={mode === 'generate' ? handleGenerate : handleEdit}
-          disabled={isGenerating || !prompt.trim()}
-          className="w-full py-3 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl font-bold shadow-lg shadow-orange-200 hover:shadow-orange-300 active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all flex items-center justify-center gap-2"
-        >
-          {isGenerating ? (
-            <>
-              <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              AI 思考中...
-            </>
-          ) : (
-            mode === 'generate' ? '生成圖片' : '應用 AI 編輯'
-          )}
-        </button>
-        
-        {mode === 'generate' && (
-          <p className="text-[10px] text-center text-slate-400 mt-2">
-            此功能需要付費版 Gemini API 金鑰。 <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="underline hover:text-slate-600">帳單說明</a>
-          </p>
-        )}
-      </div>
-    </div>
-  );
-};
-
 const RecipeCard: React.FC<{ recipe: Recipe; onClick: (r: Recipe) => void }> = ({ recipe, onClick }) => (
   <div onClick={() => onClick(recipe)} className="bg-white rounded-[32px] overflow-hidden border border-orange-50 shadow-sm hover:shadow-md transition-all cursor-pointer group">
     <div className="aspect-[16/10] relative overflow-hidden">
@@ -242,88 +83,6 @@ const MOLD_PRESETS = [
 
 const getTodayString = () => new Date().toISOString().split('T')[0];
 
-// --- Gemini Service Logic ---
-const checkApiKeySelection = async (): Promise<boolean> => {
-  if (typeof (window as any).aistudio?.hasSelectedApiKey === 'function') {
-    return await (window as any).aistudio.hasSelectedApiKey();
-  }
-  return true;
-};
-
-const openApiKeySelection = async (): Promise<void> => {
-  if (typeof (window as any).aistudio?.openSelectKey === 'function') {
-    await (window as any).aistudio.openSelectKey();
-  }
-};
-
-const generateRecipeImage = async (
-  prompt: string, 
-  size: ImageSize = '1K', 
-  aspectRatio: AspectRatio = '1:1'
-): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-  
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview',
-      contents: {
-        parts: [{ text: prompt }]
-      },
-      config: {
-        imageConfig: {
-          aspectRatio,
-          imageSize: size
-        }
-      }
-    });
-
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-      }
-    }
-    throw new Error("No image data returned from Gemini Pro");
-  } catch (error: any) {
-    if (error.message?.includes("Requested entity was not found")) {
-      throw new Error("API_KEY_ERROR");
-    }
-    throw error;
-  }
-};
-
-const editRecipeImage = async (
-  base64Image: string, 
-  prompt: string
-): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-  
-  const base64Data = base64Image.split(',')[1];
-  const mimeType = base64Image.split(';')[0].split(':')[1] || 'image/png';
-
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-image',
-    contents: {
-      parts: [
-        {
-          inlineData: {
-            data: base64Data,
-            mimeType: mimeType
-          }
-        },
-        { text: prompt }
-      ]
-    }
-  });
-
-  for (const part of response.candidates?.[0]?.content?.parts || []) {
-    if (part.inlineData) {
-      return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-    }
-  }
-  
-  throw new Error("No image data returned from Gemini Flash");
-};
-
 const DisplayIngredientSection: React.FC<{ 
   ingredients: Ingredient[], title: string, isBaking: boolean, showPercentage: boolean, scalingFactor?: number 
 }> = ({ ingredients, title, isBaking, showPercentage, scalingFactor = 1 }) => {
@@ -341,11 +100,11 @@ const DisplayIngredientSection: React.FC<{
   }, [ingredients]);
 
   return (
-    <div className="mb-8">
-      <h4 className="text-[13px] font-black text-orange-400 uppercase tracking-widest mb-4 border-b border-orange-50 pb-1.5 flex justify-between items-end">
+    <div className="mb-10">
+      <h4 className="text-lg font-black text-orange-600 uppercase tracking-widest mb-5 border-b-2 border-orange-100 pb-2 flex flex-col sm:flex-row sm:justify-between sm:items-end space-y-1 sm:space-y-0">
         <span>{title}</span>
         {isBaking && showPercentage && (
-          <span className="text-[10px] font-bold text-slate-400 lowercase italic mb-0.5">
+          <span className="text-xs font-bold text-slate-400 lowercase italic sm:mb-0.5">
             (以 {localBase.name} 為 100%)
           </span>
         )}
@@ -361,15 +120,29 @@ const DisplayIngredientSection: React.FC<{
             <li key={`scaling-ing-${idx}`} className="flex flex-col py-4 border-b border-orange-50/50 last:border-0 gap-1.5">
               <div className="flex items-center gap-2">
                 <span className={`shrink-0 w-2 h-2 rounded-full ${ing.isFlour ? 'bg-orange-500' : 'bg-slate-300'}`} />
-                <span className="text-slate-700 font-bold text-lg">{ing.name}</span>
+                <span className="text-slate-700 font-bold text-xl">{ing.name}</span>
               </div>
-              <div className="flex items-center gap-4 pl-4">
-                <span className="text-slate-900 font-black text-xl min-w-[75px] text-left">
-                  {scaledAmount}{!shouldHideUnit && ing.unit}
-                </span>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 pl-4">
+                <div className="flex items-baseline gap-2">
+                  {scalingFactor !== 1 && numericAmt > 0 ? (
+                    <>
+                      <span className="text-slate-400 text-sm line-through decoration-orange-200">
+                        {numericAmt}{!shouldHideUnit && ing.unit}
+                      </span>
+                      <span className="text-orange-500 font-black text-sm">→</span>
+                      <span className="text-slate-900 font-black text-2xl">
+                        {scaledAmount}{!shouldHideUnit && ing.unit}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-slate-900 font-black text-2xl">
+                      {scaledAmount}{!shouldHideUnit && ing.unit}
+                    </span>
+                  )}
+                </div>
                 {isBaking && showPercentage && localBase.weight > 0 && numericAmt > 0 && (
-                  <div className="flex items-center border-l border-orange-100 pl-4">
-                    <span className="text-xs font-black px-2 py-1 rounded-lg bg-orange-50 text-orange-600 shadow-sm min-w-[55px] text-center">
+                  <div className="flex items-center sm:border-l sm:border-orange-100 sm:pl-4">
+                    <span className="text-xs sm:text-sm font-black px-2 py-0.5 sm:py-1 rounded-lg bg-orange-50 text-orange-600 shadow-sm min-w-[45px] sm:min-w-[55px] text-center">
                       {((numericAmt / localBase.weight) * 100).toFixed(1)}%
                     </span>
                   </div>
@@ -451,6 +224,8 @@ const App: React.FC = () => {
   const [knowledge, setKnowledge] = useState<Knowledge[]>(() => JSON.parse(localStorage.getItem(KNOWLEDGE_STORAGE_KEY) || JSON.stringify(DEFAULT_KNOWLEDGE)));
   const [resources, setResources] = useState<Resource[]>(() => JSON.parse(localStorage.getItem(RESOURCE_STORAGE_KEY) || '[]'));
   
+  const [storageUsage, setStorageUsage] = useState(0);
+
   const [view, setView] = useState<AppView>(AppView.LIST);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -490,6 +265,18 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(knowledge)); }, [knowledge]);
   useEffect(() => { localStorage.setItem(RESOURCE_STORAGE_KEY, JSON.stringify(resources)); }, [resources]);
 
+  useEffect(() => {
+    const calculateSize = () => {
+      let total = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key) total += (localStorage.getItem(key) || '').length;
+      }
+      setStorageUsage(total);
+    };
+    calculateSize();
+  }, [recipes, categories, knowledge, resources]);
+
   const filteredRecipes = useMemo(() => {
     return recipes.filter(r => {
       const matchSearch = r.title.toLowerCase().includes(searchQuery.toLowerCase()) || (r.master && r.master.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -502,15 +289,12 @@ const App: React.FC = () => {
   }, [recipes, searchQuery, activeCategory]);
 
   const scalingRecipe = useMemo(() => recipes.find(r => r.id === scalingRecipeId), [recipes, scalingRecipeId]);
-  const scalingFactor = useMemo(() => {
-    if (!scalingRecipe || !scalingRecipe.quantity) return 1;
-    return targetQuantity / scalingRecipe.quantity;
-  }, [scalingRecipe, targetQuantity]);
-
+  
   // Volume calculation helper
-  const getVolume = (mold: typeof sourceMold) => {
+  const getVolume = (mold: { type: 'circular' | 'rectangular', diameter: number, height: number, length: number, width: number }) => {
     if (mold.type === 'circular') {
-      return Math.PI * Math.pow(mold.diameter / 2, 2) * (mold.height || 1);
+      const r = mold.diameter / 2;
+      return Math.PI * Math.pow(r, 2) * (mold.height || 1);
     }
     return mold.length * mold.width * (mold.height || 1);
   };
@@ -523,11 +307,11 @@ const App: React.FC = () => {
     return vTarget / vSource;
   }, [sourceMold, targetMold]);
 
-  const applyMoldFactor = () => {
-    if (!scalingRecipe) return;
-    const newTarget = (scalingRecipe.quantity || 1) * calculatedMoldFactor;
-    setTargetQuantity(parseFloat(newTarget.toFixed(2)));
-  };
+  const scalingFactor = useMemo(() => {
+    if (!scalingRecipe || !scalingRecipe.quantity) return 1;
+    const qtyRatio = targetQuantity / scalingRecipe.quantity;
+    return qtyRatio * calculatedMoldFactor;
+  }, [scalingRecipe, targetQuantity, calculatedMoldFactor]);
 
   const handleApplyMoldPreset = (mold: 'source' | 'target', presetName: string) => {
     const preset = MOLD_PRESETS.find(p => p.name === presetName);
@@ -541,24 +325,68 @@ const App: React.FC = () => {
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setFormRecipe(prev => ({ ...prev, imageUrl: event.target?.result as string }));
-    };
-    reader.readAsDataURL(file);
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const maxDimension = 800;
+
+          if (width > height) {
+            if (width > maxDimension) {
+              height *= maxDimension / width;
+              width = maxDimension;
+            }
+          } else {
+            if (height > maxDimension) {
+              width *= maxDimension / height;
+              height = maxDimension;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Canvas context not found'));
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+          resolve(compressedBase64);
+        };
+        img.onerror = (err) => reject(err);
+      };
+      reader.onerror = (err) => reject(err);
+    });
   };
 
-  const handleLogPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setNewLog(prev => ({ ...prev, photoUrl: event.target?.result as string }));
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImage(file);
+      setFormRecipe(prev => ({ ...prev, imageUrl: compressed }));
+    } catch (err) {
+      console.error('Image compression failed', err);
+    }
+  };
+
+  const handleLogPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const compressed = await compressImage(file);
+      setNewLog(prev => ({ ...prev, photoUrl: compressed }));
+    } catch (err) {
+      console.error('Log photo compression failed', err);
+    }
   };
 
   const handleTagsInput = (val: string) => {
@@ -710,7 +538,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#FFFBF7] text-slate-900 pb-28 print:bg-white print:pb-0">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 print:max-w-none print:px-0 print:py-0">
+      <div className="max-w-4xl mx-auto px-0 sm:px-6 lg:px-8 py-8 print:max-w-none print:px-0 print:py-0">
         
         {/* LIST View Header */}
         {view === AppView.LIST && (
@@ -722,6 +550,22 @@ const App: React.FC = () => {
                   烘焙靈感箱
                 </h1>
                 <p className="text-orange-300 text-xs mt-1 font-medium">記錄師傅的筆記與經典配方</p>
+                
+                {/* 儲存空間進度條 */}
+                <div className="mt-4 max-w-[200px] no-print">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">儲存空間</span>
+                    <span className={`text-[11px] font-black ${(storageUsage / (5 * 1024 * 1024)) > 0.8 ? 'text-red-500' : 'text-orange-400'}`}>
+                      {Math.min(100, (storageUsage / (5 * 1024 * 1024)) * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden border border-slate-50">
+                    <div 
+                      className={`h-full transition-all duration-500 ${(storageUsage / (5 * 1024 * 1024)) > 0.8 ? 'bg-red-500' : 'bg-orange-400'}`}
+                      style={{ width: `${Math.min(100, (storageUsage / (5 * 1024 * 1024)) * 100)}%` }}
+                    />
+                  </div>
+                </div>
               </div>
               <div className="flex items-center gap-3">
                  <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-orange-100 rounded-xl shadow-sm text-xs font-bold text-orange-600 hover:bg-orange-50 transition-all active:scale-95">
@@ -760,11 +604,11 @@ const App: React.FC = () => {
           )}
 
           {view === AppView.SCALING && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 no-print">
-              <h2 className="text-2xl font-black text-[#E67E22] flex items-center gap-2">分量換算</h2>
-              <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-8">
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
+              <h2 className="text-2xl font-black text-[#E67E22] flex items-center gap-2 print:hidden">分量換算</h2>
+              <div className="bg-white px-4 py-8 sm:p-8 rounded-[40px] border border-orange-50 shadow-md space-y-10 print:hidden">
                 <div>
-                  <label className="block text-sm font-bold text-slate-500 mb-2">1. 選擇食譜</label>
+                  <label className="block text-lg font-black text-slate-700 mb-3">1. 選擇食譜</label>
                   <select 
                     value={scalingRecipeId || ''} 
                     onChange={(e) => {
@@ -772,7 +616,7 @@ const App: React.FC = () => {
                       const r = recipes.find(rec => rec.id === e.target.value);
                       if (r) setTargetQuantity(r.quantity || 1);
                     }}
-                    className="w-full px-4 py-3 bg-orange-50/30 border border-orange-100 rounded-2xl text-sm outline-none"
+                    className="w-full px-5 py-4 bg-orange-50/30 border-2 border-orange-100 rounded-2xl text-lg font-bold outline-none focus:border-orange-300 transition-all"
                   >
                     <option value="">-- 請選擇食譜 --</option>
                     {recipes.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
@@ -780,93 +624,172 @@ const App: React.FC = () => {
                 </div>
 
                 {scalingRecipe && (
-                  <div className="space-y-10 animate-in fade-in">
-                    <div className="space-y-4">
-                      <label className="block text-sm font-bold text-slate-500">2. 產量換算</label>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-green-600 uppercase">食譜基準</label>
-                          <div className="bg-slate-50 p-4 rounded-2xl text-center text-2xl font-black text-slate-400">{scalingRecipe.quantity || 1} 份</div>
+                  <div className="space-y-12 animate-in fade-in">
+                    <div className="space-y-6">
+                      <label className="block text-lg font-black text-slate-700">2. 產量換算</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div className="space-y-3">
+                          <label className="text-sm sm:text-base font-black text-green-600 uppercase tracking-wider">食譜基準</label>
+                          <div className="bg-slate-50 p-5 rounded-2xl text-center text-3xl font-black text-slate-400 border border-slate-100">{scalingRecipe.quantity || 1} 份</div>
                         </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-[#E67E22] uppercase">目標產出</label>
-                          <input type="number" step="0.1" value={targetQuantity} onChange={(e) => setTargetQuantity(Math.max(0.1, parseFloat(e.target.value) || 1))} className="w-full p-4 bg-orange-50 border-2 border-orange-200 rounded-2xl text-2xl font-black text-orange-600 text-center outline-none" />
+                        <div className="space-y-3">
+                          <label className="text-sm sm:text-base font-black text-[#E67E22] uppercase tracking-wider">目標產出</label>
+                          <div className="relative">
+                            <input type="number" step="0.1" value={targetQuantity} onChange={(e) => setTargetQuantity(Math.max(0.1, parseFloat(e.target.value) || 1))} className="w-full p-5 bg-orange-50 border-2 border-orange-200 rounded-2xl text-3xl font-black text-orange-600 text-center outline-none focus:border-orange-400 transition-all pr-12" />
+                            <span className="absolute right-5 top-1/2 -translate-y-1/2 text-xl font-black text-orange-400 pointer-events-none">份</span>
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="p-6 bg-orange-50/20 rounded-[32px] border border-orange-100 space-y-6">
-                      <label className="text-sm font-black text-orange-600">3. 模具體積換算 (跨形狀互換工具)</label>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-4">
-                          <div className="flex flex-col gap-2 px-1">
-                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">原本食譜模具</span>
-                             <select onChange={(e) => handleApplyMoldPreset('source', e.target.value)} className="w-full px-3 py-2 bg-white border border-orange-100 rounded-xl text-xs outline-none">
+                    <div className="px-0 py-8 sm:p-8 bg-orange-50/20 rounded-[40px] border border-orange-100 space-y-8">
+                      <label className="block text-lg font-black text-orange-700">3. 模具體積換算 (跨形狀互換工具)</label>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                        <div className="space-y-5">
+                          <div className="flex flex-col gap-3 px-1">
+                             <span className="text-sm sm:text-base font-black text-slate-500 uppercase tracking-widest">原本食譜模具</span>
+                             <select onChange={(e) => handleApplyMoldPreset('source', e.target.value)} className="w-full px-4 py-3 bg-white border border-orange-100 rounded-xl text-sm font-bold outline-none">
                                 {MOLD_PRESETS.map(p => <option key={`src-preset-${p.name}`} value={p.name}>{p.name}</option>)}
                              </select>
-                             <div className="flex bg-white rounded-lg p-1 border border-orange-100 shadow-xs mt-1">
-                                <button onClick={() => setSourceMold(p => ({...p, type: 'circular'}))} className={`flex-1 px-2 py-1 rounded text-[9px] font-black transition-all ${sourceMold.type === 'circular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🔘 圓形</button>
-                                <button onClick={() => setSourceMold(p => ({...p, type: 'rectangular'}))} className={`flex-1 px-2 py-1 rounded text-[9px] font-black transition-all ${sourceMold.type === 'rectangular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🟦 方形</button>
+                             <div className="flex bg-white rounded-xl p-1.5 border border-orange-100 shadow-sm mt-1">
+                                <button onClick={() => setSourceMold(p => ({...p, type: 'circular'}))} className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${sourceMold.type === 'circular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🔘 圓形</button>
+                                <button onClick={() => setSourceMold(p => ({...p, type: 'rectangular'}))} className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${sourceMold.type === 'rectangular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🟦 方形</button>
                              </div>
                           </div>
-                          <div className="bg-white p-5 rounded-2xl border border-orange-50 space-y-3 shadow-sm">
+                          <div className="bg-white p-6 rounded-3xl border border-orange-50 space-y-4 shadow-sm">
                             {sourceMold.type === 'circular' ? (
-                              <div className="flex items-center gap-2"><span className="text-sm grayscale opacity-60 w-10">直徑</span><input type="number" value={sourceMold.diameter || ''} onChange={e => setSourceMold(p => ({...p, diameter: parseFloat(e.target.value) || 0}))} className="w-full text-lg font-black bg-slate-50 rounded-lg px-2 py-1.5 outline-none text-slate-700 text-center" placeholder="cm" /></div>
+                              <div className="flex items-center gap-3">
+                                <span className="text-base font-bold text-slate-400 w-12">直徑</span>
+                                <div className="relative flex-1">
+                                  <input type="number" value={sourceMold.diameter || ''} onChange={e => setSourceMold(p => ({...p, diameter: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-slate-50 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300 pointer-events-none">cm</span>
+                                </div>
+                              </div>
                             ) : (
                               <>
-                                <div className="flex items-center gap-2"><span className="text-sm grayscale opacity-60 w-10">長度</span><input type="number" value={sourceMold.length || ''} onChange={e => setSourceMold(p => ({...p, length: parseFloat(e.target.value) || 0}))} className="w-full text-lg font-black bg-slate-50 rounded-lg px-2 py-1.5 outline-none text-slate-700 text-center" placeholder="cm" /></div>
-                                <div className="flex items-center gap-2"><span className="text-sm grayscale opacity-60 w-10">寬度</span><input type="number" value={sourceMold.width || ''} onChange={e => setSourceMold(p => ({...p, width: parseFloat(e.target.value) || 0}))} className="w-full text-lg font-black bg-slate-50 rounded-lg px-2 py-1.5 outline-none text-slate-700 text-center" placeholder="cm" /></div>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-base font-bold text-slate-400 w-12">長度</span>
+                                  <div className="relative flex-1">
+                                    <input type="number" value={sourceMold.length || ''} onChange={e => setSourceMold(p => ({...p, length: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-slate-50 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300 pointer-events-none">cm</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-base font-bold text-slate-400 w-12">寬度</span>
+                                  <div className="relative flex-1">
+                                    <input type="number" value={sourceMold.width || ''} onChange={e => setSourceMold(p => ({...p, width: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-slate-50 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300 pointer-events-none">cm</span>
+                                  </div>
+                                </div>
                               </>
                             )}
-                            <div className="flex items-center gap-2 border-t border-slate-50 pt-2"><span className="text-sm grayscale opacity-60 w-10">高度</span><input type="number" value={sourceMold.height || ''} onChange={e => setSourceMold(p => ({...p, height: parseFloat(e.target.value) || 0}))} className="w-full text-lg font-black bg-slate-50 rounded-lg px-2 py-1.5 outline-none text-slate-700 text-center" placeholder="cm" /></div>
+                            <div className="flex items-center gap-3 border-t border-slate-50 pt-3">
+                              <span className="text-base font-bold text-slate-400 w-12">高度</span>
+                              <div className="relative flex-1">
+                                <input type="number" value={sourceMold.height || ''} onChange={e => setSourceMold(p => ({...p, height: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-slate-50 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300 pointer-events-none">cm</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                        <div className="space-y-4">
-                          <div className="flex flex-col gap-2 px-1">
-                             <span className="text-[10px] font-black text-[#E67E22] uppercase tracking-widest">我要用的模具</span>
-                             <select onChange={(e) => handleApplyMoldPreset('target', e.target.value)} className="w-full px-3 py-2 bg-white border border-orange-100 rounded-xl text-xs outline-none">
+                        <div className="space-y-5">
+                          <div className="flex flex-col gap-3 px-1">
+                             <span className="text-sm sm:text-base font-black text-[#E67E22] uppercase tracking-widest">我要用的模具</span>
+                             <select onChange={(e) => handleApplyMoldPreset('target', e.target.value)} className="w-full px-4 py-3 bg-white border border-orange-100 rounded-xl text-sm font-bold outline-none">
                                 {MOLD_PRESETS.map(p => <option key={`tgt-preset-${p.name}`} value={p.name}>{p.name}</option>)}
                              </select>
-                             <div className="flex bg-white rounded-lg p-1 border border-orange-100 shadow-xs mt-1">
-                                <button onClick={() => setTargetMold(p => ({...p, type: 'circular'}))} className={`flex-1 px-2 py-1 rounded text-[9px] font-black transition-all ${targetMold.type === 'circular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🔘 圓形</button>
-                                <button onClick={() => setTargetMold(p => ({...p, type: 'rectangular'}))} className={`flex-1 px-2 py-1 rounded text-[9px] font-black transition-all ${targetMold.type === 'rectangular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🟦 方形</button>
+                             <div className="flex bg-white rounded-xl p-1.5 border border-orange-100 shadow-sm mt-1">
+                                <button onClick={() => setTargetMold(p => ({...p, type: 'circular'}))} className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${targetMold.type === 'circular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🔘 圓形</button>
+                                <button onClick={() => setTargetMold(p => ({...p, type: 'rectangular'}))} className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${targetMold.type === 'rectangular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🟦 方形</button>
                              </div>
                           </div>
-                          <div className="bg-white p-5 rounded-2xl border border-orange-100 shadow-md">
+                          <div className="bg-white p-6 rounded-3xl border border-orange-100 shadow-md">
                             {targetMold.type === 'circular' ? (
-                              <div className="flex items-center gap-2"><span className="text-sm grayscale opacity-60 w-10">直徑</span><input type="number" value={targetMold.diameter || ''} onChange={e => setTargetMold(p => ({...p, diameter: parseFloat(e.target.value) || 0}))} className="w-full text-lg font-black bg-orange-50/30 rounded-lg px-2 py-1.5 outline-none text-slate-700 text-center" placeholder="cm" /></div>
+                              <div className="flex items-center gap-3">
+                                <span className="text-base font-bold text-slate-400 w-12">直徑</span>
+                                <div className="relative flex-1">
+                                  <input type="number" value={targetMold.diameter || ''} onChange={e => setTargetMold(p => ({...p, diameter: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-orange-50/30 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-300 pointer-events-none">cm</span>
+                                </div>
+                              </div>
                             ) : (
                               <>
-                                <div className="flex items-center gap-2"><span className="text-sm grayscale opacity-60 w-10">長度</span><input type="number" value={targetMold.length || ''} onChange={e => setTargetMold(p => ({...p, length: parseFloat(e.target.value) || 0}))} className="w-full text-lg font-black bg-orange-50/30 rounded-lg px-2 py-1.5 outline-none text-slate-700 text-center" placeholder="cm" /></div>
-                                <div className="flex items-center gap-2"><span className="text-sm grayscale opacity-60 w-10">寬度</span><input type="number" value={targetMold.width || ''} onChange={e => setTargetMold(p => ({...p, width: parseFloat(e.target.value) || 0}))} className="w-full text-lg font-black bg-orange-50/30 rounded-lg px-2 py-1.5 outline-none text-slate-700 text-center" placeholder="cm" /></div>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-base font-bold text-slate-400 w-12">長度</span>
+                                  <div className="relative flex-1">
+                                    <input type="number" value={targetMold.length || ''} onChange={e => setTargetMold(p => ({...p, length: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-orange-50/30 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-300 pointer-events-none">cm</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-base font-bold text-slate-400 w-12">寬度</span>
+                                  <div className="relative flex-1">
+                                    <input type="number" value={targetMold.width || ''} onChange={e => setTargetMold(p => ({...p, width: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-orange-50/30 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-300 pointer-events-none">cm</span>
+                                  </div>
+                                </div>
                               </>
                             )}
-                            <div className="flex items-center gap-2 border-t border-orange-50 pt-2"><span className="text-sm grayscale opacity-60 w-10">高度</span><input type="number" value={targetMold.height || ''} onChange={e => setTargetMold(p => ({...p, height: parseFloat(e.target.value) || 0}))} className="w-full text-lg font-black bg-orange-50/30 rounded-lg px-2 py-1.5 outline-none text-slate-700 text-center" placeholder="cm" /></div>
+                            <div className="flex items-center gap-3 border-t border-orange-50 pt-3">
+                              <span className="text-base font-bold text-slate-400 w-12">高度</span>
+                              <div className="relative flex-1">
+                                <input type="number" value={targetMold.height || ''} onChange={e => setTargetMold(p => ({...p, height: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-orange-50/30 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-300 pointer-events-none">cm</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </div>
-                      <div className="flex flex-col sm:flex-row items-center gap-6 pt-4 border-t border-orange-100/50">
-                        <div className="flex-1 text-center sm:text-left"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">體積換算倍率</span><div className="text-3xl font-black text-orange-600 tabular-nums">{calculatedMoldFactor.toFixed(2)}<span className="text-base ml-1">x</span></div></div>
-                        <button onClick={applyMoldFactor} className="w-full sm:w-auto px-10 py-4 bg-[#E67E22] text-white rounded-2xl font-black text-base hover:bg-orange-600 transition-all shadow-lg">套用倍率至食材</button>
-                      </div>
-                    </div>
-
-                    <div className="pt-6 border-t border-orange-50">
-                      <div className="flex justify-between items-center mb-6"><h3 className="text-lg font-black text-slate-800">換算結果清單</h3><span className="text-[10px] font-black text-orange-500 bg-orange-50 px-3 py-1.5 rounded-full border border-orange-100">目前總倍率: {scalingFactor.toFixed(2)}x</span></div>
-                      <div className="bg-orange-50/20 p-8 rounded-[40px] border border-orange-50">
-                        {scalingRecipe.sectionsOrder?.map(secKey => {
-                           if (secKey === 'ingredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.ingredients} title={scalingRecipe.mainSectionName || "主麵團"} isBaking={scalingRecipe.isBakingRecipe} showPercentage={true} scalingFactor={scalingFactor} />;
-                           if (secKey === 'liquidStarterIngredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.liquidStarterIngredients || []} title={scalingRecipe.liquidStarterName || "發酵種"} isBaking={scalingRecipe.isBakingRecipe} showPercentage={true} scalingFactor={scalingFactor} />;
-                           if (secKey === 'fillingIngredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.fillingIngredients || []} title="內餡 (固定量)" isBaking={scalingRecipe.isBakingRecipe} showPercentage={false} scalingFactor={1} />;
-                           if (secKey === 'decorationIngredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.decorationIngredients || []} title="裝飾 / 表面 (固定量)" isBaking={scalingRecipe.isBakingRecipe} showPercentage={false} scalingFactor={1} />;
-                           if (secKey === 'customSectionIngredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.customSectionIngredients || []} title={(scalingRecipe.customSectionName || "其他區塊") + " (固定量)"} isBaking={scalingRecipe.isBakingRecipe} showPercentage={false} scalingFactor={1} />;
-                           return null;
-                        })}
+                      <div className="flex flex-col sm:flex-row items-center gap-8 pt-6 border-t border-orange-100/50">
+                        <div className="flex-1 text-center sm:text-left">
+                          <span className="text-base sm:text-lg font-black text-slate-500 uppercase tracking-widest">總換算倍率</span>
+                          <div className="text-5xl sm:text-6xl font-black text-orange-600 tabular-nums mt-1">
+                            {scalingFactor.toFixed(2)}
+                            <span className="text-xl ml-1">x</span>
+                          </div>
+                        </div>
+                        <div className="text-xs sm:text-sm font-bold text-orange-500 italic bg-orange-50 px-5 py-3 rounded-2xl border border-orange-100 shadow-sm">
+                          💡 倍率已自動即時套用至下方清單
+                        </div>
                       </div>
                     </div>
                   </div>
                 )}
               </div>
+
+              {scalingRecipe && (
+                <div className="pt-6 border-t border-orange-50">
+                  {/* 列印專用標題 */}
+                  <div className="hidden print:block mb-8 border-b-2 border-orange-200 pb-4">
+                    <h1 className="text-3xl font-black text-slate-800">{scalingRecipe.title} (換算後)</h1>
+                    <p className="text-orange-600 font-bold mt-2">換算倍率: {scalingFactor.toFixed(2)}x</p>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row justify-between items-center gap-4 sm:gap-0 mb-8 print:hidden">
+                    <h3 className="text-xl font-black text-slate-800">換算結果清單</h3>
+                    <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-3">
+                      <span className="text-sm sm:text-sm font-black text-orange-500 bg-orange-50 px-6 py-2.5 rounded-full border border-orange-100 shadow-sm">目前總倍率: {scalingFactor.toFixed(2)}x</span>
+                      <button 
+                        onClick={() => window.print()} 
+                        className="w-auto px-6 py-3 bg-orange-500 text-white rounded-2xl text-sm font-black shadow-lg hover:bg-orange-600 transition-all flex items-center gap-2 active:scale-95"
+                      >
+                        <span className="text-xl">🖨️</span>
+                        <span>列印 / 存為 PDF</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="bg-orange-50/20 p-8 rounded-[40px] border border-orange-50 print:bg-white print:border-none print:p-0">
+                    {scalingRecipe.sectionsOrder?.map(secKey => {
+                       if (secKey === 'ingredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.ingredients} title={scalingRecipe.mainSectionName || "主麵團"} isBaking={scalingRecipe.isBakingRecipe} showPercentage={true} scalingFactor={scalingFactor} />;
+                       if (secKey === 'liquidStarterIngredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.liquidStarterIngredients || []} title={scalingRecipe.liquidStarterName || "發酵種"} isBaking={scalingRecipe.isBakingRecipe} showPercentage={true} scalingFactor={scalingFactor} />;
+                       if (secKey === 'fillingIngredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.fillingIngredients || []} title="內餡 (固定量)" isBaking={scalingRecipe.isBakingRecipe} showPercentage={false} scalingFactor={1} />;
+                       if (secKey === 'decorationIngredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.decorationIngredients || []} title="裝飾 / 表面 (固定量)" isBaking={scalingRecipe.isBakingRecipe} showPercentage={false} scalingFactor={1} />;
+                       if (secKey === 'customSectionIngredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.customSectionIngredients || []} title={(scalingRecipe.customSectionName || "其他區塊") + " (固定量)"} isBaking={scalingRecipe.isBakingRecipe} showPercentage={false} scalingFactor={1} />;
+                       return null;
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -921,7 +844,7 @@ const App: React.FC = () => {
 
                   {/* 第三排：⚖️ 麵團/糊 (g)、🌰 內餡 (g)、🔢 製作份數 */}
                   {formRecipe.category === '中式點心' ? (
-                    <div className="grid grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                       <div className="relative">
                         {/* 標籤字體加大到 text-[13px] 並且改為更飽滿的 font-black */}
                         <label className="block text-[13px] font-black text-slate-500 uppercase mb-1.5 ml-1">⚖️ 皮重(g)</label>
@@ -941,7 +864,7 @@ const App: React.FC = () => {
                       </div>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                       <div className="relative">
                         {/* 一般模式下的標籤也同步加大，讓視覺更一致 */}
                         <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">⚖️ 麵團/糊 (g)</label>
@@ -1026,26 +949,30 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-4">
-                  <label className="block text-xs font-black text-orange-600 uppercase tracking-widest">📸 圖片預覽與 AI 工具</label>
-                  <div className="aspect-video bg-orange-50/30 rounded-2xl border-2 border-dashed border-orange-100 flex items-center justify-center overflow-hidden">
+                  <label className="block text-xs font-black text-orange-600 uppercase tracking-widest">📸 圖片預覽與上傳</label>
+                  <div className="aspect-video bg-orange-50/30 rounded-2xl border-2 border-dashed border-orange-100 flex items-center justify-center overflow-hidden relative group">
                     {formRecipe.imageUrl ? (
-                      <img src={formRecipe.imageUrl} className="w-full h-full object-cover" alt="預覽" />
+                      <>
+                        <img src={formRecipe.imageUrl} className="w-full h-full object-cover" alt="預覽" />
+                        <button 
+                          type="button"
+                          onClick={() => setFormRecipe(prev => ({ ...prev, imageUrl: '' }))}
+                          className="absolute top-3 right-3 w-10 h-10 bg-black/40 backdrop-blur-md text-white rounded-full flex items-center justify-center text-lg hover:bg-red-500 transition-all opacity-0 group-hover:opacity-100 shadow-lg"
+                          title="移除照片"
+                        >
+                          ✕
+                        </button>
+                      </>
                     ) : (
                       <span className="text-orange-200 text-sm font-bold">尚未上傳圖片</span>
                     )}
                   </div>
                   <div className="grid grid-cols-1 gap-4">
-                    <button onClick={() => recipeImageInputRef.current?.click()} className="py-3 bg-white border border-orange-100 rounded-xl text-xs font-black text-orange-600 shadow-sm active:scale-95">
-                      上傳圖片
+                    <button onClick={() => recipeImageInputRef.current?.click()} className="py-5 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-2xl font-black text-lg shadow-lg shadow-orange-200 hover:shadow-orange-300 active:scale-95 transition-all">
+                      選擇並上傳作品照片
                     </button>
                   </div>
                   <input type="file" ref={recipeImageInputRef} onChange={handleImageUpload} className="hidden" accept="image/*" />
-                  
-                  <AIImageTools 
-                    currentImageUrl={formRecipe.imageUrl || ''} 
-                    onImageGenerated={(url) => setFormRecipe(prev => ({ ...prev, imageUrl: url }))} 
-                    title={formRecipe.title || '這份食譜'}
-                  />
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1054,8 +981,35 @@ const App: React.FC = () => {
                     <div className="space-y-3">
                       {formRecipe.fermentationStages?.map((stage, idx) => (
                         <div key={`edit-ferment-${idx}`} className="bg-white p-4 rounded-2xl border border-orange-50 space-y-3 shadow-sm">
-                          <div className="flex gap-2"><input type="text" value={stage.name || ''} onChange={(e) => handleUpdateFermentationStage(idx, 'name', e.target.value)} className="flex-grow px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-lg text-xs" placeholder="階段名稱" /><button onClick={() => setFormRecipe(p => ({ ...p, fermentationStages: p.fermentationStages?.filter((_, i) => i !== idx) }))} className="text-red-200 text-xs">移除</button></div>
-                          <div className="grid grid-cols-3 gap-2"><div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-lg text-[10px]"><span className="opacity-50">⏲️</span><input type="text" value={stage.time || ''} onChange={(e) => handleUpdateFermentationStage(idx, 'time', e.target.value)} className="w-full bg-transparent text-center" placeholder="分" /></div><div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-lg text-[10px]"><span className="opacity-50">🌡️</span><input type="text" value={stage.temperature || ''} onChange={(e) => handleUpdateFermentationStage(idx, 'temperature', e.target.value)} className="w-full bg-transparent text-center" placeholder="°C" /></div><div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-lg text-[10px]"><span className="opacity-50">💧</span><input type="text" value={stage.humidity || ''} onChange={(e) => handleUpdateFermentationStage(idx, 'humidity', e.target.value)} className="w-full bg-transparent text-center" placeholder="%" /></div></div>
+                          <div className="flex gap-2 items-center">
+                            <input 
+                              type="text" 
+                              value={stage.name || ''} 
+                              onChange={(e) => handleUpdateFermentationStage(idx, 'name', e.target.value)} 
+                              className="w-0 flex-grow px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-lg text-xs" 
+                              placeholder="階段名稱" 
+                            />
+                            <button 
+                              onClick={() => setFormRecipe(p => ({ ...p, fermentationStages: p.fermentationStages?.filter((_, i) => i !== idx) }))} 
+                              className="text-red-400 text-xs font-bold whitespace-nowrap flex-shrink-0"
+                            >
+                              移除
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="flex items-center gap-1 bg-slate-50 px-2 h-14 sm:h-auto sm:py-1 rounded-lg text-base sm:text-[10px]">
+                              <span className="opacity-50 text-lg sm:text-xs">⏲️</span>
+                              <input type="text" value={stage.time || ''} onChange={(e) => handleUpdateFermentationStage(idx, 'time', e.target.value)} className="w-full bg-transparent text-center focus:outline-none" placeholder="分" />
+                            </div>
+                            <div className="flex items-center gap-1 bg-slate-50 px-2 h-14 sm:h-auto sm:py-1 rounded-lg text-base sm:text-[10px]">
+                              <span className="opacity-50 text-lg sm:text-xs">🌡️</span>
+                              <input type="text" value={stage.temperature || ''} onChange={(e) => handleUpdateFermentationStage(idx, 'temperature', e.target.value)} className="w-full bg-transparent text-center focus:outline-none" placeholder="°C" />
+                            </div>
+                            <div className="flex items-center gap-1 bg-slate-50 px-2 h-14 sm:h-auto sm:py-1 rounded-lg text-base sm:text-[10px]">
+                              <span className="opacity-50 text-lg sm:text-xs">💧</span>
+                              <input type="text" value={stage.humidity || ''} onChange={(e) => handleUpdateFermentationStage(idx, 'humidity', e.target.value)} className="w-full bg-transparent text-center focus:outline-none" placeholder="%" />
+                            </div>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1314,6 +1268,36 @@ const App: React.FC = () => {
                           <div className="space-y-1"><label className="text-[10px] font-black text-orange-400 uppercase">評分</label><select value={newLog.rating || 5} onChange={e => setNewLog(p => ({...p, rating: parseInt(e.target.value)}))} className="w-full px-3 py-2 bg-white rounded-xl border border-orange-100 outline-none text-sm font-bold"><option value="5">⭐⭐⭐⭐⭐</option><option value="4">⭐⭐⭐⭐</option><option value="3">⭐⭐⭐</option><option value="2">⭐⭐</option><option value="1">⭐</option></select></div>
                         </div>
                         <div className="space-y-1"><label className="text-[10px] font-black text-orange-400 uppercase">實作心得</label><textarea value={newLog.feedback || ''} onChange={e => setNewLog(p => ({...p, feedback: e.target.value}))} className="w-full px-3 py-2 bg-white rounded-xl border border-orange-100 outline-none text-sm min-h-[80px]" placeholder="今日口感如何？" /></div>
+                        
+                        {/* 實作紀錄照片上傳 */}
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-orange-400 uppercase">上傳成品照 (可選)</label>
+                          <div className="space-y-3">
+                            <button 
+                              type="button"
+                              onClick={() => logPhotoInputRef.current?.click()} 
+                              className="w-full py-3 bg-white border border-orange-100 rounded-xl text-xs font-bold text-orange-600 hover:bg-orange-50 transition-all active:scale-95 flex items-center justify-center gap-2"
+                            >
+                              {newLog.photoUrl ? '🔄 更換照片' : '📷 選擇照片'}
+                            </button>
+                            
+                            {newLog.photoUrl && (
+                              <div className="aspect-video w-full bg-orange-50/30 rounded-2xl border border-orange-100 flex items-center justify-center overflow-hidden relative group shadow-sm">
+                                <img src={newLog.photoUrl} className="w-full h-full object-cover" alt="預覽" />
+                                <button 
+                                  type="button"
+                                  onClick={() => setNewLog(p => ({ ...p, photoUrl: '' }))}
+                                  className="absolute top-3 right-3 w-8 h-8 bg-black/40 backdrop-blur-md text-white rounded-full flex items-center justify-center text-sm hover:bg-red-500 transition-all opacity-0 group-hover:opacity-100 shadow-lg"
+                                  title="移除照片"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                          <input type="file" ref={logPhotoInputRef} onChange={handleLogPhotoUpload} className="hidden" accept="image/*" />
+                        </div>
+
                         <button onClick={handleAddLog} className="w-full py-3 bg-[#E67E22] text-white rounded-2xl font-black text-sm shadow-md hover:bg-orange-600 transition-all">儲存這筆紀錄</button>
                       </div>
                     )}
@@ -1342,7 +1326,7 @@ const App: React.FC = () => {
         </main>
       </div>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-orange-50 shadow-[0_-10px_30px_rgb(230,126,34,0.06)] px-8 py-4 flex justify-around items-center z-[1000] rounded-t-[40px] animate-in slide-in-from-bottom-10 duration-500 no-print">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-orange-50 shadow-[0_-10px_30px_rgb(230,126,34,0.06)] px-8 py-4 flex justify-around items-center z-[1000] rounded-t-[40px] animate-in slide-in-from-bottom-10 duration-500 print:hidden">
         <button onClick={() => setView(AppView.LIST)} className={`flex flex-col items-center gap-1 transition-all ${view === AppView.LIST ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}><span className="text-2xl">🏠</span><span className="text-[10px] font-black">首頁</span></button>
         <button onClick={handleCreateNew} className={`flex flex-col items-center gap-1 transition-all ${view === AppView.CREATE || view === AppView.EDIT || view === AppView.MANAGE_CATEGORIES ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}><span className="text-2xl">📝</span><span className="text-[10px] font-black">食譜</span></button>
         <button onClick={() => setView(AppView.SCALING)} className={`flex flex-col items-center gap-1 transition-all ${view === AppView.SCALING ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}><span className="text-2xl">⚖️</span><span className="text-[10px] font-black">換算</span></button>
