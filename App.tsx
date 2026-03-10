@@ -202,16 +202,26 @@ const IngredientList: React.FC<{
         + 新增
       </button>
     </div>
-    <div className="space-y-2">
+    <div className="space-y-3 sm:space-y-2">
       {items.map((ing, idx) => (
-        <div key={`${fieldKey}-${idx}`} className="flex gap-2 items-center">
-          {formRecipe.isBakingRecipe && (
-            <button type="button" onClick={() => handleUpdateIngredient(fieldKey, idx, 'isFlour', !ing.isFlour)} className={`shrink-0 w-7 h-7 rounded-lg text-[10px] font-black transition-all ${ing.isFlour ? 'bg-orange-500 text-white shadow-sm' : 'bg-slate-100 text-slate-400'}`}>粉</button>
-          )}
-          <input type="text" value={ing.name ?? ''} onChange={(e) => handleUpdateIngredient(fieldKey, idx, 'name', e.target.value)} className="flex-grow px-3 py-2 rounded-xl border border-slate-100 bg-slate-50/50 text-xs outline-none focus:bg-white focus:ring-1 focus:ring-orange-200 transition-all" placeholder="名稱" />
-          <input type="text" value={ing.amount ?? ''} onChange={(e) => handleUpdateIngredient(fieldKey, idx, 'amount', e.target.value)} className="w-16 px-3 py-2 rounded-xl border border-slate-100 bg-slate-50/50 text-xs text-right outline-none focus:bg-white focus:ring-1 focus:ring-orange-200 transition-all" placeholder="重量" />
-          <input type="text" value={ing.unit ?? ''} onChange={(e) => handleUpdateIngredient(fieldKey, idx, 'unit', e.target.value)} className="w-12 px-3 py-2 rounded-xl border border-slate-100 bg-slate-50/50 text-xs outline-none focus:bg-white focus:ring-1 focus:ring-orange-200 transition-all" placeholder="單位" />
-          <button type="button" onClick={() => setFormRecipe(prev => ({ ...prev, [fieldKey]: (prev[fieldKey] as Ingredient[]).filter((_, i) => i !== idx) }))} className="text-red-300 hover:text-red-500 p-1 transition-colors">🗑️</button>
+        <div key={`${fieldKey}-${idx}`} className="flex flex-col sm:flex-row gap-2 sm:items-center bg-slate-50/30 sm:bg-transparent p-3 sm:p-0 rounded-2xl sm:rounded-none border border-slate-100 sm:border-none">
+          <div className="flex gap-2 items-center w-full">
+            {formRecipe.isBakingRecipe && (
+              <button type="button" onClick={() => handleUpdateIngredient(fieldKey, idx, 'isFlour', !ing.isFlour)} className={`shrink-0 w-10 h-10 sm:w-7 sm:h-7 rounded-lg text-xs sm:text-[10px] font-black transition-all ${ing.isFlour ? 'bg-orange-500 text-white shadow-sm' : 'bg-slate-100 text-slate-400'}`}>粉</button>
+            )}
+            <input type="text" value={ing.name ?? ''} onChange={(e) => handleUpdateIngredient(fieldKey, idx, 'name', e.target.value)} className="flex-grow h-12 sm:h-auto px-4 sm:px-3 py-2 rounded-xl border border-slate-100 bg-white sm:bg-slate-50/50 text-base sm:text-xs outline-none focus:ring-1 focus:ring-orange-200 transition-all" placeholder="材料名稱" />
+          </div>
+          <div className="flex gap-2 items-center w-full sm:w-auto">
+            <div className="flex-grow sm:flex-none relative">
+              <input type="text" value={ing.amount ?? ''} onChange={(e) => handleUpdateIngredient(fieldKey, idx, 'amount', e.target.value)} className="w-full sm:w-20 h-12 sm:h-auto px-4 sm:px-3 py-2 rounded-xl border border-slate-100 bg-white sm:bg-slate-50/50 text-base sm:text-xs text-right outline-none focus:ring-1 focus:ring-orange-200 transition-all" placeholder="重量" />
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 sm:hidden">重量</span>
+            </div>
+            <div className="w-24 sm:w-16 relative">
+              <input type="text" value={ing.unit ?? ''} onChange={(e) => handleUpdateIngredient(fieldKey, idx, 'unit', e.target.value)} className="w-full h-12 sm:h-auto px-4 sm:px-3 py-2 rounded-xl border border-slate-100 bg-white sm:bg-slate-50/50 text-base sm:text-xs outline-none focus:ring-1 focus:ring-orange-200 transition-all" placeholder="單位" />
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 sm:hidden">單位</span>
+            </div>
+            <button type="button" onClick={() => setFormRecipe(prev => ({ ...prev, [fieldKey]: (prev[fieldKey] as Ingredient[]).filter((_, i) => i !== idx) }))} className="shrink-0 w-12 h-12 sm:w-auto sm:h-auto flex items-center justify-center text-red-300 hover:text-red-500 transition-colors">🗑️</button>
+          </div>
         </div>
       ))}
     </div>
@@ -827,7 +837,7 @@ const App: React.FC = () => {
                 <h2 className="text-2xl font-black text-[#E67E22]">{view === AppView.CREATE ? '建立新配方' : '編輯配方'}</h2>
                 <button onClick={() => setView(AppView.MANAGE_CATEGORIES)} className="p-2.5 bg-white border border-orange-100 rounded-xl shadow-sm text-sm font-bold text-orange-600 flex items-center gap-2 hover:bg-orange-50 transition-all active:scale-95">⚙️ 分類管理</button>
               </div>
-              <div className="space-y-6">
+              <div className="space-y-6 px-4 sm:px-0">
                 <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-6">
                   {/* 第一排：配方名稱、師傅 */}
                   <div className="grid grid-cols-2 gap-4">
