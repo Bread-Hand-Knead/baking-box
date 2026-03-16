@@ -34,16 +34,68 @@ const ConfirmDialog: React.FC<{
   onConfirm: () => void;
   onCancel: () => void;
 }> = ({ isOpen, title, message, onConfirm, onCancel }) => {
-  if (!isOpen) return null;
+  const [shouldRender, setShouldRender] = useState(isOpen);
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setShouldRender(true);
+      const timer = setTimeout(() => setIsAnimating(true), 10);
+      return () => clearTimeout(timer);
+    } else {
+      setIsAnimating(false);
+      const timer = setTimeout(() => setShouldRender(false), 200);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
+
+  if (!shouldRender) return null;
+
   return (
-    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white w-full max-w-sm rounded-[32px] p-8 shadow-2xl border border-orange-50 animate-in zoom-in-95 duration-200">
+    <div className={`fixed inset-0 z-[2000] flex items-center justify-center p-4 backdrop-blur-sm transition-all duration-200 ease-out ${isAnimating ? 'bg-black/20 opacity-100' : 'bg-black/0 opacity-0'}`}>
+      <div className={`bg-white w-full max-w-sm rounded-[32px] p-8 shadow-2xl border border-orange-50 transition-all duration-200 ease-out ${isAnimating ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}>
         <h3 className="text-xl font-black text-slate-800 mb-2">{title}</h3>
         <p className="text-sm text-slate-500 font-bold mb-8 leading-relaxed">{message}</p>
         <div className="flex gap-3">
           <button onClick={onCancel} className="flex-1 py-3 bg-slate-100 text-slate-500 rounded-2xl font-black text-sm hover:bg-slate-200 transition-all">取消</button>
           <button onClick={() => { onConfirm(); onCancel(); }} className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-black text-sm shadow-lg shadow-red-100 hover:bg-red-600 transition-all">確定刪除</button>
         </div>
+      </div>
+    </div>
+  );
+};
+
+const Toast: React.FC<{
+  isOpen: boolean;
+  message: string;
+  onClose: () => void;
+}> = ({ isOpen, message, onClose }) => {
+  const [shouldRender, setShouldRender] = useState(isOpen);
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setShouldRender(true);
+      const timer = setTimeout(() => setIsAnimating(true), 10);
+      const closeTimer = setTimeout(() => {
+        setIsAnimating(false);
+        setTimeout(() => setShouldRender(false), 200);
+        onClose();
+      }, 1500);
+      return () => {
+        clearTimeout(timer);
+        clearTimeout(closeTimer);
+      };
+    }
+  }, [isOpen, onClose]);
+
+  if (!shouldRender) return null;
+
+  return (
+    <div className="fixed top-24 left-0 right-0 z-[3000] flex justify-center pointer-events-none px-4">
+      <div className={`bg-white/80 backdrop-blur-md border border-emerald-100 px-6 py-3 rounded-2xl shadow-xl flex items-center gap-3 transition-all duration-200 ease-out ${isAnimating ? 'scale-100 opacity-100 translate-y-0' : 'scale-95 opacity-0 translate-y-4'}`}>
+        <span className="text-emerald-500 text-lg">✅</span>
+        <span className="text-slate-800 font-black text-sm">{message}</span>
       </div>
     </div>
   );
@@ -323,6 +375,11 @@ const App: React.FC = () => {
     setConfirmConfig({ isOpen: true, title, message, onConfirm });
   };
 
+  const [toast, setToast] = useState<{ show: boolean; message: string }>({ show: false, message: '' });
+  const showToast = (message: string) => {
+    setToast({ show: true, message });
+  };
+
   const backupInputRef = useRef<HTMLInputElement>(null);
   const recipeImageInputRef = useRef<HTMLInputElement>(null);
 
@@ -593,12 +650,14 @@ const App: React.FC = () => {
     setSelectedRecipe(updatedRecipe);
     setNewLog({ date: getTodayString(), rating: 5, feedback: '', photoUrl: '' });
     setIsAddingLog(false);
+    showToast("紀錄儲存成功！");
   };
 
   const handleAddNote = () => {
     if (!newNote.title || !newNote.content) return;
     setKnowledge(prev => [{ ...newNote, id: 'kn-' + Date.now(), createdAt: Date.now() }, ...prev]);
     setNewNote({ title: '', content: '', master: '' });
+    showToast("筆記儲存成功！");
   };
 
   const handleDeleteRecipe = () => {
@@ -1178,7 +1237,7 @@ const App: React.FC = () => {
                   <label className="text-xs font-black text-orange-600 uppercase tracking-widest">📝 私房筆記與秘方</label>
                   <textarea value={formRecipe.notes || ''} onChange={(e) => setFormRecipe(p => ({ ...p, notes: e.target.value }))} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs min-h-[150px] focus:bg-white focus:ring-1 focus:ring-orange-200 transition-all" placeholder="紀錄製作時的心得、建議改進之處..." />
                 </div>
-                <div className="pt-6"><button onClick={() => { if (!formRecipe.title) return; if (view === AppView.CREATE) { setRecipes(prev => [{ ...formRecipe as Recipe, id: 'rec-' + Date.now(), createdAt: Date.now() }, ...prev]); } else { setRecipes(prev => prev.map(r => r.id === formRecipe.id ? (formRecipe as Recipe) : r)); } setView(AppView.LIST); }} className="w-full py-4 bg-[#E67E22] text-white rounded-3xl font-black text-lg shadow-lg active:scale-95">儲存配方</button></div>
+                <div className="pt-6"><button onClick={() => { if (!formRecipe.title) return; if (view === AppView.CREATE) { setRecipes(prev => [{ ...formRecipe as Recipe, id: 'rec-' + Date.now(), createdAt: Date.now() }, ...prev]); } else { setRecipes(prev => prev.map(r => r.id === formRecipe.id ? (formRecipe as Recipe) : r)); } showToast("食譜儲存成功！"); setView(AppView.LIST); }} className="w-full py-4 bg-[#E67E22] text-white rounded-3xl font-black text-lg shadow-lg active:scale-95">儲存配方</button></div>
               </div>
             </div>
           )}
@@ -1188,7 +1247,7 @@ const App: React.FC = () => {
               <h2 className="text-xl font-black text-[#E67E22] mb-6">分類管理與排序</h2>
               <div className="flex gap-2 mb-8">
                 <input type="text" value={newCatName || ''} onChange={(e) => setNewCatName(e.target.value)} className="flex-grow px-4 py-2 rounded-xl bg-orange-50/30 border border-orange-50 outline-none text-sm" placeholder="輸入新分類..." />
-                <button onClick={() => { if(!newCatName.trim()) return; setCategories(prev=>[...prev,{id:'cat-'+Date.now(), name:newCatName.trim(), order:categories.length}]); setNewCatName(''); }} className="bg-[#E67E22] text-white px-5 py-2 rounded-xl font-bold text-sm">新增</button>
+                <button onClick={() => { if(!newCatName.trim()) return; setCategories(prev=>[...prev,{id:'cat-'+Date.now(), name:newCatName.trim(), order:categories.length}]); setNewCatName(''); showToast("分類新增成功！"); }} className="bg-[#E67E22] text-white px-5 py-2 rounded-xl font-bold text-sm">新增</button>
               </div>
               <div className="space-y-3">
                 {categories.map((cat, idx) => (
@@ -1464,6 +1523,11 @@ const App: React.FC = () => {
         message={confirmConfig?.message || ''}
         onConfirm={confirmConfig?.onConfirm || (() => {})}
         onCancel={() => setConfirmConfig(null)}
+      />
+      <Toast 
+        isOpen={toast.show} 
+        message={toast.message} 
+        onClose={() => setToast(p => ({ ...p, show: false }))} 
       />
     </div>
   );
