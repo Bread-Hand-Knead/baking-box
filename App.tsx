@@ -27,6 +27,28 @@ export interface Recipe {
 interface Category { id: string; name: string; order: number; }
 
 // --- 2. 內部小組件 (原 components 內容) ---
+const ConfirmDialog: React.FC<{
+  isOpen: boolean;
+  title: string;
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}> = ({ isOpen, title, message, onConfirm, onCancel }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-white w-full max-w-sm rounded-[32px] p-8 shadow-2xl border border-orange-50 animate-in zoom-in-95 duration-200">
+        <h3 className="text-xl font-black text-slate-800 mb-2">{title}</h3>
+        <p className="text-sm text-slate-500 font-bold mb-8 leading-relaxed">{message}</p>
+        <div className="flex gap-3">
+          <button onClick={onCancel} className="flex-1 py-3 bg-slate-100 text-slate-500 rounded-2xl font-black text-sm hover:bg-slate-200 transition-all">取消</button>
+          <button onClick={() => { onConfirm(); onCancel(); }} className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-black text-sm shadow-lg shadow-red-100 hover:bg-red-600 transition-all">確定刪除</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const RecipeCard: React.FC<{ recipe: Recipe; onClick: (r: Recipe) => void }> = ({ recipe, onClick }) => (
   <div onClick={() => onClick(recipe)} className="bg-white rounded-[32px] overflow-hidden border border-orange-50 shadow-sm hover:shadow-md transition-all cursor-pointer group">
     <div className="aspect-[16/10] relative overflow-hidden">
@@ -168,10 +190,11 @@ const IngredientList: React.FC<{
   formRecipe: Partial<Recipe>,
   setFormRecipe: React.Dispatch<React.SetStateAction<Partial<Recipe>>>,
   handleUpdateIngredient: (fieldKey: keyof Recipe, index: number, field: keyof Ingredient, val: any) => void,
-  moveIngredient: (fieldKey: keyof Recipe, index: number, direction: 'up' | 'down') => void
+  moveIngredient: (fieldKey: keyof Recipe, index: number, direction: 'up' | 'down') => void,
+  triggerConfirm: (onConfirm: () => void) => void
 }> = ({ 
   items, title, fieldKey, customTitleKey, onMoveSection, sectionIndex, totalSections, 
-  formRecipe, setFormRecipe, handleUpdateIngredient, moveIngredient 
+  formRecipe, setFormRecipe, handleUpdateIngredient, moveIngredient, triggerConfirm
 }) => (
   <div className="mb-8 p-4 sm:p-6 bg-white rounded-[32px] border border-orange-50 shadow-sm relative group/section overflow-hidden">
     {/* 修正後的 IngredientList 標題區塊：防止按鈕被擠出 */}
@@ -204,7 +227,7 @@ const IngredientList: React.FC<{
     <div className="space-y-4 sm:space-y-2">
       {items.map((ing, idx) => (
         <div key={`${fieldKey}-${idx}`} className="flex flex-col sm:flex-row gap-3 sm:gap-2 sm:items-center bg-slate-50/30 sm:bg-transparent p-4 sm:p-0 rounded-2xl sm:rounded-none border border-slate-100 sm:border-none">
-          {/* 第一區塊：粉/水切換 + 材料名稱 */}
+          {/* 第一排：粉/水切換 + 材料名稱 */}
           <div className="flex gap-2 items-center w-full sm:flex-1 min-w-0">
             {formRecipe.isBakingRecipe && (
               <button 
@@ -224,9 +247,9 @@ const IngredientList: React.FC<{
             />
           </div>
 
-          {/* 第二區塊：重量 + 單位 + 刪除按鈕 */}
+          {/* 第二排：重量 + 單位 (手機版 7:3 併排) */}
           <div className="flex gap-2 items-center w-full sm:w-auto">
-            <div className="flex-1 sm:flex-none sm:w-24 relative min-w-0">
+            <div className="flex-[7] sm:flex-none sm:w-24 relative min-w-0">
               <input 
                 type="text" 
                 value={ing.amount ?? ''} 
@@ -234,9 +257,8 @@ const IngredientList: React.FC<{
                 className="w-full h-12 sm:h-10 px-4 sm:px-3 rounded-xl border border-slate-100 bg-white sm:bg-slate-50/50 text-base sm:text-xs text-right outline-none focus:ring-1 focus:ring-orange-200 transition-all" 
                 placeholder="重量" 
               />
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 sm:hidden">重量</span>
             </div>
-            <div className="w-16 sm:w-16 relative shrink-0">
+            <div className="flex-[3] sm:flex-none sm:w-16 relative shrink-0">
               <input 
                 type="text" 
                 value={ing.unit ?? ''} 
@@ -244,16 +266,18 @@ const IngredientList: React.FC<{
                 className="w-full h-12 sm:h-10 px-4 sm:px-3 rounded-xl border border-slate-100 bg-white sm:bg-slate-50/50 text-base sm:text-xs outline-none focus:ring-1 focus:ring-orange-200 transition-all" 
                 placeholder="單位" 
               />
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 sm:hidden">單位</span>
             </div>
-            <button 
-              type="button" 
-              onClick={() => setFormRecipe(prev => ({ ...prev, [fieldKey]: (prev[fieldKey] as Ingredient[]).filter((_, i) => i !== idx) }))} 
-              className="shrink-0 w-12 h-12 sm:w-10 sm:h-10 flex items-center justify-center text-red-300 hover:text-red-500 transition-colors"
-            >
-              🗑️
-            </button>
           </div>
+
+          {/* 第三排：垃圾桶 (手機版獨立一行) */}
+          <button 
+            type="button" 
+            onClick={() => triggerConfirm(() => setFormRecipe(prev => ({ ...prev, [fieldKey]: (prev[fieldKey] as Ingredient[]).filter((_, i) => i !== idx) })))} 
+            className="w-full sm:w-10 h-10 sm:h-10 flex items-center justify-center gap-2 rounded-xl sm:rounded-none border border-red-100 sm:border-none bg-red-50 sm:bg-transparent text-red-500 sm:text-red-300 hover:text-red-600 transition-all text-sm font-bold"
+          >
+            <span className="sm:hidden">🗑️ 移除此材料</span>
+            <span className="hidden sm:inline">🗑️</span>
+          </button>
         </div>
       ))}
     </div>
@@ -287,6 +311,17 @@ const App: React.FC = () => {
   const logPhotoInputRef = useRef<HTMLInputElement>(null);
 
   const [newNote, setNewNote] = useState({ title: '', content: '', master: '' });
+
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
+
+  const triggerConfirm = (onConfirm: () => void, title = "確認刪除？", message = "妳確定要移除這個項目嗎？此操作無法復原。") => {
+    setConfirmConfig({ isOpen: true, title, message, onConfirm });
+  };
 
   const backupInputRef = useRef<HTMLInputElement>(null);
   const recipeImageInputRef = useRef<HTMLInputElement>(null);
@@ -849,7 +884,7 @@ const App: React.FC = () => {
                 <div className="pt-6 space-y-4 border-t border-orange-50">
                   {knowledge.map(kn => (
                     <div key={kn.id} className="p-5 bg-orange-50/20 rounded-2xl border border-orange-50 relative group transition-all hover:shadow-sm">
-                      <button onClick={() => setKnowledge(knowledge.filter(k => k.id !== kn.id))} className="absolute top-4 right-4 text-xs text-red-300 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-500">移除</button>
+                      <button onClick={() => triggerConfirm(() => setKnowledge(knowledge.filter(k => k.id !== kn.id)))} className="absolute top-4 right-4 text-xs text-red-300 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-500">移除</button>
                       <div className="flex justify-between items-start mb-2">
                         <h4 className="font-bold text-slate-800 text-base">{kn.title}</h4>
                         <span className="text-[10px] text-orange-400 font-bold bg-white px-2 py-0.5 rounded shadow-sm">{kn.master}</span>
@@ -1035,7 +1070,7 @@ const App: React.FC = () => {
                               placeholder="階段名稱" 
                             />
                             <button 
-                              onClick={() => setFormRecipe(p => ({ ...p, fermentationStages: p.fermentationStages?.filter((_, i) => i !== idx) }))} 
+                              onClick={() => triggerConfirm(() => setFormRecipe(p => ({ ...p, fermentationStages: p.fermentationStages?.filter((_, i) => i !== idx) })))} 
                               className="text-red-300 hover:text-red-500 text-xs font-bold whitespace-nowrap flex-shrink-0 transition-colors"
                             >
                               移除
@@ -1079,7 +1114,7 @@ const App: React.FC = () => {
                           <div className="flex justify-between items-center border-b border-orange-50 pb-2">
                             <input type="text" value={stage.name || ''} onChange={(e) => handleUpdateBakingStage(idx, 'name', e.target.value)} className="text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-slate-50 px-2 py-0.5 rounded w-24" />
                             <button 
-                              onClick={() => setFormRecipe(p => ({ ...p, bakingStages: p.bakingStages?.filter((_, i) => i !== idx) }))} 
+                              onClick={() => triggerConfirm(() => setFormRecipe(p => ({ ...p, bakingStages: p.bakingStages?.filter((_, i) => i !== idx) })))} 
                               className="text-red-300 hover:text-red-500 text-xs font-bold transition-colors"
                             >
                               移除
@@ -1118,11 +1153,11 @@ const App: React.FC = () => {
                 <div className="space-y-6">
                    {currentOrder.map((sec, idx) => {
                       const onMove = (dir: 'up' | 'down') => moveSection(idx, dir);
-                      if (sec === 'ingredients') return <IngredientList key={sec} items={formRecipe.ingredients || []} title="主麵團" fieldKey="ingredients" customTitleKey="mainSectionName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} />;
-                      if (sec === 'liquidStarterIngredients') return <IngredientList key={sec} items={formRecipe.liquidStarterIngredients || []} title="發酵種" fieldKey="liquidStarterIngredients" customTitleKey="liquidStarterName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} />;
-                      if (sec === 'fillingIngredients') return <IngredientList key={sec} items={formRecipe.fillingIngredients || []} title="內餡" fieldKey="fillingIngredients" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} />;
-                      if (sec === 'decorationIngredients') return <IngredientList key={sec} items={formRecipe.decorationIngredients || []} title="裝飾" fieldKey="decorationIngredients" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} />;
-                      if (sec === 'customSectionIngredients') return <IngredientList key={sec} items={formRecipe.customSectionIngredients || []} title="其他區塊" fieldKey="customSectionIngredients" customTitleKey="customSectionName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} />;
+                      if (sec === 'ingredients') return <IngredientList key={sec} items={formRecipe.ingredients || []} title="主麵團" fieldKey="ingredients" customTitleKey="mainSectionName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} />;
+                      if (sec === 'liquidStarterIngredients') return <IngredientList key={sec} items={formRecipe.liquidStarterIngredients || []} title="發酵種" fieldKey="liquidStarterIngredients" customTitleKey="liquidStarterName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} />;
+                      if (sec === 'fillingIngredients') return <IngredientList key={sec} items={formRecipe.fillingIngredients || []} title="內餡" fieldKey="fillingIngredients" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} />;
+                      if (sec === 'decorationIngredients') return <IngredientList key={sec} items={formRecipe.decorationIngredients || []} title="裝飾" fieldKey="decorationIngredients" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} />;
+                      if (sec === 'customSectionIngredients') return <IngredientList key={sec} items={formRecipe.customSectionIngredients || []} title="其他區塊" fieldKey="customSectionIngredients" customTitleKey="customSectionName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} />;
                       return null;
                     })}
                 </div>
@@ -1132,7 +1167,7 @@ const App: React.FC = () => {
                     <label className="text-xs font-black text-orange-600 uppercase tracking-widest">製作步驟 (做法)</label>
                     <button type="button" onClick={() => setFormRecipe(prev => ({ ...prev, instructions: [...(prev.instructions || []), ''] }))} className="text-[10px] font-bold bg-[#E67E22] text-white px-3 py-1.5 rounded-lg shadow-sm active:scale-95 transition-all">＋新增步驟</button>
                   </div>
-                  <div className="space-y-3">{(formRecipe.instructions || []).map((inst, idx) => (<div key={`inst-${idx}`} className="flex gap-2 items-start"><span className="w-6 h-6 bg-orange-100 text-[#E67E22] font-black rounded-lg flex items-center justify-center text-[10px] mt-1.5">{idx + 1}</span><textarea value={inst} onChange={(e) => { const newInst = [...(formRecipe.instructions || [])]; newInst[idx] = e.target.value; setFormRecipe(p => ({ ...p, instructions: newInst })); }} className="flex-grow px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs min-h-[60px] focus:bg-white focus:ring-1 focus:ring-orange-200 transition-all" placeholder={`步驟 ${idx + 1} 說明...`} /><button type="button" onClick={() => { const newInst = (formRecipe.instructions || []).filter((_, i) => i !== idx); setFormRecipe(p => ({ ...p, instructions: newInst })); }} className="text-red-300 hover:text-red-500 mt-2 transition-colors">🗑️</button></div>))}</div>
+                  <div className="space-y-3">{(formRecipe.instructions || []).map((inst, idx) => (<div key={`inst-${idx}`} className="flex gap-2 items-start"><span className="w-6 h-6 bg-orange-100 text-[#E67E22] font-black rounded-lg flex items-center justify-center text-[10px] mt-1.5">{idx + 1}</span><textarea value={inst} onChange={(e) => { const newInst = [...(formRecipe.instructions || [])]; newInst[idx] = e.target.value; setFormRecipe(p => ({ ...p, instructions: newInst })); }} className="flex-grow px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs min-h-[60px] focus:bg-white focus:ring-1 focus:ring-orange-200 transition-all" placeholder={`步驟 ${idx + 1} 說明...`} /><button type="button" onClick={() => { triggerConfirm(() => { const newInst = (formRecipe.instructions || []).filter((_, i) => i !== idx); setFormRecipe(p => ({ ...p, instructions: newInst })); }); }} className="text-red-300 hover:text-red-500 mt-2 transition-colors">🗑️</button></div>))}</div>
                 </div>
 
                 <div className="p-6 bg-white rounded-[32px] border border-orange-50 shadow-sm space-y-4">
@@ -1162,7 +1197,7 @@ const App: React.FC = () => {
                     <div className="flex items-center gap-1">
                       <button onClick={() => { const nc = [...categories]; [nc[idx],nc[idx-1]] = [nc[idx-1],nc[idx]]; setCategories(nc.map((c,i)=>({...c,order:i}))); }} disabled={idx === 0} className="p-1.5 text-slate-300 disabled:opacity-10 hover:text-[#E67E22]">↑</button>
                       <button onClick={() => { const nc = [...categories]; [nc[idx],nc[idx+1]] = [nc[idx+1],nc[idx]]; setCategories(nc.map((c,i)=>({...c,order:i}))); }} disabled={idx === categories.length-1} className="p-1.5 text-slate-300 disabled:opacity-10 hover:text-[#E67E22]">↓</button>
-                      <button onClick={() => setCategories(categories.filter(c=>c.id!==cat.id))} className="p-1.5 text-red-200 hover:text-red-500 ml-2">🗑️</button>
+                      <button onClick={() => triggerConfirm(() => setCategories(categories.filter(c=>c.id!==cat.id)))} className="p-1.5 text-red-200 hover:text-red-500 ml-2">🗑️</button>
                     </div>
                   </div>
                 ))}
@@ -1407,7 +1442,7 @@ const App: React.FC = () => {
                   <div className="flex flex-wrap gap-4 relative z-[100] no-print">
                     <button onClick={() => { setFormRecipe(selectedRecipe); setView(AppView.EDIT); }} className="flex-grow py-5 bg-white border border-orange-100 rounded-[32px] font-black text-orange-600 shadow-sm active:scale-95 transition-all hover:bg-orange-50 text-base">編輯配方</button>
                     <button onClick={() => window.print()} className="flex-grow py-5 bg-orange-500 text-white rounded-[32px] font-black shadow-lg active:scale-95 transition-all hover:bg-orange-600 text-base flex items-center justify-center gap-2"><span>🖨️</span><span>列印 / 存為 PDF</span></button>
-                    <button onClick={handleDeleteRecipe} className="flex-grow py-5 bg-red-50 text-red-500 rounded-[32px] font-black shadow-sm active:scale-95 transition-all hover:bg-red-100 text-base">刪除配方</button>
+                    <button onClick={() => triggerConfirm(handleDeleteRecipe, "確認刪除食譜？", "妳確定要移除這份食譜嗎？此操作將會永久刪除所有相關資料。")} className="flex-grow py-5 bg-red-50 text-red-500 rounded-[32px] font-black shadow-sm active:scale-95 transition-all hover:bg-red-100 text-base">刪除配方</button>
                   </div>
                 </div>
               </div>
@@ -1422,6 +1457,14 @@ const App: React.FC = () => {
         <button onClick={() => setView(AppView.SCALING)} className={`flex flex-col items-center gap-1 transition-all ${view === AppView.SCALING ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}><span className="text-2xl">⚖️</span><span className="text-[10px] font-black">換算</span></button>
         <button onClick={() => setView(AppView.COLLECTION)} className={`flex flex-col items-center gap-1 transition-all ${view === AppView.COLLECTION ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}><span className="text-2xl">📥</span><span className="text-[10px] font-black">收集</span></button>
       </nav>
+
+      <ConfirmDialog 
+        isOpen={confirmConfig?.isOpen || false}
+        title={confirmConfig?.title || ''}
+        message={confirmConfig?.message || ''}
+        onConfirm={confirmConfig?.onConfirm || (() => {})}
+        onCancel={() => setConfirmConfig(null)}
+      />
     </div>
   );
 };
