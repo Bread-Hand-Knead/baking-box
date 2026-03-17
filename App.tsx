@@ -12,7 +12,7 @@ export interface Knowledge { id: string; title: string; content: string; master:
 export interface Resource { id: string; title: string; url: string; category: string; }
 
 export interface Recipe {
-  id: string; title: string; master: string; sourceName?: string; sourceUrl?: string; sourceDate?: string; recordDate: string;
+  id: string; title: string; master: string; sourceName?: string; sourceUrl?: string; sourceLinks?: { name: string; url: string; }[]; sourceDate?: string; onlineCourse?: string; sourceNote?: string; recordDate: string;
   category: string; description: string; imageUrl: string; ingredients: Ingredient[]; instructions: string[];
   mainSectionName?: string; liquidStarterName?: string; liquidStarterIngredients?: Ingredient[];
   fillingIngredients?: Ingredient[]; decorationIngredients?: Ingredient[];
@@ -384,7 +384,7 @@ const App: React.FC = () => {
   const recipeImageInputRef = useRef<HTMLInputElement>(null);
 
   const [formRecipe, setFormRecipe] = useState<Partial<Recipe>>({
-    title: '', master: '', sourceName: '', sourceUrl: '', moldName: '', doughWeight: 0, crustWeight: 0, oilPasteWeight: 0, fillingWeight: 0, quantity: 1, 
+    title: '', master: '', sourceName: '', sourceUrl: '', sourceLinks: [], onlineCourse: '', sourceNote: '', moldName: '', doughWeight: 0, crustWeight: 0, oilPasteWeight: 0, fillingWeight: 0, quantity: 1, 
     sourceDate: '', recordDate: getTodayString(),
     fermentationStages: [], bakingStages: [], description: '',
     ingredients: [{ name: '', amount: 0, unit: 'g', isFlour: true }],
@@ -574,7 +574,7 @@ const App: React.FC = () => {
 
   const handleCreateNew = () => {
     setFormRecipe({
-      title: '', master: '', sourceName: '', sourceUrl: '', moldName: '', doughWeight: 0, crustWeight: 0, oilPasteWeight: 0, fillingWeight: 0, quantity: 1, 
+      title: '', master: '', sourceName: '', sourceUrl: '', onlineCourse: '', moldName: '', doughWeight: 0, crustWeight: 0, oilPasteWeight: 0, fillingWeight: 0, quantity: 1, 
       sourceDate: '', recordDate: getTodayString(),
       fermentationStages: [{ name: '基本發酵', time: '', temperature: '', humidity: '' }], bakingStages: [{ name: 'STAGE 1', topHeat: '', bottomHeat: '', time: '', note: '' }], description: '',
       ingredients: [{ name: '', amount: 0, unit: 'g', isFlour: true }],
@@ -1037,36 +1037,85 @@ const App: React.FC = () => {
                 <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-4">
                   <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">食譜來源與紀錄</h3>
                   <div className="grid grid-cols-2 gap-4">
-                    <input 
-                      type="text" 
-                      value={formRecipe.sourceName || ''} 
-                      onChange={e => setFormRecipe(p => ({ ...p, sourceName: e.target.value }))} 
-                      className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200" 
-                      placeholder="書名" 
-                    />
-                    <input 
-                      type="text" 
-                      value={formRecipe.sourceUrl || ''} // 這裡可以共用來存線上課名稱
-                      onChange={e => setFormRecipe(p => ({ ...p, sourceUrl: e.target.value }))} 
-                      className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200" 
-                      placeholder="線上課" 
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <input 
-                      type="text" 
-                      value={formRecipe.tags?.join(', ') || ''} 
-                      onChange={e => handleTagsInput(e.target.value)}
-                      className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200" 
-                      placeholder="FB / 網址連結" 
-                    />
-                    <input 
-                      type="text" 
-                      value={formRecipe.notes || ''} 
-                      onChange={e => setFormRecipe(p => ({ ...p, notes: e.target.value }))}
-                      className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200" 
-                      placeholder="頁碼 / 備註" 
-                    />
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-black text-slate-500 ml-1">📖 書名</label>
+                      <input 
+                        type="text" 
+                        value={formRecipe.sourceName || ''} 
+                        onChange={e => setFormRecipe(p => ({ ...p, sourceName: e.target.value }))} 
+                        className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200" 
+                        placeholder="書名" 
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-black text-slate-500 ml-1">💻 線上課</label>
+                      <input 
+                        type="text" 
+                        value={formRecipe.onlineCourse || ''} 
+                        onChange={e => setFormRecipe(p => ({ ...p, onlineCourse: e.target.value }))} 
+                        className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200" 
+                        placeholder="線上課程" 
+                      />
+                    </div>
+                    {/* 動態連結清單 */}
+                    <div className="space-y-3">
+                      {(formRecipe.sourceLinks || []).map((link, idx) => (
+                        <div key={idx} className="p-4 bg-orange-50/30 rounded-2xl border border-orange-100 space-y-3 relative group animate-in fade-in zoom-in-95 duration-200">
+                          <button 
+                            type="button" 
+                            onClick={() => triggerConfirm(() => setFormRecipe(p => ({ ...p, sourceLinks: (p.sourceLinks || []).filter((_, i) => i !== idx) })))}
+                            className="absolute top-2 right-2 p-2 text-red-300 hover:text-red-500 transition-colors"
+                          >
+                            🗑️
+                          </button>
+                          <div className="space-y-1.5">
+                            <label className="block text-[11px] font-black text-slate-500 ml-1">🏷️ 網址名稱</label>
+                            <input 
+                              type="text" 
+                              value={link.name} 
+                              onChange={e => {
+                                const newLinks = [...(formRecipe.sourceLinks || [])];
+                                newLinks[idx] = { ...newLinks[idx], name: e.target.value };
+                                setFormRecipe(p => ({ ...p, sourceLinks: newLinks }));
+                              }}
+                              className="w-full px-4 py-3 rounded-xl bg-white border border-orange-100 outline-none text-sm focus:border-orange-200" 
+                              placeholder="例如：FB影片、課程連結" 
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="block text-[11px] font-black text-slate-500 ml-1">🌐 網址連結</label>
+                            <input 
+                              type="text" 
+                              value={link.url} 
+                              onChange={e => {
+                                const newLinks = [...(formRecipe.sourceLinks || [])];
+                                newLinks[idx] = { ...newLinks[idx], url: e.target.value };
+                                setFormRecipe(p => ({ ...p, sourceLinks: newLinks }));
+                              }}
+                              className="w-full px-4 py-3 rounded-xl bg-white border border-orange-100 outline-none text-sm focus:border-orange-200" 
+                              placeholder="https://..." 
+                            />
+                          </div>
+                        </div>
+                      ))}
+                      <button 
+                        type="button" 
+                        onClick={() => setFormRecipe(p => ({ ...p, sourceLinks: [...(p.sourceLinks || []), { name: '', url: '' }] }))}
+                        className="w-full py-3 rounded-2xl border-2 border-dashed border-orange-100 text-orange-400 text-xs font-black hover:bg-orange-50 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <span>＋ 新增其他連結</span>
+                      </button>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-black text-slate-500 ml-1">📝 備註</label>
+                      <input 
+                        type="text" 
+                        value={formRecipe.sourceNote || ''} 
+                        onChange={e => setFormRecipe(p => ({ ...p, sourceNote: e.target.value }))}
+                        className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200" 
+                        placeholder="頁碼 / 備註" 
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -1117,45 +1166,57 @@ const App: React.FC = () => {
                       <label className="text-xs font-black text-orange-600 uppercase tracking-widest">發酵時序</label>
                       <button type="button" onClick={() => setFormRecipe(prev => ({ ...prev, fermentationStages: [...(prev.fermentationStages || []), { name: '', time: '', temperature: '', humidity: '' }] }))} className="text-[10px] font-bold bg-[#E67E22] text-white px-3 py-1.5 rounded-lg shadow-sm active:scale-95 transition-all">＋新增階段</button>
                     </div>
-                    <div className="space-y-3">
+                    <div className="space-y-6">
                       {formRecipe.fermentationStages?.map((stage, idx) => (
-                        <div key={`edit-ferment-${idx}`} className="bg-white p-4 rounded-2xl border border-orange-50 space-y-3 shadow-sm">
-                          <div className="flex gap-2 items-center">
-                            <input 
-                              type="text" 
-                              value={stage.name || ''} 
-                              onChange={(e) => handleUpdateFermentationStage(idx, 'name', e.target.value)} 
-                              className="w-0 flex-grow px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-lg text-xs" 
-                              placeholder="階段名稱" 
-                            />
+                        <div key={`edit-ferment-${idx}`} className="bg-white p-5 rounded-[28px] border border-orange-50 space-y-4 shadow-sm">
+                          <div className="flex justify-between items-end border-b border-orange-50 pb-3 gap-2">
+                            <div className="flex-grow space-y-1">
+                              <label className="block text-[10px] font-black text-slate-400 uppercase ml-1">階段名稱</label>
+                              <input 
+                                type="text" 
+                                value={stage.name || ''} 
+                                onChange={(e) => handleUpdateFermentationStage(idx, 'name', e.target.value)} 
+                                className="w-full px-4 py-2.5 bg-orange-50/30 border border-orange-100 rounded-xl text-sm font-bold outline-none focus:border-orange-200" 
+                                placeholder="例如：基本發酵" 
+                              />
+                            </div>
                             <button 
                               onClick={() => triggerConfirm(() => setFormRecipe(p => ({ ...p, fermentationStages: p.fermentationStages?.filter((_, i) => i !== idx) })))} 
-                              className="text-red-300 hover:text-red-500 text-xs font-bold whitespace-nowrap flex-shrink-0 transition-colors"
+                              className="text-red-300 hover:text-red-500 text-xs font-bold whitespace-nowrap flex-shrink-0 transition-colors pb-2 px-1"
                             >
                               移除
                             </button>
                           </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-2">
-                            <div className="flex items-center gap-3 sm:gap-1 bg-slate-50 px-4 sm:px-2 h-14 sm:h-auto sm:py-1 rounded-lg text-base sm:text-[10px]">
-                              <span className="opacity-50 text-xl sm:text-xs">⏲️</span>
-                              <div className="flex-grow flex items-center">
-                                <span className="text-slate-400 mr-2 sm:hidden">時間:</span>
-                                <input type="text" value={stage.time || ''} onChange={(e) => handleUpdateFermentationStage(idx, 'time', e.target.value)} className="w-full bg-transparent text-left sm:text-center focus:outline-none" placeholder="分" />
-                              </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                            <div className="space-y-1.5">
+                              <label className="block text-[11px] font-black text-slate-500 ml-1">⏲️ 時間</label>
+                              <input 
+                                type="text" 
+                                value={stage.time || ''} 
+                                onChange={(e) => handleUpdateFermentationStage(idx, 'time', e.target.value)} 
+                                className="w-full px-4 h-14 rounded-xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center" 
+                                placeholder="分" 
+                              />
                             </div>
-                            <div className="flex items-center gap-3 sm:gap-1 bg-slate-50 px-4 sm:px-2 h-14 sm:h-auto sm:py-1 rounded-lg text-base sm:text-[10px]">
-                              <span className="opacity-50 text-xl sm:text-xs">🌡️</span>
-                              <div className="flex-grow flex items-center">
-                                <span className="text-slate-400 mr-2 sm:hidden">溫度:</span>
-                                <input type="text" value={stage.temperature || ''} onChange={(e) => handleUpdateFermentationStage(idx, 'temperature', e.target.value)} className="w-full bg-transparent text-left sm:text-center focus:outline-none" placeholder="°C" />
-                              </div>
+                            <div className="space-y-1.5">
+                              <label className="block text-[11px] font-black text-slate-500 ml-1">🌡️ 溫度</label>
+                              <input 
+                                type="text" 
+                                value={stage.temperature || ''} 
+                                onChange={(e) => handleUpdateFermentationStage(idx, 'temperature', e.target.value)} 
+                                className="w-full px-4 h-14 rounded-xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center" 
+                                placeholder="°C" 
+                              />
                             </div>
-                            <div className="flex items-center gap-3 sm:gap-1 bg-slate-50 px-4 sm:px-2 h-14 sm:h-auto sm:py-1 rounded-lg text-base sm:text-[10px]">
-                              <span className="opacity-50 text-xl sm:text-xs">💧</span>
-                              <div className="flex-grow flex items-center">
-                                <span className="text-slate-400 mr-2 sm:hidden">濕度:</span>
-                                <input type="text" value={stage.humidity || ''} onChange={(e) => handleUpdateFermentationStage(idx, 'humidity', e.target.value)} className="w-full bg-transparent text-left sm:text-center focus:outline-none" placeholder="%" />
-                              </div>
+                            <div className="space-y-1.5">
+                              <label className="block text-[11px] font-black text-slate-500 ml-1">💧 濕度</label>
+                              <input 
+                                type="text" 
+                                value={stage.humidity || ''} 
+                                onChange={(e) => handleUpdateFermentationStage(idx, 'humidity', e.target.value)} 
+                                className="w-full px-4 h-14 rounded-xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center" 
+                                placeholder="%" 
+                              />
                             </div>
                           </div>
                         </div>
@@ -1167,42 +1228,63 @@ const App: React.FC = () => {
                       <label className="text-xs font-black text-orange-600 uppercase tracking-widest">烤溫設定</label>
                       <button type="button" onClick={() => setFormRecipe(prev => ({ ...prev, bakingStages: [...(prev.bakingStages || []), { name: `STAGE ${prev.bakingStages?.length ? prev.bakingStages.length + 1 : 1}`, topHeat: '', bottomHeat: '', time: '', note: '' }] }))} className="text-[10px] font-bold bg-[#E67E22] text-white px-3 py-1.5 rounded-lg shadow-sm active:scale-95 transition-all">＋新增階段</button>
                     </div>
-                    <div className="space-y-3">
+                    <div className="space-y-6">
                       {formRecipe.bakingStages?.map((stage, idx) => (
-                        <div key={`edit-bake-${idx}`} className="bg-white p-4 rounded-2xl border border-orange-50 space-y-3 shadow-sm">
-                          <div className="flex justify-between items-center border-b border-orange-50 pb-2">
-                            <input type="text" value={stage.name || ''} onChange={(e) => handleUpdateBakingStage(idx, 'name', e.target.value)} className="text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-slate-50 px-2 py-0.5 rounded w-24" />
+                        <div key={`edit-bake-${idx}`} className="bg-white p-5 rounded-[28px] border border-orange-50 space-y-4 shadow-sm">
+                          <div className="flex justify-between items-end border-b border-orange-50 pb-3 gap-2">
+                            <div className="flex-grow space-y-1">
+                              <label className="block text-[10px] font-black text-slate-400 uppercase ml-1">階段名稱</label>
+                              <input 
+                                type="text" 
+                                value={stage.name || ''} 
+                                onChange={(e) => handleUpdateBakingStage(idx, 'name', e.target.value)} 
+                                className="w-full sm:w-48 text-xs font-bold text-slate-600 uppercase tracking-widest bg-orange-50/50 px-3 py-2 rounded-xl outline-none focus:border-orange-200 border border-transparent" 
+                                placeholder="例如：STAGE 1"
+                              />
+                            </div>
                             <button 
                               onClick={() => triggerConfirm(() => setFormRecipe(p => ({ ...p, bakingStages: p.bakingStages?.filter((_, i) => i !== idx) })))} 
-                              className="text-red-300 hover:text-red-500 text-xs font-bold transition-colors"
+                              className="text-red-300 hover:text-red-500 text-xs font-bold transition-colors pb-2 px-1"
                             >
                               移除
                             </button>
                           </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-2">
-                            <div className="flex items-center gap-3 sm:gap-1 bg-slate-50 px-4 sm:px-2 h-14 sm:h-auto sm:py-1 rounded-lg text-base sm:text-[10px]">
-                              <span className="opacity-50 text-xl sm:text-xs">🔥</span>
-                              <div className="flex-grow flex items-center">
-                                <span className="text-slate-400 mr-2 sm:hidden">上火:</span>
-                                <input type="text" value={stage.topHeat || ''} onChange={(e) => handleUpdateBakingStage(idx, 'topHeat', e.target.value)} className="w-full bg-transparent text-left sm:text-center focus:outline-none" placeholder="°C" />
-                              </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                            <div className="space-y-1.5">
+                              <label className="block text-[11px] font-black text-slate-500 ml-1">🔥 上火</label>
+                              <input 
+                                type="text" 
+                                value={stage.topHeat || ''} 
+                                onChange={(e) => handleUpdateBakingStage(idx, 'topHeat', e.target.value)} 
+                                className="w-full px-4 h-14 rounded-xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center" 
+                                placeholder="°C" 
+                              />
                             </div>
-                            <div className="flex items-center gap-3 sm:gap-1 bg-slate-50 px-4 sm:px-2 h-14 sm:h-auto sm:py-1 rounded-lg text-base sm:text-[10px]">
-                              <span className="opacity-50 text-xl sm:text-xs">🔥</span>
-                              <div className="flex-grow flex items-center">
-                                <span className="text-slate-400 mr-2 sm:hidden">下火:</span>
-                                <input type="text" value={stage.bottomHeat || ''} onChange={(e) => handleUpdateBakingStage(idx, 'bottomHeat', e.target.value)} className="w-full bg-transparent text-left sm:text-center focus:outline-none" placeholder="°C" />
-                              </div>
+                            <div className="space-y-1.5">
+                              <label className="block text-[11px] font-black text-slate-500 ml-1">🔥 下火</label>
+                              <input 
+                                type="text" 
+                                value={stage.bottomHeat || ''} 
+                                onChange={(e) => handleUpdateBakingStage(idx, 'bottomHeat', e.target.value)} 
+                                className="w-full px-4 h-14 rounded-xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center" 
+                                placeholder="°C" 
+                              />
                             </div>
-                            <div className="flex items-center gap-3 sm:gap-1 bg-slate-50 px-4 sm:px-2 h-14 sm:h-auto sm:py-1 rounded-lg text-base sm:text-[10px]">
-                              <span className="opacity-50 text-xl sm:text-xs">⏲️</span>
-                              <div className="flex-grow flex items-center">
-                                <span className="text-slate-400 mr-2 sm:hidden">時間:</span>
-                                <input type="text" value={stage.time || ''} onChange={(e) => handleUpdateBakingStage(idx, 'time', e.target.value)} className="w-full bg-transparent text-left sm:text-center focus:outline-none" placeholder="分" />
-                              </div>
+                            <div className="space-y-1.5">
+                              <label className="block text-[11px] font-black text-slate-500 ml-1">⏲️ 時間</label>
+                              <input 
+                                type="text" 
+                                value={stage.time || ''} 
+                                onChange={(e) => handleUpdateBakingStage(idx, 'time', e.target.value)} 
+                                className="w-full px-4 h-14 rounded-xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center" 
+                                placeholder="分" 
+                              />
                             </div>
                           </div>
-                          <input type="text" value={stage.note || ''} onChange={(e) => handleUpdateBakingStage(idx, 'note', e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-xs" placeholder="階段備註 (例如：噴水、開氣門)" />
+                          <div className="space-y-1.5">
+                            <label className="block text-[10px] font-black text-slate-400 uppercase ml-1">階段備註</label>
+                            <input type="text" value={stage.note || ''} onChange={(e) => handleUpdateBakingStage(idx, 'note', e.target.value)} className="w-full px-4 py-3 bg-orange-50/30 border border-orange-100 rounded-xl text-xs font-bold outline-none focus:border-orange-200" placeholder="例如：噴水、開氣門" />
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1311,17 +1393,81 @@ const App: React.FC = () => {
                       師傅：{selectedRecipe.master} ｜ 分類：{selectedRecipe.category}
                     </p>
                     {(selectedRecipe.sourceDate || selectedRecipe.recordDate) && (
-                      <p className="text-xs font-bold text-slate-400 print:text-xs print:text-slate-400">
+                      <div className="text-xs font-bold text-slate-400 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-0 print:text-xs print:text-slate-400">
                         {selectedRecipe.sourceDate && <span>分享日：{selectedRecipe.sourceDate}</span>}
-                        {selectedRecipe.sourceDate && selectedRecipe.recordDate && <span className="mx-2 opacity-50">｜</span>}
+                        {selectedRecipe.sourceDate && selectedRecipe.recordDate && <span className="mx-2 opacity-50 hidden sm:inline">｜</span>}
                         {selectedRecipe.recordDate && <span>紀錄日：{selectedRecipe.recordDate}</span>}
-                      </p>
+                      </div>
                     )}
                   </div>
                 </div>
               </div>
 
               <div className="space-y-4">
+                {/* 食譜出處區塊 */}
+                {(selectedRecipe.sourceName || selectedRecipe.onlineCourse || selectedRecipe.sourceUrl || (selectedRecipe.sourceLinks && selectedRecipe.sourceLinks.length > 0) || selectedRecipe.sourceNote) && (
+                  <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-4 print:rounded-2xl print:border-slate-200">
+                    <h3 className="text-xs font-black text-orange-600 uppercase tracking-widest ml-1">食譜出處</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {selectedRecipe.sourceName && (
+                        <div className="flex items-center gap-3 p-3 bg-orange-50/30 rounded-2xl border border-orange-50">
+                          <span className="text-lg">📖</span>
+                          <div className="flex flex-col">
+                            <span className="text-[10px] font-black text-slate-400 uppercase">書名</span>
+                            <span className="text-sm font-bold text-slate-700">{selectedRecipe.sourceName}</span>
+                          </div>
+                        </div>
+                      )}
+                      {selectedRecipe.onlineCourse && (
+                        <div className="flex items-center gap-3 p-3 bg-orange-50/30 rounded-2xl border border-orange-50">
+                          <span className="text-lg">💻</span>
+                          <div className="flex flex-col">
+                            <span className="text-[10px] font-black text-slate-400 uppercase">線上課</span>
+                            <span className="text-sm font-bold text-slate-700">{selectedRecipe.onlineCourse}</span>
+                          </div>
+                        </div>
+                      )}
+                      {/* 舊有單一連結相容 */}
+                      {selectedRecipe.sourceUrl && (
+                        <div className="flex items-center gap-3 p-3 bg-orange-50/30 rounded-2xl border border-orange-50">
+                          <span className="text-lg">🌐</span>
+                          <div className="flex flex-col overflow-hidden">
+                            <span className="text-[10px] font-black text-slate-400 uppercase">連結</span>
+                            {selectedRecipe.sourceUrl.startsWith('http') ? (
+                              <a href={selectedRecipe.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-orange-500 hover:underline truncate">
+                                {selectedRecipe.sourceUrl}
+                              </a>
+                            ) : (
+                              <span className="text-sm font-bold text-slate-700 truncate">{selectedRecipe.sourceUrl}</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {/* 動態連結清單 */}
+                      {(selectedRecipe.sourceLinks || []).map((link, idx) => (
+                        <div key={idx} className="flex items-center gap-3 p-3 bg-orange-50/30 rounded-2xl border border-orange-50">
+                          <span className="text-lg">🔗</span>
+                          <div className="flex flex-col overflow-hidden">
+                            <span className="text-[10px] font-black text-slate-400 uppercase">參考連結</span>
+                            <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-orange-500 hover:underline truncate">
+                              {link.name || '點擊前往'}
+                            </a>
+                          </div>
+                        </div>
+                      ))}
+                      {selectedRecipe.sourceNote && (
+                        <div className="flex items-center gap-3 p-3 bg-orange-50/30 rounded-2xl border border-orange-50 sm:col-span-2">
+                          <span className="text-lg">📝</span>
+                          <div className="flex flex-col">
+                            <span className="text-[10px] font-black text-slate-400 uppercase">備註</span>
+                            <span className="text-sm font-bold text-slate-700">{selectedRecipe.sourceNote}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm flex flex-wrap gap-y-6 items-center justify-around text-center print:rounded-2xl print:border-slate-200">
                   {selectedRecipe.category === '中式點心' ? (
                     <>
