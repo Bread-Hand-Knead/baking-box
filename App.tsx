@@ -12,7 +12,7 @@ export interface Knowledge { id: string; title: string; content: string; master:
 export interface Resource { id: string; title: string; url: string; category: string; }
 
 export interface Recipe {
-  id: string; title: string; master: string; sourceName?: string; sourceUrl?: string; sourceLinks?: { name: string; url: string; }[]; sourceDate?: string; onlineCourse?: string; sourceNote?: string; recordDate: string;
+  id: string; title: string; master: string; sourceName?: string; sourceUrl?: string; sourceLinks?: { name: string; url: string; }[]; sourceDate?: string; onlineCourse?: string; sourcePage?: string; sourceNote?: string; recordDate: string;
   category: string; description: string; imageUrl: string; ingredients: Ingredient[]; instructions: string[];
   mainSectionName?: string; liquidStarterName?: string; liquidStarterIngredients?: Ingredient[];
   fillingIngredients?: Ingredient[]; decorationIngredients?: Ingredient[];
@@ -132,7 +132,9 @@ const DEFAULT_SECTIONS_ORDER = [
 
 const DEFAULT_CATEGORIES: Category[] = [
   { id: 'cat-1', name: '麵包', order: 0 }, { id: 'cat-2', name: '蛋糕', order: 1 },
-  { id: 'cat-6', name: '中式點心', order: 5 }
+  { id: 'cat-3', name: '點心', order: 2 }, { id: 'cat-4', name: '餡料', order: 3 },
+  { id: 'cat-5', name: '抹醬/其他', order: 4 }, { id: 'cat-6', name: '中式點心', order: 5 },
+  { id: 'cat-7', name: '果醬', order: 6 }
 ];
 
 const DEFAULT_KNOWLEDGE: Knowledge[] = [
@@ -352,6 +354,7 @@ const App: React.FC = () => {
   // Scaling states
   const [scalingRecipeId, setScalingRecipeId] = useState<string>('');
   const [targetQuantity, setTargetQuantity] = useState<number>(1);
+  const [isMoldPanelOpen, setIsMoldPanelOpen] = useState(false);
   
   // Mold scaling states - split into two independent objects
   const [sourceMold, setSourceMold] = useState({ type: 'circular' as 'circular' | 'rectangular', diameter: 0, height: 0, length: 0, width: 0 });
@@ -384,7 +387,7 @@ const App: React.FC = () => {
   const recipeImageInputRef = useRef<HTMLInputElement>(null);
 
   const [formRecipe, setFormRecipe] = useState<Partial<Recipe>>({
-    title: '', master: '', sourceName: '', sourceUrl: '', sourceLinks: [], onlineCourse: '', sourceNote: '', moldName: '', doughWeight: 0, crustWeight: 0, oilPasteWeight: 0, fillingWeight: 0, quantity: 1, 
+    title: '', master: '', sourceName: '', sourceUrl: '', sourceLinks: [], onlineCourse: '', sourcePage: '', sourceNote: '', moldName: '', doughWeight: 0, crustWeight: 0, oilPasteWeight: 0, fillingWeight: 0, quantity: 1, 
     sourceDate: '', recordDate: getTodayString(),
     fermentationStages: [], bakingStages: [], description: '',
     ingredients: [{ name: '', amount: 0, unit: 'g', isFlour: true }],
@@ -778,114 +781,127 @@ const App: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="px-4 py-8 sm:p-8 bg-orange-50/20 rounded-[40px] border border-orange-100 space-y-8">
-                      <label className="block text-lg font-black text-orange-700">3. 模具體積換算 (跨形狀互換工具)</label>
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                        <div className="space-y-5">
-                          <div className="flex flex-col gap-3 px-1">
-                             <span className="text-sm sm:text-base font-black text-slate-500 uppercase tracking-widest">原本食譜模具</span>
-                             <select onChange={(e) => handleApplyMoldPreset('source', e.target.value)} className="w-full px-4 py-3 bg-white border border-orange-100 rounded-xl text-sm font-bold outline-none">
-                                {MOLD_PRESETS.map(p => <option key={`src-preset-${p.name}`} value={p.name}>{p.name}</option>)}
-                             </select>
-                             <div className="flex bg-white rounded-xl p-1.5 border border-orange-100 shadow-sm mt-1">
-                                <button onClick={() => setSourceMold(p => ({...p, type: 'circular'}))} className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${sourceMold.type === 'circular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🔘 圓形</button>
-                                <button onClick={() => setSourceMold(p => ({...p, type: 'rectangular'}))} className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${sourceMold.type === 'rectangular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🟦 方形</button>
-                             </div>
-                          </div>
-                          <div className="bg-white p-6 rounded-3xl border border-orange-50 space-y-4 shadow-sm">
-                            {sourceMold.type === 'circular' ? (
-                              <div className="flex items-center gap-3">
-                                <span className="text-base font-bold text-slate-400 w-12">直徑</span>
-                                <div className="relative flex-1">
-                                  <input type="number" value={sourceMold.diameter || ''} onChange={e => setSourceMold(p => ({...p, diameter: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-slate-50 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
-                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300 pointer-events-none">cm</span>
-                                </div>
+                    <div className={`bg-orange-50/20 rounded-[40px] border border-orange-100 overflow-hidden transition-all duration-500 ease-in-out ${(['餡料', '果醬', '抹醬/其他'].includes(scalingRecipe?.category || '')) ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-[2000px] opacity-100'}`}>
+                      <button 
+                        type="button"
+                        onClick={() => setIsMoldPanelOpen(!isMoldPanelOpen)}
+                        className="w-full px-6 py-5 flex items-center justify-between bg-orange-100/30 hover:bg-orange-100/50 transition-colors text-left"
+                      >
+                        <span className="text-lg font-black text-orange-700">3. 模具體積換算 (跨形狀互換工具)</span>
+                        <span className={`text-orange-400 transition-transform duration-300 ${isMoldPanelOpen ? 'rotate-180' : ''}`}>▼</span>
+                      </button>
+
+
+                      <div className={`transition-all duration-500 ease-in-out ${isMoldPanelOpen ? 'max-h-[2000px] opacity-100 py-8 px-4 sm:p-8' : 'max-h-0 opacity-0 py-0 px-4 overflow-hidden'}`}>
+                        <div className="space-y-8">
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                            <div className="space-y-5">
+                              <div className="flex flex-col gap-3 px-1">
+                                 <span className="text-sm sm:text-base font-black text-slate-500 uppercase tracking-widest">原本食譜模具</span>
+                                 <select onChange={(e) => handleApplyMoldPreset('source', e.target.value)} className="w-full px-4 py-3 bg-white border border-orange-100 rounded-xl text-sm font-bold outline-none">
+                                    {MOLD_PRESETS.map(p => <option key={`src-preset-${p.name}`} value={p.name}>{p.name}</option>)}
+                                 </select>
+                                 <div className="flex bg-white rounded-xl p-1.5 border border-orange-100 shadow-sm mt-1">
+                                    <button type="button" onClick={() => setSourceMold(p => ({...p, type: 'circular'}))} className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${sourceMold.type === 'circular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🔘 圓形</button>
+                                    <button type="button" onClick={() => setSourceMold(p => ({...p, type: 'rectangular'}))} className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${sourceMold.type === 'rectangular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🟦 方形</button>
+                                 </div>
                               </div>
-                            ) : (
-                              <>
-                                <div className="flex items-center gap-3">
-                                  <span className="text-base font-bold text-slate-400 w-12">長度</span>
+                              <div className="bg-white p-6 rounded-3xl border border-orange-50 space-y-4 shadow-sm">
+                                {sourceMold.type === 'circular' ? (
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-base font-bold text-slate-400 w-12">直徑</span>
+                                    <div className="relative flex-1">
+                                      <input type="number" value={sourceMold.diameter || ''} onChange={e => setSourceMold(p => ({...p, diameter: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-slate-50 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300 pointer-events-none">cm</span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <div className="flex items-center gap-3">
+                                      <span className="text-base font-bold text-slate-400 w-12">長度</span>
+                                      <div className="relative flex-1">
+                                        <input type="number" value={sourceMold.length || ''} onChange={e => setSourceMold(p => ({...p, length: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-slate-50 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300 pointer-events-none">cm</span>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                      <span className="text-base font-bold text-slate-400 w-12">寬度</span>
+                                      <div className="relative flex-1">
+                                        <input type="number" value={sourceMold.width || ''} onChange={e => setSourceMold(p => ({...p, width: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-slate-50 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300 pointer-events-none">cm</span>
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
+                                <div className="flex items-center gap-3 border-t border-slate-50 pt-3">
+                                  <span className="text-base font-bold text-slate-400 w-12">高度</span>
                                   <div className="relative flex-1">
-                                    <input type="number" value={sourceMold.length || ''} onChange={e => setSourceMold(p => ({...p, length: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-slate-50 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                    <input type="number" value={sourceMold.height || ''} onChange={e => setSourceMold(p => ({...p, height: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-slate-50 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
                                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300 pointer-events-none">cm</span>
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                  <span className="text-base font-bold text-slate-400 w-12">寬度</span>
-                                  <div className="relative flex-1">
-                                    <input type="number" value={sourceMold.width || ''} onChange={e => setSourceMold(p => ({...p, width: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-slate-50 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
-                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300 pointer-events-none">cm</span>
-                                  </div>
-                                </div>
-                              </>
-                            )}
-                            <div className="flex items-center gap-3 border-t border-slate-50 pt-3">
-                              <span className="text-base font-bold text-slate-400 w-12">高度</span>
-                              <div className="relative flex-1">
-                                <input type="number" value={sourceMold.height || ''} onChange={e => setSourceMold(p => ({...p, height: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-slate-50 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
-                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300 pointer-events-none">cm</span>
                               </div>
                             </div>
-                          </div>
-                        </div>
-                        <div className="space-y-5">
-                          <div className="flex flex-col gap-3 px-1">
-                             <span className="text-sm sm:text-base font-black text-[#E67E22] uppercase tracking-widest">我要用的模具</span>
-                             <select onChange={(e) => handleApplyMoldPreset('target', e.target.value)} className="w-full px-4 py-3 bg-white border border-orange-100 rounded-xl text-sm font-bold outline-none">
-                                {MOLD_PRESETS.map(p => <option key={`tgt-preset-${p.name}`} value={p.name}>{p.name}</option>)}
-                             </select>
-                             <div className="flex bg-white rounded-xl p-1.5 border border-orange-100 shadow-sm mt-1">
-                                <button onClick={() => setTargetMold(p => ({...p, type: 'circular'}))} className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${targetMold.type === 'circular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🔘 圓形</button>
-                                <button onClick={() => setTargetMold(p => ({...p, type: 'rectangular'}))} className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${targetMold.type === 'rectangular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🟦 方形</button>
-                             </div>
-                          </div>
-                          <div className="bg-white p-6 rounded-3xl border border-orange-100 shadow-md">
-                            {targetMold.type === 'circular' ? (
-                              <div className="flex items-center gap-3">
-                                <span className="text-base font-bold text-slate-400 w-12">直徑</span>
-                                <div className="relative flex-1">
-                                  <input type="number" value={targetMold.diameter || ''} onChange={e => setTargetMold(p => ({...p, diameter: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-orange-50/30 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
-                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-300 pointer-events-none">cm</span>
-                                </div>
+                            <div className="space-y-5">
+                              <div className="flex flex-col gap-3 px-1">
+                                 <span className="text-sm sm:text-base font-black text-[#E67E22] uppercase tracking-widest">我要用的模具</span>
+                                 <select onChange={(e) => handleApplyMoldPreset('target', e.target.value)} className="w-full px-4 py-3 bg-white border border-orange-100 rounded-xl text-sm font-bold outline-none">
+                                    {MOLD_PRESETS.map(p => <option key={`tgt-preset-${p.name}`} value={p.name}>{p.name}</option>)}
+                                 </select>
+                                 <div className="flex bg-white rounded-xl p-1.5 border border-orange-100 shadow-sm mt-1">
+                                    <button type="button" onClick={() => setTargetMold(p => ({...p, type: 'circular'}))} className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${targetMold.type === 'circular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🔘 圓形</button>
+                                    <button type="button" onClick={() => setTargetMold(p => ({...p, type: 'rectangular'}))} className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${targetMold.type === 'rectangular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🟦 方形</button>
+                                 </div>
                               </div>
-                            ) : (
-                              <>
-                                <div className="flex items-center gap-3">
-                                  <span className="text-base font-bold text-slate-400 w-12">長度</span>
+                              <div className="bg-white p-6 rounded-3xl border border-orange-100 shadow-md">
+                                {targetMold.type === 'circular' ? (
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-base font-bold text-slate-400 w-12">直徑</span>
+                                    <div className="relative flex-1">
+                                      <input type="number" value={targetMold.diameter || ''} onChange={e => setTargetMold(p => ({...p, diameter: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-orange-50/30 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-300 pointer-events-none">cm</span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <div className="flex items-center gap-3">
+                                      <span className="text-base font-bold text-slate-400 w-12">長度</span>
+                                      <div className="relative flex-1">
+                                        <input type="number" value={targetMold.length || ''} onChange={e => setTargetMold(p => ({...p, length: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-orange-50/30 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-300 pointer-events-none">cm</span>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                      <span className="text-base font-bold text-slate-400 w-12">寬度</span>
+                                      <div className="relative flex-1">
+                                        <input type="number" value={targetMold.width || ''} onChange={e => setTargetMold(p => ({...p, width: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-orange-50/30 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-300 pointer-events-none">cm</span>
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
+                                <div className="flex items-center gap-3 border-t border-orange-50 pt-3">
+                                  <span className="text-base font-bold text-slate-400 w-12">高度</span>
                                   <div className="relative flex-1">
-                                    <input type="number" value={targetMold.length || ''} onChange={e => setTargetMold(p => ({...p, length: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-orange-50/30 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                    <input type="number" value={targetMold.height || ''} onChange={e => setTargetMold(p => ({...p, height: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-orange-50/30 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
                                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-300 pointer-events-none">cm</span>
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                  <span className="text-base font-bold text-slate-400 w-12">寬度</span>
-                                  <div className="relative flex-1">
-                                    <input type="number" value={targetMold.width || ''} onChange={e => setTargetMold(p => ({...p, width: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-orange-50/30 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
-                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-300 pointer-events-none">cm</span>
-                                  </div>
-                                </div>
-                              </>
-                            )}
-                            <div className="flex items-center gap-3 border-t border-orange-50 pt-3">
-                              <span className="text-base font-bold text-slate-400 w-12">高度</span>
-                              <div className="relative flex-1">
-                                <input type="number" value={targetMold.height || ''} onChange={e => setTargetMold(p => ({...p, height: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-orange-50/30 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
-                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-300 pointer-events-none">cm</span>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      </div>
-                      <div className="flex flex-col sm:flex-row items-center gap-8 pt-6 border-t border-orange-100/50">
-                        <div className="flex-1 text-center sm:text-left">
-                          <span className="text-base sm:text-lg font-black text-slate-500 uppercase tracking-widest">總換算倍率</span>
-                          <div className="text-5xl sm:text-6xl font-black text-orange-600 tabular-nums mt-1">
-                            {scalingFactor.toFixed(2)}
-                            <span className="text-xl ml-1">x</span>
+                          <div className="flex flex-col sm:flex-row items-center gap-8 pt-6 border-t border-orange-100/50">
+                            <div className="flex-1 text-center sm:text-left">
+                              <span className="text-base sm:text-lg font-black text-slate-500 uppercase tracking-widest">總換算倍率</span>
+                              <div className="text-5xl sm:text-6xl font-black text-orange-600 tabular-nums mt-1">
+                                {scalingFactor.toFixed(2)}
+                                <span className="text-xl ml-1">x</span>
+                              </div>
+                            </div>
+                            <div className="text-xs sm:text-sm font-bold text-orange-500 italic bg-orange-50 px-5 py-3 rounded-2xl border border-orange-100 shadow-sm">
+                              💡 倍率已自動即時套用至下方清單
+                            </div>
                           </div>
-                        </div>
-                        <div className="text-xs sm:text-sm font-bold text-orange-500 italic bg-orange-50 px-5 py-3 rounded-2xl border border-orange-100 shadow-sm">
-                          💡 倍率已自動即時套用至下方清單
                         </div>
                       </div>
                     </div>
@@ -979,43 +995,44 @@ const App: React.FC = () => {
                   </div>
 
                   {/* 第三排：⚖️ 麵團/糊 (g)、🌰 內餡 (g)、🔢 製作份數 */}
-                  {formRecipe.category === '中式點心' ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                      <div className="relative">
-                        {/* 標籤字體加大到 text-[13px] 並且改為更飽滿的 font-black */}
-                        <label className="block text-[13px] font-black text-slate-500 uppercase mb-1.5 ml-1">⚖️ 皮重(g)</label>
-                        <input type="number" value={formRecipe.crustWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, crustWeight: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
-                      </div>
-                      <div className="relative">
-                        <label className="block text-[13px] font-black text-slate-500 uppercase mb-1.5 ml-1">🧈 油酥重(g)</label>
-                        <input type="number" value={formRecipe.oilPasteWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, oilPasteWeight: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
-                      </div>
-                      <div className="relative">
-                        <label className="block text-[13px] font-black text-slate-500 uppercase mb-1.5 ml-1">🌰 餡重(g)</label>
-                        <input type="number" value={formRecipe.fillingWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, fillingWeight: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
-                      </div>
-                      <div className="relative">
-                        <label className="block text-[13px] font-black text-slate-500 uppercase mb-1.5 ml-1">🔢 製作份數</label>
-                        <input type="number" value={formRecipe.quantity ?? ''} onChange={e => setFormRecipe(p => ({ ...p, quantity: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
-                      </div>
+                  <div className="space-y-6">
+                    <div className={`transition-all duration-500 ease-in-out overflow-hidden ${(['餡料', '果醬', '抹醬/其他'].includes(formRecipe.category || '')) ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-[500px] opacity-100'}`}>
+                      {formRecipe.category === '中式點心' ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          <div className="relative">
+                            <label className="block text-[13px] font-black text-slate-500 uppercase mb-1.5 ml-1">⚖️ 皮重(g)</label>
+                            <input type="number" value={formRecipe.crustWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, crustWeight: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
+                          </div>
+                          <div className="relative">
+                            <label className="block text-[13px] font-black text-slate-500 uppercase mb-1.5 ml-1">🧈 油酥重(g)</label>
+                            <input type="number" value={formRecipe.oilPasteWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, oilPasteWeight: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
+                          </div>
+                          <div className="relative">
+                            <label className="block text-[13px] font-black text-slate-500 uppercase mb-1.5 ml-1">🌰 餡重(g)</label>
+                            <input type="number" value={formRecipe.fillingWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, fillingWeight: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="relative">
+                            <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">⚖️ 麵團/糊 (g)</label>
+                            <input type="number" value={formRecipe.doughWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, doughWeight: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
+                          </div>
+                          <div className="relative">
+                            <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">🌰 內餡 (g)</label>
+                            <input type="number" value={formRecipe.fillingWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, fillingWeight: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                      <div className="relative">
-                        {/* 一般模式下的標籤也同步加大，讓視覺更一致 */}
-                        <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">⚖️ 麵團/糊 (g)</label>
-                        <input type="number" value={formRecipe.doughWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, doughWeight: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
-                      </div>
-                      <div className="relative">
-                        <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">🌰 內餡 (g)</label>
-                        <input type="number" value={formRecipe.fillingWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, fillingWeight: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
-                      </div>
-                      <div className="relative">
-                        <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">🔢 製作份數</label>
-                        <input type="number" value={formRecipe.quantity ?? ''} onChange={e => setFormRecipe(p => ({ ...p, quantity: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
-                      </div>
+
+                    <div className="relative">
+                      <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">🔢 製作份數</label>
+                      <input type="number" value={formRecipe.quantity ?? ''} onChange={e => setFormRecipe(p => ({ ...p, quantity: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
                     </div>
-                  )}
+                  </div>
+
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="relative">
                       <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">老師分享日 📅</label>
@@ -1027,10 +1044,13 @@ const App: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="w-full">
-                    <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">🍞 模具規格/烤盤</label>
-                    <input type="text" value={formRecipe.moldName || ''} onChange={e => setFormRecipe(p => ({ ...p, moldName: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" placeholder="模具規格" />
+                  <div className={`transition-all duration-500 ease-in-out overflow-hidden ${(['餡料', '果醬', '抹醬/其他'].includes(formRecipe.category || '')) ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-[200px] opacity-100'}`}>
+                    <div className="w-full">
+                      <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">🍞 模具規格/烤盤</label>
+                      <input type="text" value={formRecipe.moldName || ''} onChange={e => setFormRecipe(p => ({ ...p, moldName: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" placeholder="模具規格" />
+                    </div>
                   </div>
+
                 </div>
 
                 {/* 職人新增：食譜來源與紀錄區塊 */}
@@ -1106,15 +1126,27 @@ const App: React.FC = () => {
                         <span>＋ 新增其他連結</span>
                       </button>
                     </div>
-                    <div className="space-y-1.5">
-                      <label className="block text-[11px] font-black text-slate-500 ml-1">📝 備註</label>
-                      <input 
-                        type="text" 
-                        value={formRecipe.sourceNote || ''} 
-                        onChange={e => setFormRecipe(p => ({ ...p, sourceNote: e.target.value }))}
-                        className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200" 
-                        placeholder="頁碼 / 備註" 
-                      />
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-black text-slate-500 ml-1">📖 頁碼</label>
+                        <input 
+                          type="text" 
+                          value={formRecipe.sourcePage || ''} 
+                          onChange={e => setFormRecipe(p => ({ ...p, sourcePage: e.target.value }))}
+                          className="w-full h-14 px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200" 
+                          placeholder="書本或講義頁碼" 
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-black text-slate-500 ml-1">📝 心得備註</label>
+                        <input 
+                          type="text" 
+                          value={formRecipe.sourceNote || ''} 
+                          onChange={e => setFormRecipe(p => ({ ...p, sourceNote: e.target.value }))}
+                          className="w-full h-14 px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200" 
+                          placeholder="製作心得或老師叮嚀" 
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1160,7 +1192,8 @@ const App: React.FC = () => {
                   <input type="file" ref={recipeImageInputRef} onChange={handleImageUpload} className="hidden" accept="image/*" />
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className={`transition-all duration-500 ease-in-out overflow-hidden ${(['餡料', '果醬', '抹醬/其他'].includes(formRecipe.category || '')) ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-[5000px] opacity-100 mt-6'}`}>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div className="p-6 bg-white rounded-[32px] border border-orange-50 shadow-sm space-y-4">
                     <div className="flex justify-between items-center">
                       <label className="text-xs font-black text-orange-600 uppercase tracking-widest">發酵時序</label>
@@ -1290,6 +1323,8 @@ const App: React.FC = () => {
                     </div>
                   </div>
                 </div>
+              </div>
+
 
                 <div className="space-y-6">
                    {currentOrder.map((sec, idx) => {
@@ -1455,11 +1490,20 @@ const App: React.FC = () => {
                           </div>
                         </div>
                       ))}
+                      {selectedRecipe.sourcePage && (
+                        <div className="flex items-center gap-3 p-3 bg-orange-50/30 rounded-2xl border border-orange-50">
+                          <span className="text-lg">📖</span>
+                          <div className="flex flex-col">
+                            <span className="text-[10px] font-black text-slate-400 uppercase">頁碼</span>
+                            <span className="text-sm font-bold text-slate-700">{selectedRecipe.sourcePage}</span>
+                          </div>
+                        </div>
+                      )}
                       {selectedRecipe.sourceNote && (
-                        <div className="flex items-center gap-3 p-3 bg-orange-50/30 rounded-2xl border border-orange-50 sm:col-span-2">
+                        <div className="flex items-center gap-3 p-3 bg-orange-50/30 rounded-2xl border border-orange-50">
                           <span className="text-lg">📝</span>
                           <div className="flex flex-col">
-                            <span className="text-[10px] font-black text-slate-400 uppercase">備註</span>
+                            <span className="text-[10px] font-black text-slate-400 uppercase">心得備註</span>
                             <span className="text-sm font-bold text-slate-700">{selectedRecipe.sourceNote}</span>
                           </div>
                         </div>
