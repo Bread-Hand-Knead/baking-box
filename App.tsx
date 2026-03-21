@@ -15,7 +15,8 @@ export interface Recipe {
   id: string; title: string; master: string; sourceName?: string; sourceUrl?: string; sourceLinks?: { name: string; url: string; }[]; sourceDate?: string; onlineCourse?: string; sourcePage?: string; sourceNote?: string; recordDate: string;
   category: string; description: string; imageUrl: string; ingredients: Ingredient[]; instructions: string[];
   mainSectionName?: string; liquidStarterName?: string; liquidStarterIngredients?: Ingredient[];
-  fillingIngredients?: Ingredient[]; decorationIngredients?: Ingredient[];
+  fillingSectionName?: string; fillingIngredients?: Ingredient[];
+  decorationSectionName?: string; decorationIngredients?: Ingredient[];
   customSectionName?: string; customSectionIngredients?: Ingredient[];
   sectionsOrder?: string[]; isBakingRecipe: boolean; isTried: boolean;
   fermentationStages?: FermentationStage[]; bakingStages?: BakingStage[];
@@ -179,18 +180,25 @@ const DisplayIngredientSection: React.FC<{
   }, [ingredients]);
 
   return (
-    <div className="mb-10 bg-white rounded-[32px] border border-orange-50 p-6 shadow-sm">
-      <h4 className="mb-6 flex flex-col gap-1">
-        <span className="text-xl font-black text-orange-600 uppercase tracking-widest">{title}</span>
-        {isBaking && showPercentage && (
-          <span className="text-xs font-bold text-slate-400 lowercase italic">
-            (以 {localBase.name} 為 100%)
+    <div className="mb-10 bg-white rounded-[40px] border-2 border-orange-50 p-8 shadow-sm overflow-hidden print:rounded-2xl print:border-slate-200 print:p-6">
+      <div className="mb-8 flex flex-col gap-3">
+        <div className="flex items-center">
+          <span className="px-6 py-2 bg-[#E67E22] text-white text-base font-black rounded-2xl shadow-sm uppercase tracking-widest">
+            {title}
           </span>
+        </div>
+        {isBaking && showPercentage && (
+          <div className="ml-1 flex items-center gap-2">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">基準:</span>
+            <span className="text-xs font-bold text-slate-500 lowercase italic">
+              (以 {localBase.name} 為 100%)
+            </span>
+          </div>
         )}
-      </h4>
+      </div>
       <div className="space-y-0">
         {/* 表頭 (僅桌面版) */}
-        <div className="hidden sm:flex items-center px-4 py-2 border-b border-orange-100/50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+        <div className="hidden sm:flex items-center px-6 py-3 border-b border-orange-100/50 text-[11px] font-black text-slate-400 uppercase tracking-widest bg-orange-50/30 rounded-t-2xl">
           <div className="sm:w-48 shrink-0">材料名稱</div>
           <div className="sm:w-40 text-right">重量 (G)</div>
           {isBaking && showPercentage && <div className="sm:w-40 text-right">百分比 (%)</div>}
@@ -204,10 +212,10 @@ const DisplayIngredientSection: React.FC<{
           const percentage = localBase.weight > 0 ? (numericAmt / localBase.weight * 100).toFixed(1).replace(/\.0$/, '') : '0';
 
           return (
-            <div key={`scaling-ing-${idx}`} className="flex flex-col sm:flex-row sm:items-start py-5 sm:py-4 border-b border-orange-50/50 last:border-0 sm:px-4 hover:bg-orange-50/20 transition-colors rounded-xl gap-2 sm:gap-0 mb-4 sm:mb-0">
+            <div key={`scaling-ing-${idx}`} className="flex flex-col sm:flex-row sm:items-start py-6 sm:py-5 border-b border-orange-50/50 last:border-0 px-2 sm:px-6 hover:bg-orange-50/20 transition-colors rounded-2xl gap-2 sm:gap-0 mb-4 sm:mb-0">
               {/* 第一行：材料名稱 (手機版 100%，電腦版固定寬度) */}
               <div className="flex items-start gap-3 sm:w-48 shrink-0 min-w-0 w-full px-2 sm:px-0">
-                <span className={`shrink-0 w-2 h-2 rounded-full mt-2 ${ing.isFlour ? 'bg-orange-500' : 'bg-slate-200'}`} />
+                <span className={`shrink-0 w-2.5 h-2.5 rounded-full mt-2 ${ing.isFlour ? 'bg-orange-500 shadow-[0_0_8px_rgba(230,126,34,0.4)]' : 'bg-slate-200'}`} />
                 <span className="text-slate-700 font-bold text-base leading-relaxed break-words">{ing.name}</span>
               </div>
 
@@ -234,7 +242,7 @@ const DisplayIngredientSection: React.FC<{
                 {/* 百分比 - 手機版靠右，電腦版固定寬度並靠右 */}
                 {isBaking && showPercentage && (
                   <div className="sm:w-40 flex justify-end items-center shrink-0">
-                    <span className="text-[10px] sm:text-sm font-black px-2 py-0.5 sm:py-1 rounded-lg bg-orange-50 text-orange-600 shadow-sm inline-block min-w-[42px] sm:min-w-[55px] text-center">
+                    <span className="text-[10px] sm:text-sm font-black px-3 py-1 rounded-xl bg-orange-50 text-orange-600 shadow-sm inline-block min-w-[48px] sm:min-w-[60px] text-center border border-orange-100/50">
                       {percentage}%
                     </span>
                   </div>
@@ -266,23 +274,25 @@ const IngredientList: React.FC<{
   items, title, fieldKey, customTitleKey, onMoveSection, sectionIndex, totalSections, 
   formRecipe, setFormRecipe, handleUpdateIngredient, moveIngredient, triggerConfirm
 }) => {
-  const localBase = useMemo(() => {
+  const localBaseInfo = useMemo(() => {
     let flourTotal = 0;
     items.forEach(ing => {
       const amt = typeof ing.amount === 'number' ? ing.amount : parseFloat(ing.amount as string) || 0;
       if (ing.isFlour) flourTotal += amt;
     });
-    if (flourTotal > 0) return flourTotal;
+    if (flourTotal > 0) return { weight: flourTotal, name: '總粉量' };
     if (items.length > 0) {
-      return parseFloat(String(items[0].amount)) || 0;
+      return { weight: parseFloat(String(items[0].amount)) || 0, name: items[0].name || '基準材料' };
     }
-    return 0;
+    return { weight: 0, name: '基準材料' };
   }, [items]);
+
+  const localBase = localBaseInfo.weight;
 
   return (
     <div className="mb-8 p-4 sm:p-6 bg-white rounded-[32px] border border-orange-50 shadow-sm relative group/section overflow-hidden">
       {/* 修正後的 IngredientList 標題區塊：防止按鈕被擠出 */}
-      <div className="flex justify-between items-center mb-5 gap-2">
+      <div className="flex justify-between items-center mb-2 gap-2">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <div className="flex flex-col shrink-0">
             <button type="button" onClick={() => onMoveSection('up')} disabled={sectionIndex === 0} className="p-1 text-slate-300 disabled:opacity-0"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 15l7-7 7 7" /></svg></button>
@@ -294,10 +304,12 @@ const IngredientList: React.FC<{
               value={String(formRecipe[customTitleKey] || '')} 
               onChange={(e) => setFormRecipe(prev => ({ ...prev, [customTitleKey]: e.target.value }))} 
               placeholder={title} 
-              className="text-xs font-black text-orange-600 uppercase tracking-widest bg-orange-50/50 px-3 py-1.5 rounded-xl border border-orange-100 outline-none w-full min-w-0" 
+              className="text-sm font-black text-white placeholder:text-white/60 uppercase tracking-widest bg-[#E67E22] px-4 py-2 rounded-2xl border-none outline-none w-full min-w-0 shadow-sm focus:ring-2 focus:ring-orange-200 transition-all" 
             />
           ) : (
-            <label className="text-xs font-black text-orange-600 uppercase tracking-widest whitespace-nowrap">{title}</label>
+            <div className="px-4 py-2 bg-[#E67E22] rounded-2xl shadow-sm">
+              <label className="text-sm font-black text-white uppercase tracking-widest whitespace-nowrap">{title}</label>
+            </div>
           )}
         </div>
         <button 
@@ -308,6 +320,16 @@ const IngredientList: React.FC<{
           + 新增材料
         </button>
       </div>
+
+      {/* 基準提示文字 */}
+      {formRecipe.isBakingRecipe && (
+        <div className="ml-10 mb-5 flex items-center gap-2">
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">基準:</span>
+          <span className="text-xs font-bold text-slate-500 lowercase italic">
+            (以 {localBaseInfo.name} 為 100%)
+          </span>
+        </div>
+      )}
       <div className="space-y-4 sm:space-y-2">
         {items.map((ing, idx) => {
           const numericAmt = typeof ing.amount === 'number' ? ing.amount : parseFloat(ing.amount as string) || 0;
@@ -440,28 +462,45 @@ const App: React.FC = () => {
     sourceDate: '', recordDate: getTodayString(),
     fermentationStages: [], bakingStages: [], description: '',
     ingredients: [{ name: '', amount: 0, unit: 'g', isFlour: true }],
-    mainSectionName: '主麵團', liquidStarterName: '液種 / 老麵', liquidStarterIngredients: [], fillingIngredients: [], decorationIngredients: [], customSectionName: '其他區塊', customSectionIngredients: [], sectionsOrder: [...DEFAULT_SECTIONS_ORDER],
+    mainSectionName: '主麵團', liquidStarterName: '液種 / 老麵', liquidStarterIngredients: [], fillingSectionName: '內餡', fillingIngredients: [], decorationSectionName: '裝飾', decorationIngredients: [], customSectionName: '其他區塊', customSectionIngredients: [], sectionsOrder: [...DEFAULT_SECTIONS_ORDER],
     instructions: [''], category: '麵包', imageUrl: '', isBakingRecipe: true, isTried: true, tags: [], notes: '', executionLogs: []
   });
 
   const [newCatName, setNewCatName] = useState('');
   const [showJumpBtn, setShowJumpBtn] = useState(false);
+  const [isAtBottom, setIsAtBottom] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
+      const scrollY = window.scrollY;
+      const windowHeight = window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+      
+      let shouldShow = false;
       if (view === AppView.LIST) {
-        setShowJumpBtn(window.scrollY > 300);
+        shouldShow = scrollY > 300;
       } else if (view === AppView.DETAIL) {
-        setShowJumpBtn(window.scrollY > 600);
+        shouldShow = scrollY > 600;
       } else if (view === AppView.CREATE || view === AppView.EDIT) {
-        setShowJumpBtn(window.scrollY > 400);
-      } else {
-        setShowJumpBtn(false);
+        shouldShow = scrollY > 400;
+      } else if (view === AppView.MANAGE_CATEGORIES) {
+        shouldShow = scrollY > 200 || (documentHeight > windowHeight + 200);
       }
+      
+      setShowJumpBtn(shouldShow);
+      // Determine if we are near the bottom (within 150px or 10% of the page)
+      const threshold = Math.min(200, documentHeight * 0.1);
+      setIsAtBottom(scrollY + windowHeight >= documentHeight - threshold);
     };
+    
+    handleScroll();
     window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [view]);
+    window.addEventListener('resize', handleScroll);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+    };
+  }, [view, recipes.length, categories.length, knowledge.length, resources.length]);
 
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes)); }, [recipes]);
   useEffect(() => { localStorage.setItem(CATEGORY_STORAGE_KEY, JSON.stringify(categories)); }, [categories]);
@@ -647,7 +686,7 @@ const App: React.FC = () => {
       sourceDate: '', recordDate: getTodayString(),
       fermentationStages: [{ name: '基本發酵', time: '', temperature: '', humidity: '' }], bakingStages: [{ name: 'STAGE 1', topHeat: '', bottomHeat: '', time: '', note: '' }], description: '',
       ingredients: [{ name: '', amount: 0, unit: 'g', isFlour: true }],
-      mainSectionName: '主麵團', liquidStarterName: '液種 / 老麵', liquidStarterIngredients: [], fillingIngredients: [], decorationIngredients: [], customSectionName: '其他區塊', customSectionIngredients: [], sectionsOrder: [...DEFAULT_SECTIONS_ORDER],
+      mainSectionName: '主麵團', liquidStarterName: '液種 / 老麵', liquidStarterIngredients: [], fillingSectionName: '內餡', fillingIngredients: [], decorationSectionName: '裝飾', decorationIngredients: [], customSectionName: '其他區塊', customSectionIngredients: [], sectionsOrder: [...DEFAULT_SECTIONS_ORDER],
       instructions: [''], category: categories[0]?.name || '麵包', imageUrl: '', isBakingRecipe: true, isTried: true, tags: [], notes: '', executionLogs: []
     });
     setView(AppView.CREATE);
@@ -1000,8 +1039,8 @@ const App: React.FC = () => {
                     {scalingRecipe.sectionsOrder?.map(secKey => {
                        if (secKey === 'ingredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.ingredients} title={scalingRecipe.mainSectionName || "主麵團"} isBaking={scalingRecipe.isBakingRecipe} showPercentage={true} scalingFactor={scalingFactor} />;
                        if (secKey === 'liquidStarterIngredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.liquidStarterIngredients || []} title={scalingRecipe.liquidStarterName || "發酵種"} isBaking={scalingRecipe.isBakingRecipe} showPercentage={true} scalingFactor={scalingFactor} />;
-                       if (secKey === 'fillingIngredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.fillingIngredients || []} title="內餡" isBaking={scalingRecipe.isBakingRecipe} showPercentage={true} scalingFactor={scalingFactor} />;
-                       if (secKey === 'decorationIngredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.decorationIngredients || []} title="裝飾 / 表面" isBaking={scalingRecipe.isBakingRecipe} showPercentage={true} scalingFactor={scalingFactor} />;
+                       if (secKey === 'fillingIngredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.fillingIngredients || []} title={scalingRecipe.fillingSectionName || "內餡"} isBaking={scalingRecipe.isBakingRecipe} showPercentage={true} scalingFactor={scalingFactor} />;
+                       if (secKey === 'decorationIngredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.decorationIngredients || []} title={scalingRecipe.decorationSectionName || "裝飾 / 表面"} isBaking={scalingRecipe.isBakingRecipe} showPercentage={true} scalingFactor={scalingFactor} />;
                        if (secKey === 'customSectionIngredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.customSectionIngredients || []} title={scalingRecipe.customSectionName || "其他區塊"} isBaking={scalingRecipe.isBakingRecipe} showPercentage={true} scalingFactor={scalingFactor} />;
                        return null;
                     })}
@@ -1397,8 +1436,8 @@ const App: React.FC = () => {
                       const onMove = (dir: 'up' | 'down') => moveSection(idx, dir);
                       if (sec === 'ingredients') return <IngredientList key={sec} items={formRecipe.ingredients || []} title="主麵團" fieldKey="ingredients" customTitleKey="mainSectionName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} />;
                       if (sec === 'liquidStarterIngredients') return <IngredientList key={sec} items={formRecipe.liquidStarterIngredients || []} title="發酵種" fieldKey="liquidStarterIngredients" customTitleKey="liquidStarterName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} />;
-                      if (sec === 'fillingIngredients') return <IngredientList key={sec} items={formRecipe.fillingIngredients || []} title="內餡" fieldKey="fillingIngredients" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} />;
-                      if (sec === 'decorationIngredients') return <IngredientList key={sec} items={formRecipe.decorationIngredients || []} title="裝飾" fieldKey="decorationIngredients" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} />;
+                      if (sec === 'fillingIngredients') return <IngredientList key={sec} items={formRecipe.fillingIngredients || []} title="內餡" fieldKey="fillingIngredients" customTitleKey="fillingSectionName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} />;
+                      if (sec === 'decorationIngredients') return <IngredientList key={sec} items={formRecipe.decorationIngredients || []} title="裝飾" fieldKey="decorationIngredients" customTitleKey="decorationSectionName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} />;
                       if (sec === 'customSectionIngredients') return <IngredientList key={sec} items={formRecipe.customSectionIngredients || []} title="其他區塊" fieldKey="customSectionIngredients" customTitleKey="customSectionName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} />;
                       return null;
                     })}
@@ -1425,15 +1464,23 @@ const App: React.FC = () => {
             </div>
           )}
 
-          {showJumpBtn && (view === AppView.LIST || view === AppView.DETAIL || view === AppView.CREATE || view === AppView.EDIT) && (
+          {showJumpBtn && (view === AppView.LIST || view === AppView.DETAIL || view === AppView.CREATE || view === AppView.EDIT || view === AppView.MANAGE_CATEGORIES) && (
             <button 
-              onClick={() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' })}
-              className="fixed bottom-28 right-6 w-14 h-14 bg-[#E67E22] text-white rounded-full shadow-[0_8px_30px_rgb(230,126,34,0.4)] flex items-center justify-center z-[1001] animate-in fade-in slide-in-from-bottom-4 transition-all active:scale-90 hover:bg-orange-600 group"
-              title="直達底部"
+              onClick={() => {
+                if (isAtBottom) {
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                } else {
+                  window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+                }
+              }}
+              className="fixed bottom-28 right-6 w-14 h-14 bg-[#E67E22] text-white rounded-full shadow-[0_8px_30px_rgb(230,126,34,0.4)] flex items-center justify-center z-[1001] animate-in fade-in slide-in-from-bottom-4 transition-all active:scale-90 hover:bg-orange-600 group overflow-hidden"
+              title={isAtBottom ? "回到頂端" : "直達底部"}
             >
-              <svg className="w-8 h-8 group-hover:translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7" />
-              </svg>
+              <div className={`transition-transform duration-500 ease-in-out ${isAtBottom ? 'rotate-180' : 'rotate-0'}`}>
+                <svg className="w-8 h-8 group-hover:translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
             </button>
           )}
 
@@ -1639,26 +1686,34 @@ const App: React.FC = () => {
               </div>
               
               <div className="flex flex-col gap-12 print:gap-6">
-                <div className="bg-white p-7 rounded-[32px] border border-orange-50 shadow-sm print:rounded-2xl print:border-slate-200 print:p-6">
-                  <h3 className="text-lg font-black text-slate-800 mb-8 flex items-center gap-2 print:text-base print:mb-4">食材配方</h3>
-                  {selectedRecipe.sectionsOrder?.map(secKey => {
-                      if (secKey === 'ingredients') return <DisplayIngredientSection key={secKey} ingredients={selectedRecipe.ingredients} title={selectedRecipe.mainSectionName || "主麵團"} isBaking={selectedRecipe.isBakingRecipe} showPercentage={true} />;
-                      if (secKey === 'liquidStarterIngredients') return <DisplayIngredientSection key={secKey} ingredients={selectedRecipe.liquidStarterIngredients || []} title={selectedRecipe.liquidStarterName || "發酵種"} isBaking={selectedRecipe.isBakingRecipe} showPercentage={true} />;
-                      if (secKey === 'fillingIngredients') return <DisplayIngredientSection key={secKey} ingredients={selectedRecipe.fillingIngredients || []} title="內餡" isBaking={selectedRecipe.isBakingRecipe} showPercentage={true} />;
-                      if (secKey === 'decorationIngredients') return <DisplayIngredientSection key={secKey} ingredients={selectedRecipe.decorationIngredients || []} title="裝飾 / 表面" isBaking={selectedRecipe.isBakingRecipe} showPercentage={true} />;
-                      if (secKey === 'customSectionIngredients') return <DisplayIngredientSection key={secKey} ingredients={selectedRecipe.customSectionIngredients || []} title={selectedRecipe.customSectionName || "其他區塊"} isBaking={selectedRecipe.isBakingRecipe} showPercentage={true} />;
-                      return null;
-                  })}
+                <div className="print:p-0">
+                  <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-3 px-2 print:text-base print:mb-4">
+                    <span className="w-2 h-8 bg-orange-500 rounded-full"></span>
+                    食材配方
+                  </h3>
+                  <div className="space-y-6">
+                    {selectedRecipe.sectionsOrder?.map(secKey => {
+                        if (secKey === 'ingredients') return <DisplayIngredientSection key={secKey} ingredients={selectedRecipe.ingredients} title={selectedRecipe.mainSectionName || "主麵團"} isBaking={selectedRecipe.isBakingRecipe} showPercentage={true} />;
+                        if (secKey === 'liquidStarterIngredients') return <DisplayIngredientSection key={secKey} ingredients={selectedRecipe.liquidStarterIngredients || []} title={selectedRecipe.liquidStarterName || "發酵種"} isBaking={selectedRecipe.isBakingRecipe} showPercentage={true} />;
+                        if (secKey === 'fillingIngredients') return <DisplayIngredientSection key={secKey} ingredients={selectedRecipe.fillingIngredients || []} title={selectedRecipe.fillingSectionName || "內餡"} isBaking={selectedRecipe.isBakingRecipe} showPercentage={true} />;
+                        if (secKey === 'decorationIngredients') return <DisplayIngredientSection key={secKey} ingredients={selectedRecipe.decorationIngredients || []} title={selectedRecipe.decorationSectionName || "裝飾 / 表面"} isBaking={selectedRecipe.isBakingRecipe} showPercentage={true} />;
+                        if (secKey === 'customSectionIngredients') return <DisplayIngredientSection key={secKey} ingredients={selectedRecipe.customSectionIngredients || []} title={selectedRecipe.customSectionName || "其他區塊"} isBaking={selectedRecipe.isBakingRecipe} showPercentage={true} />;
+                        return null;
+                    })}
+                  </div>
                 </div>
 
-                <div className="bg-white p-7 rounded-[32px] border border-orange-50 shadow-sm print:rounded-2xl print:border-slate-200 print:p-6">
-                  <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2 print:text-base print:mb-4">發酵與烤焙</h3>
+                <div className="bg-white p-8 rounded-[40px] border-2 border-orange-50 shadow-sm print:rounded-2xl print:border-slate-200 print:p-6">
+                  <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-3 px-2 print:text-base print:mb-4">
+                    <span className="w-2 h-8 bg-orange-500 rounded-full"></span>
+                    發酵與烤焙
+                  </h3>
                   {selectedRecipe.fermentationStages && selectedRecipe.fermentationStages.length > 0 && (
-                    <div className="mb-8">
-                      <h4 className="text-[13px] font-black text-orange-400 uppercase tracking-widest mb-4 print:text-black">發酵時序</h4>
+                    <div className="mb-10">
+                      <h4 className="text-[13px] font-black text-orange-400 uppercase tracking-widest mb-4 ml-1 print:text-black">發酵時序</h4>
                       <div className="space-y-4">
                         {selectedRecipe.fermentationStages.map((stage, idx) => (
-                          <div key={idx} className="flex flex-col p-4 bg-orange-50/20 rounded-2xl border border-orange-50 gap-y-3 print:bg-white print:border-slate-200">
+                          <div key={idx} className="flex flex-col p-5 bg-orange-50/20 rounded-3xl border border-orange-50 gap-y-3 print:bg-white print:border-slate-200">
                             <div className="text-base font-black text-slate-700 print:text-sm">{stage.name || `階段 ${idx+1}`}</div>
                             <div className="grid grid-cols-3 gap-2 text-sm font-black text-orange-500 tabular-nums border-t border-orange-100/50 pt-3 print:text-black print:border-slate-100">
                               <div className="flex flex-col items-center gap-1.5"><span className="text-[10px] text-slate-400 font-bold uppercase">時間</span><div className="flex items-center gap-1.5">⏲️ {stage.time ? `${stage.time}m` : '--'}</div></div>
@@ -1672,17 +1727,17 @@ const App: React.FC = () => {
                   )}
                   {selectedRecipe.bakingStages && selectedRecipe.bakingStages.length > 0 && (
                     <div className="mb-6">
-                      <h4 className="text-[13px] font-black text-orange-400 uppercase tracking-widest mb-4 print:text-black">烤焙參數</h4>
+                      <h4 className="text-[13px] font-black text-orange-400 uppercase tracking-widest mb-4 ml-1 print:text-black">烤焙參數</h4>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 print:grid-cols-2">
                         {selectedRecipe.bakingStages.map((stage, idx) => (
-                          <div key={idx} className="bg-white p-5 rounded-[28px] border border-orange-50 shadow-sm relative overflow-hidden print:rounded-xl print:border-slate-200">
-                            <div className="flex justify-between items-center mb-4"><span className="text-[11px] font-black text-slate-400 uppercase">{stage.name || `STAGE ${idx+1}`}</span><span className="text-sm font-black text-[#E67E22] bg-orange-50 px-2 py-0.5 rounded-lg print:bg-slate-50 print:text-black">{stage.time} min</span></div>
+                          <div key={idx} className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm relative overflow-hidden print:rounded-xl print:border-slate-200">
+                            <div className="flex justify-between items-center mb-4"><span className="text-[11px] font-black text-slate-400 uppercase">{stage.name || `STAGE ${idx+1}`}</span><span className="text-sm font-black text-[#E67E22] bg-orange-50 px-3 py-1 rounded-xl print:bg-slate-50 print:text-black">{stage.time} min</span></div>
                             <div className="flex justify-around text-center items-center">
                               <div className="flex-1"><div className="text-[10px] text-slate-400 font-bold uppercase mb-1">上火</div><div className="text-2xl font-black text-slate-700 tabular-nums print:text-lg">{stage.topHeat}<span className="text-xs opacity-50 ml-0.5">°C</span></div></div>
                               <div className="w-px h-10 bg-orange-50 print:bg-slate-100" />
                               <div className="flex-1"><div className="text-[10px] text-slate-400 font-bold uppercase mb-1">下火</div><div className="text-2xl font-black text-slate-700 tabular-nums print:text-lg">{stage.bottomHeat}<span className="text-xs opacity-50 ml-0.5">°C</span></div></div>
                             </div>
-                            {stage.note && <p className="mt-3 text-xs text-slate-400 italic print:text-slate-500">💡 {stage.note}</p>}
+                            {stage.note && <div className="mt-4 pt-3 border-t border-orange-50 text-[10px] font-bold text-slate-400 italic text-center">{stage.note}</div>}
                           </div>
                         ))}
                       </div>
@@ -1690,29 +1745,43 @@ const App: React.FC = () => {
                   )}
                 </div>
 
-                <div className="bg-white p-8 rounded-[32px] border border-orange-50 shadow-sm print:rounded-2xl print:border-slate-200 print:p-6">
-                  <h3 className="text-lg font-black text-slate-800 mb-8 flex items-center gap-2 print:text-base print:mb-4">製作步驟</h3>
+                <div className="bg-white p-8 rounded-[40px] border-2 border-orange-50 shadow-sm print:rounded-2xl print:border-slate-200 print:p-6">
+                  <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-3 px-2 print:text-base print:mb-4">
+                    <span className="w-2 h-8 bg-orange-500 rounded-full"></span>
+                    製作步驟
+                  </h3>
                   <div className="space-y-8 print:space-y-4">
                     {(selectedRecipe.instructions || []).map((inst, idx) => (
-                      <div key={idx} className="flex gap-6 items-start print:gap-3">
-                        <span className="flex-shrink-0 w-8 h-8 bg-orange-50 text-[#E67E22] font-black rounded-2xl flex items-center justify-center text-sm shadow-sm border border-orange-100 print:w-6 print:h-6 print:text-xs print:rounded-lg">{idx+1}</span>
-                        <p className="text-base text-slate-700 leading-relaxed font-bold tracking-wide pt-0.5 print:text-sm">{inst}</p>
+                      <div key={idx} className="flex gap-6 items-start group print:gap-3">
+                        <span className="flex-shrink-0 w-10 h-10 bg-orange-50 text-[#E67E22] font-black rounded-2xl flex items-center justify-center text-base shadow-sm border border-orange-100 group-hover:bg-orange-500 group-hover:text-white transition-all print:w-6 print:h-6 print:text-xs print:rounded-lg">{idx+1}</span>
+                        <div className="flex-grow pt-1.5">
+                          <p className="text-base text-slate-700 leading-relaxed font-bold tracking-wide print:text-sm">{inst}</p>
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
                 
                 {selectedRecipe.notes && (
-                  <div className="bg-yellow-50/50 p-8 rounded-[32px] border border-yellow-100 shadow-sm relative overflow-hidden print:rounded-2xl print:border-slate-200 print:p-6 print:bg-white">
-                    <h3 className="text-lg font-black text-yellow-700 mb-4 flex items-center gap-2 print:text-base print:text-black">📝 製作心得與私房筆記</h3>
-                    <p className="text-base text-slate-700 leading-relaxed font-bold tracking-wide whitespace-pre-wrap italic print:text-sm print:not-italic">{selectedRecipe.notes}</p>
+                  <div className="bg-yellow-50/50 p-8 rounded-[40px] border-2 border-yellow-100 shadow-sm relative overflow-hidden print:rounded-2xl print:border-slate-200 print:p-6 print:bg-white">
+                    <h3 className="text-xl font-black text-yellow-700 mb-6 flex items-center gap-3 px-2 print:text-base print:text-black">
+                      <span className="w-2 h-8 bg-yellow-500 rounded-full"></span>
+                      製作心得與私房筆記
+                    </h3>
+                    <p className="text-base text-slate-700 leading-relaxed font-bold tracking-wide whitespace-pre-wrap italic px-2 print:text-sm print:not-italic">{selectedRecipe.notes}</p>
                   </div>
                 )}
 
-                <div className="bg-white p-8 rounded-[32px] border border-orange-50 shadow-sm space-y-6 print:rounded-2xl print:border-slate-200 print:p-6">
-                    <div className="flex justify-between items-center"><h3 className="text-lg font-black text-slate-800 flex items-center gap-2 print:text-base">🕒 實作紀錄日記</h3><button onClick={() => setIsAddingLog(!isAddingLog)} className="px-4 py-1.5 bg-orange-50 text-orange-600 rounded-full text-xs font-black border border-orange-100 no-print">{isAddingLog ? '取消新增' : '+ 新增紀錄'}</button></div>
+                <div className="bg-white p-8 rounded-[40px] border-2 border-orange-50 shadow-sm space-y-8 print:rounded-2xl print:border-slate-200 print:p-6">
+                    <div className="flex justify-between items-center px-2">
+                      <h3 className="text-xl font-black text-slate-800 flex items-center gap-3 print:text-base">
+                        <span className="w-2 h-8 bg-orange-500 rounded-full"></span>
+                        🕒 實作紀錄日記
+                      </h3>
+                      <button onClick={() => setIsAddingLog(!isAddingLog)} className="px-5 py-2 bg-orange-50 text-orange-600 rounded-full text-xs font-black border border-orange-100 no-print hover:bg-orange-100 transition-all">{isAddingLog ? '取消新增' : '+ 新增紀錄'}</button>
+                    </div>
                     {isAddingLog && (
-                      <div className="p-6 bg-orange-50/30 rounded-2xl border border-orange-100 space-y-4 animate-in fade-in zoom-in-95 no-print">
+                      <div className="p-8 bg-orange-50/30 rounded-[32px] border border-orange-100 space-y-5 animate-in fade-in zoom-in-95 no-print">
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-1"><label className="text-[10px] font-black text-orange-400 uppercase">製作日期</label><input type="date" value={newLog.date || ''} onChange={e => setNewLog(p => ({...p, date: e.target.value}))} className="w-full px-3 py-2 bg-white rounded-xl border border-orange-100 outline-none text-sm" /></div>
                           <div className="space-y-1"><label className="text-[10px] font-black text-orange-400 uppercase">評分</label><select value={newLog.rating || 5} onChange={e => setNewLog(p => ({...p, rating: parseInt(e.target.value)}))} className="w-full px-3 py-2 bg-white rounded-xl border border-orange-100 outline-none text-sm font-bold"><option value="5">⭐⭐⭐⭐⭐</option><option value="4">⭐⭐⭐⭐</option><option value="3">⭐⭐⭐</option><option value="2">⭐⭐</option><option value="1">⭐</option></select></div>
