@@ -200,8 +200,10 @@ const DisplayIngredientSection: React.FC<{
         {/* 表頭 (僅桌面版) */}
         <div className="hidden sm:flex items-center px-6 py-3 border-b border-orange-100/50 text-[11px] font-black text-slate-400 uppercase tracking-widest bg-orange-50/30 rounded-t-2xl">
           <div className="sm:w-48 shrink-0">材料名稱</div>
-          <div className="sm:w-40 text-right">重量 (G)</div>
-          {isBaking && showPercentage && <div className="sm:w-40 text-right">百分比 (%)</div>}
+          <div className="flex flex-1 justify-end items-center">
+            <div className="sm:w-40 text-right pr-4">重量 (G)</div>
+            {isBaking && showPercentage && <div className="sm:w-40 text-right pr-4">百分比 (%)</div>}
+          </div>
         </div>
 
         {ingredients.map((ing, idx) => {
@@ -222,8 +224,8 @@ const DisplayIngredientSection: React.FC<{
               {/* 第二行 (手機版) / 數據列 (電腦版) */}
               <div className="flex flex-1 items-center justify-between sm:justify-end w-full sm:w-auto px-2 sm:px-0">
                 {/* 重量 - 手機版靠左，電腦版固定寬度並靠右 */}
-                <div className="sm:w-40 flex justify-start sm:justify-end items-center shrink-0">
-                  <div className="flex items-baseline gap-1 text-left sm:text-right">
+                <div className="sm:w-40 flex justify-start sm:justify-end items-center shrink-0 pr-4">
+                  <div className="flex items-baseline gap-1 text-left sm:text-right w-full justify-end">
                     {scalingFactor !== 1 && numericAmt > 0 ? (
                       <div className="flex flex-col items-start sm:items-end sm:flex-row sm:items-center gap-0.5 sm:gap-1">
                         <span className="text-slate-300 text-[9px] sm:text-xs line-through leading-none">{numericAmt}{!shouldHideUnit && ing.unit}</span>
@@ -241,8 +243,8 @@ const DisplayIngredientSection: React.FC<{
 
                 {/* 百分比 - 手機版靠右，電腦版固定寬度並靠右 */}
                 {isBaking && showPercentage && (
-                  <div className="sm:w-40 flex justify-end items-center shrink-0">
-                    <span className="text-[10px] sm:text-sm font-black px-3 py-1 rounded-xl bg-orange-50 text-orange-600 shadow-sm inline-block min-w-[48px] sm:min-w-[60px] text-center border border-orange-100/50">
+                  <div className="sm:w-40 flex justify-end items-center shrink-0 pr-4">
+                    <span className="text-[10px] sm:text-sm font-black px-3 py-1 rounded-xl bg-orange-50 text-orange-600 shadow-sm inline-block min-w-[48px] sm:min-w-[60px] text-right border border-orange-100/50">
                       {percentage}%
                     </span>
                   </div>
