@@ -119,9 +119,9 @@ const RecipeCard: React.FC<{ recipe: Recipe; onClick: (r: Recipe) => void }> = (
       <p className="text-xs text-slate-400 font-bold mb-3">師傅：{recipe.master}</p>
       <div className="flex flex-wrap items-center gap-3 mb-3">
         {recipe.totalDuration && (
-          <div className="flex items-center gap-1 text-[11px] font-black text-orange-500 bg-orange-50/50 px-2 py-0.5 rounded-lg border border-orange-100/30">
+          <div className="flex items-center gap-1 text-[11px] font-black text-[#E67E22] bg-orange-50/50 px-2 py-0.5 rounded-lg border border-orange-100/30">
             <span>⏱️</span>
-            <span>{recipe.totalDuration}</span>
+            <span>{formatTimeWithUnit(recipe.totalDuration)}</span>
           </div>
         )}
         <p className="text-[11px] text-slate-500 line-clamp-1 leading-relaxed flex-grow">{recipe.description || '點擊查看詳細配方...'}</p>
@@ -168,6 +168,39 @@ const MOLD_PRESETS = [
 ];
 
 const getTodayString = () => new Date().toISOString().split('T')[0];
+
+const formatTimeWithUnit = (time: string, unit?: string) => {
+  if (!time) return '--';
+  const str = time.toString().trim();
+  
+  // 如果已經包含中文字（分鐘或小時），且沒有傳入 unit，則直接返回原字串（避免重複處理）
+  if (!unit && (str.includes('分鐘') || str.includes('小時'))) {
+    return str;
+  }
+
+  // 清理所有可能的單位
+  const cleanTime = str.replace(/\s*(min|mins|m|h|hr|hrs|分鐘|小時)\b/gi, '').trim();
+  
+  // 如果清理後不是純數字（例如：需隔夜），則直接返回原文字
+  if (isNaN(Number(cleanTime)) || cleanTime === '') {
+    return str;
+  }
+
+  // 決定單位
+  let detectedUnit = unit;
+  if (!detectedUnit) {
+    // 偵測舊資料中的單位
+    const lowerStr = str.toLowerCase();
+    if (lowerStr.includes('h') || lowerStr.includes('小時')) {
+      detectedUnit = '小時';
+    } else {
+      // 預設或偵測到分鐘相關
+      detectedUnit = '分鐘';
+    }
+  }
+  
+  return `${cleanTime}${detectedUnit}`;
+};
 
 const DisplayIngredientSection: React.FC<{ 
   ingredients: Ingredient[], title: string, isBaking: boolean, showPercentage: boolean, scalingFactor?: number 
@@ -541,6 +574,58 @@ const App: React.FC = () => {
     };
   }, [view, recipes.length, categories.length, knowledge.length, resources.length]);
 
+  useEffect(() => {
+    // 全局資料遷移：標準化時間格式與單位
+    const migrateData = () => {
+      let hasChanged = false;
+      const migrated = recipes.map(r => {
+        let recipeChanged = false;
+        
+        const newFermentationStages = r.fermentationStages?.map(s => {
+          const rawTime = String(s.time || '');
+          const cleanedTime = rawTime
+            .replace(/mins?\.?/gi, '分鐘')
+            .replace(/hrs?\.?/gi, '小時');
+          
+          if (cleanedTime !== s.time || !s.timeUnit) {
+            recipeChanged = true;
+            return { ...s, time: cleanedTime, timeUnit: s.timeUnit || '分鐘' };
+          }
+          return s;
+        });
+
+        const newBakingStages = r.bakingStages?.map(s => {
+          const rawTime = String(s.time || '');
+          const cleanedTime = rawTime
+            .replace(/mins?\.?/gi, '分鐘')
+            .replace(/hrs?\.?/gi, '小時');
+          
+          if (cleanedTime !== s.time || !s.timeUnit) {
+            recipeChanged = true;
+            return { ...s, time: cleanedTime, timeUnit: s.timeUnit || '分鐘' };
+          }
+          return s;
+        });
+
+        if (recipeChanged) {
+          hasChanged = true;
+          return { 
+            ...r, 
+            fermentationStages: newFermentationStages, 
+            bakingStages: newBakingStages 
+          };
+        }
+        return r;
+      });
+
+      if (hasChanged) {
+        setRecipes(migrated);
+      }
+    };
+
+    migrateData();
+  }, []);
+
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes)); }, [recipes]);
   useEffect(() => { localStorage.setItem(CATEGORY_STORAGE_KEY, JSON.stringify(categories)); }, [categories]);
   useEffect(() => { localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(knowledge)); }, [knowledge]);
@@ -764,6 +849,20 @@ const App: React.FC = () => {
             totalDuration: r.totalDuration || '',
             sourceDate: r.sourceDate || '',
             recordDate: r.recordDate || '',
+            fermentationStages: Array.isArray(r.fermentationStages) 
+              ? r.fermentationStages.map((s: any) => ({
+                  ...s,
+                  time: String(s.time || '').replace(/mins?\.?/gi, '分鐘').replace(/hrs?\.?/gi, '小時'),
+                  timeUnit: s.timeUnit || '分鐘'
+                }))
+              : [],
+            bakingStages: Array.isArray(r.bakingStages)
+              ? r.bakingStages.map((s: any) => ({
+                  ...s,
+                  time: String(s.time || '').replace(/mins?\.?/gi, '分鐘').replace(/hrs?\.?/gi, '小時'),
+                  timeUnit: s.timeUnit || '分鐘'
+                }))
+              : [],
             ingredients: Array.isArray(r.ingredients) ? r.ingredients : [],
             instructions: Array.isArray(r.instructions) ? r.instructions : [],
             sectionsOrder: Array.isArray(r.sectionsOrder) ? r.sectionsOrder : [...DEFAULT_SECTIONS_ORDER],
@@ -1377,21 +1476,21 @@ const App: React.FC = () => {
                               移除
                             </button>
                           </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                          <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr] gap-4 sm:gap-6">
                             <div className="space-y-1.5">
                               <label className="block text-[11px] font-black text-slate-500 ml-1">⏲️ 時間</label>
-                              <div className="flex gap-2">
+                              <div className="flex flex-row w-full">
                                 <input 
                                   type="text" 
                                   value={stage.time || ''} 
                                   onChange={(e) => handleUpdateFermentationStage(idx, 'time', e.target.value)} 
-                                  className="flex-1 px-4 h-14 rounded-xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center" 
-                                  placeholder="例如：45" 
+                                  className="w-[65%] px-4 h-14 rounded-l-xl rounded-r-none border border-r-0 border-orange-100 bg-orange-50/30 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center" 
+                                  placeholder="45" 
                                 />
                                 <select
                                   value={stage.timeUnit || '分鐘'}
                                   onChange={(e) => handleUpdateFermentationStage(idx, 'timeUnit', e.target.value as any)}
-                                  className="w-24 h-14 rounded-xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center appearance-none cursor-pointer"
+                                  className="w-[35%] h-14 rounded-r-xl rounded-l-none border border-orange-100 bg-orange-50/30 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center appearance-none cursor-pointer"
                                 >
                                   <option value="分鐘">分鐘</option>
                                   <option value="小時">小時</option>
@@ -1449,7 +1548,27 @@ const App: React.FC = () => {
                               移除
                             </button>
                           </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                          <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr] gap-4 sm:gap-6">
+                            <div className="space-y-1.5">
+                              <label className="block text-[11px] font-black text-slate-500 ml-1">⏲️ 時間</label>
+                              <div className="flex flex-row w-full">
+                                <input 
+                                  type="text" 
+                                  value={stage.time || ''} 
+                                  onChange={(e) => handleUpdateBakingStage(idx, 'time', e.target.value)} 
+                                  className="w-[65%] px-4 h-14 rounded-l-xl rounded-r-none border border-r-0 border-orange-100 bg-orange-50/30 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center" 
+                                  placeholder="15" 
+                                />
+                                <select
+                                  value={stage.timeUnit || '分鐘'}
+                                  onChange={(e) => handleUpdateBakingStage(idx, 'timeUnit', e.target.value as any)}
+                                  className="w-[35%] h-14 rounded-r-xl rounded-l-none border border-orange-100 bg-orange-50/30 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center appearance-none cursor-pointer"
+                                >
+                                  <option value="分鐘">分鐘</option>
+                                  <option value="小時">小時</option>
+                                </select>
+                              </div>
+                            </div>
                             <div className="space-y-1.5">
                               <label className="block text-[11px] font-black text-slate-500 ml-1">🔥 上火</label>
                               <input 
@@ -1469,26 +1588,6 @@ const App: React.FC = () => {
                                 className="w-full px-4 h-14 rounded-xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center" 
                                 placeholder="°C" 
                               />
-                            </div>
-                            <div className="space-y-1.5">
-                              <label className="block text-[11px] font-black text-slate-500 ml-1">⏲️ 時間</label>
-                              <div className="flex gap-2">
-                                <input 
-                                  type="text" 
-                                  value={stage.time || ''} 
-                                  onChange={(e) => handleUpdateBakingStage(idx, 'time', e.target.value)} 
-                                  className="flex-1 px-4 h-14 rounded-xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center" 
-                                  placeholder="例如：15" 
-                                />
-                                <select
-                                  value={stage.timeUnit || '分鐘'}
-                                  onChange={(e) => handleUpdateBakingStage(idx, 'timeUnit', e.target.value as any)}
-                                  className="w-24 h-14 rounded-xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center appearance-none cursor-pointer"
-                                >
-                                  <option value="分鐘">分鐘</option>
-                                  <option value="小時">小時</option>
-                                </select>
-                              </div>
                             </div>
                           </div>
                           <div className="space-y-1.5">
@@ -1676,9 +1775,9 @@ const App: React.FC = () => {
                       </span>
                     )}
                     {selectedRecipe.totalDuration && (
-                      <span className="px-3 py-1 bg-orange-50 text-orange-600 rounded-full text-xs font-black border border-orange-100 flex items-center gap-1.5 shadow-sm print:bg-white print:text-slate-500 print:border-slate-200">
+                      <span className="px-3 py-1 bg-orange-50 text-[#E67E22] rounded-full text-xs font-black border border-orange-100 flex items-center gap-1.5 shadow-sm print:bg-white print:text-slate-500 print:border-slate-200">
                         <span className="shrink-0">⏱️</span>
-                        <span className="break-words">{selectedRecipe.totalDuration}</span>
+                        <span className="break-words">{formatTimeWithUnit(selectedRecipe.totalDuration)}</span>
                       </span>
                     )}
                   </div>
@@ -1871,10 +1970,10 @@ const App: React.FC = () => {
                             {selectedRecipe.fermentationStages?.map((stage, idx) => (
                               <div key={idx} className="flex flex-col p-6 bg-orange-50/20 rounded-3xl border border-orange-50 gap-y-4 print:bg-white print:border-slate-200">
                                 <div className="text-lg font-black text-slate-700 print:text-base">{stage.name || `階段 ${idx+1}`}</div>
-                                <div className="grid grid-cols-3 gap-2 text-base font-black text-orange-500 tabular-nums border-t border-orange-100/50 pt-4 print:text-black print:border-slate-100">
-                                  <div className="flex flex-col items-center gap-1.5"><span className="text-xs text-slate-400 font-bold uppercase">時間</span><div className="flex items-center gap-1.5">⏲️ {stage.time || '--'} {stage.time && stage.timeUnit}</div></div>
-                                  <div className="flex flex-col items-center gap-1.5 border-x border-orange-100/50 print:border-slate-100"><span className="text-xs text-slate-400 font-bold uppercase">溫度</span><div className="flex items-center gap-1.5">🌡️ {stage.temperature ? `${stage.temperature}°` : '--'}</div></div>
-                                  <div className="flex flex-col items-center gap-1.5"><span className="text-xs text-slate-400 font-bold uppercase">濕度</span><div className="flex items-center gap-1.5">💧 {stage.humidity ? `${stage.humidity}%` : '--'}</div></div>
+                                <div className="grid grid-cols-3 gap-1 text-sm sm:text-base font-black text-[#E67E22] tabular-nums border-t border-orange-100/50 pt-4 print:text-black print:border-slate-100">
+                                  <div className="flex flex-col items-center gap-1.5"><span className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase">時間</span><div className="flex items-center gap-1 whitespace-nowrap">⏲️ {formatTimeWithUnit(stage.time, stage.timeUnit)}</div></div>
+                                  <div className="flex flex-col items-center gap-1.5 border-x border-orange-100/50 print:border-slate-100"><span className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase">溫度</span><div className="flex items-center gap-1">🌡️ {stage.temperature ? `${stage.temperature}°` : '--'}</div></div>
+                                  <div className="flex flex-col items-center gap-1.5"><span className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase">濕度</span><div className="flex items-center gap-1">💧 {stage.humidity ? `${stage.humidity}%` : '--'}</div></div>
                                 </div>
                               </div>
                             ))}
@@ -1889,7 +1988,10 @@ const App: React.FC = () => {
                               <div key={idx} className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm relative overflow-hidden print:rounded-xl print:border-slate-200">
                                 <div className="flex justify-between items-center mb-6">
                                   <span className="text-xs font-black text-slate-400 uppercase">{stage.name || `STAGE ${idx+1}`}</span>
-                                  <span className="text-base font-black text-[#E67E22] bg-orange-50 px-4 py-1.5 rounded-xl print:bg-slate-50 print:text-black">{stage.time} {stage.time && stage.timeUnit}</span>
+                                  <span className="text-sm sm:text-base font-black text-[#E67E22] bg-orange-50 px-3 sm:px-4 py-1.5 rounded-xl print:bg-slate-50 print:text-black flex items-center gap-1.5 shrink-0">
+                                    <span>⏲️</span>
+                                    <span className="whitespace-nowrap">{formatTimeWithUnit(stage.time, stage.timeUnit)}</span>
+                                  </span>
                                 </div>
                                 <div className="flex justify-around text-center items-center">
                                   <div className="flex-1"><div className="text-xs text-slate-400 font-bold uppercase mb-2">上火</div><div className="text-3xl font-black text-slate-700 tabular-nums print:text-xl">{stage.topHeat}<span className="text-sm opacity-50 ml-0.5">°C</span></div></div>
