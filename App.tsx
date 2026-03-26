@@ -22,7 +22,7 @@ export interface Recipe {
   fermentationStages?: FermentationStage[]; bakingStages?: BakingStage[];
   notes?: string; tags?: string[]; moldName?: string;
   doughWeight?: number; crustWeight?: number; oilPasteWeight?: number; fillingWeight?: number;
-  quantity?: number; createdAt: number; executionLogs?: ExecutionLog[];
+  quantity?: number; shelfLife?: string; createdAt: number; executionLogs?: ExecutionLog[];
 }
 
 interface Category { id: string; name: string; order: number; }
@@ -107,13 +107,13 @@ const RecipeCard: React.FC<{ recipe: Recipe; onClick: (r: Recipe) => void }> = (
     <div className="aspect-[16/10] relative overflow-hidden">
       <img src={recipe.imageUrl || 'https://picsum.photos/400/250?random=' + recipe.id} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={recipe.title} />
       {recipe.isTried && (
-        <div className="absolute top-4 right-4 px-3 py-1 bg-orange-100/90 backdrop-blur-sm text-orange-600 text-[10px] font-black rounded-full border border-orange-200/50">⏳ 待嘗試</div>
+        <div className="absolute bottom-4 right-4 px-4 py-1.5 bg-orange-100/90 backdrop-blur-sm text-orange-600 text-xs font-black rounded-full border border-orange-200/50 shadow-sm">⏳ 待嘗試</div>
       )}
     </div>
     <div className="p-5">
-      <div className="flex justify-between items-start mb-2">
-        <h3 className="text-lg font-black text-slate-800 line-clamp-1">{recipe.title}</h3>
-        <span className="text-[10px] font-bold text-orange-400 bg-orange-50 px-2 py-0.5 rounded-md">{recipe.category}</span>
+      <div className="flex justify-between items-start gap-2 mb-3">
+        <h3 className="text-lg font-black text-slate-800 break-words leading-tight">{recipe.title}</h3>
+        <span className="text-xs font-black text-orange-500 bg-orange-50 px-3 py-1 rounded-xl border border-orange-100/50 shrink-0">{recipe.category}</span>
       </div>
       <p className="text-xs text-slate-400 font-bold mb-3">師傅：{recipe.master}</p>
       <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed h-8">{recipe.description || '點擊查看詳細配方...'}</p>
@@ -189,8 +189,8 @@ const DisplayIngredientSection: React.FC<{
         </div>
         {isBaking && showPercentage && (
           <div className="ml-1 flex items-center gap-2">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">基準:</span>
-            <span className="text-xs font-bold text-slate-500 lowercase italic">
+            <span className="text-xs font-black text-slate-500 uppercase tracking-widest">基準:</span>
+            <span className="text-sm font-bold text-slate-600 lowercase italic">
               (以 {localBase.name} 為 100%)
             </span>
           </div>
@@ -198,7 +198,7 @@ const DisplayIngredientSection: React.FC<{
       </div>
       <div className="space-y-0">
         {/* 表頭 (僅桌面版) */}
-        <div className="hidden sm:flex items-center px-6 py-3 border-b border-orange-100/50 text-[11px] font-black text-slate-400 uppercase tracking-widest bg-orange-50/30 rounded-t-2xl">
+        <div className="hidden sm:flex items-center px-6 py-4 border-b border-orange-100/50 text-xs font-black text-slate-500 uppercase tracking-widest bg-orange-50/30 rounded-t-2xl">
           <div className="sm:w-48 shrink-0">材料名稱</div>
           <div className="flex flex-1 justify-end items-center">
             <div className="sm:w-40 text-right pr-4">重量 (G)</div>
@@ -214,11 +214,11 @@ const DisplayIngredientSection: React.FC<{
           const percentage = localBase.weight > 0 ? (numericAmt / localBase.weight * 100).toFixed(1).replace(/\.0$/, '') : '0';
 
           return (
-            <div key={`scaling-ing-${idx}`} className="flex flex-col sm:flex-row sm:items-start py-6 sm:py-5 border-b border-orange-50/50 last:border-0 px-2 sm:px-6 hover:bg-orange-50/20 transition-colors rounded-2xl gap-2 sm:gap-0 mb-4 sm:mb-0">
+            <div key={`scaling-ing-${idx}`} className="flex flex-col sm:flex-row sm:items-center py-6 sm:py-6 border-b border-orange-50/50 last:border-0 px-2 sm:px-6 hover:bg-orange-50/20 transition-colors rounded-2xl gap-3 sm:gap-0 mb-4 sm:mb-0">
               {/* 第一行：材料名稱 (手機版 100%，電腦版固定寬度) */}
-              <div className="flex items-start gap-3 sm:w-48 shrink-0 min-w-0 w-full px-2 sm:px-0">
-                <span className={`shrink-0 w-2.5 h-2.5 rounded-full mt-2 ${ing.isFlour ? 'bg-orange-500 shadow-[0_0_8px_rgba(230,126,34,0.4)]' : 'bg-slate-200'}`} />
-                <span className="text-slate-700 font-bold text-base leading-relaxed break-words">{ing.name}</span>
+              <div className="flex items-center gap-4 sm:w-48 shrink-0 min-w-0 w-full px-2 sm:px-0">
+                <span className={`shrink-0 w-3 h-3 rounded-full ${ing.isFlour ? 'bg-orange-500 shadow-[0_0_8px_rgba(230,126,34,0.4)]' : 'bg-slate-200'}`} />
+                <span className="text-slate-800 font-black text-lg sm:text-[1.1rem] leading-tight break-words">{ing.name}</span>
               </div>
 
               {/* 第二行 (手機版) / 數據列 (電腦版) */}
@@ -228,13 +228,13 @@ const DisplayIngredientSection: React.FC<{
                   <div className="flex items-baseline gap-1 text-left sm:text-right w-full justify-end">
                     {scalingFactor !== 1 && numericAmt > 0 ? (
                       <div className="flex flex-col items-start sm:items-end sm:flex-row sm:items-center gap-0.5 sm:gap-1">
-                        <span className="text-slate-300 text-[9px] sm:text-xs line-through leading-none">{numericAmt}{!shouldHideUnit && ing.unit}</span>
-                        <span className="text-orange-500 font-black text-lg sm:text-base leading-none">
+                        <span className="text-slate-300 text-xs sm:text-sm line-through leading-none">{numericAmt}{!shouldHideUnit && ing.unit}</span>
+                        <span className="text-orange-500 font-black text-xl sm:text-lg leading-none">
                           {scaledAmount}{!shouldHideUnit && ing.unit}
                         </span>
                       </div>
                     ) : (
-                      <span className="text-slate-900 font-black text-lg sm:text-base leading-none">
+                      <span className="text-slate-900 font-black text-xl sm:text-lg leading-none">
                         {scaledAmount}{!shouldHideUnit && ing.unit}
                       </span>
                     )}
@@ -244,7 +244,7 @@ const DisplayIngredientSection: React.FC<{
                 {/* 百分比 - 手機版靠右，電腦版固定寬度並靠右 */}
                 {isBaking && showPercentage && (
                   <div className="sm:w-40 flex justify-end items-center shrink-0 pr-4">
-                    <span className="text-[10px] sm:text-sm font-black px-3 py-1 rounded-xl bg-orange-50 text-orange-600 shadow-sm inline-block min-w-[48px] sm:min-w-[60px] text-right border border-orange-100/50">
+                    <span className="text-xs sm:text-base font-black px-4 py-1.5 rounded-xl bg-orange-50 text-orange-600 shadow-sm inline-block min-w-[56px] sm:min-w-[70px] text-right border border-orange-100/50">
                       {percentage}%
                     </span>
                   </div>
@@ -338,9 +338,9 @@ const IngredientList: React.FC<{
           const percentage = localBase > 0 ? (numericAmt / localBase * 100).toFixed(1).replace(/\.0$/, '') : '0';
 
           return (
-            <div key={`${fieldKey}-${idx}`} className="flex flex-col sm:flex-row gap-3 sm:gap-2 sm:items-center bg-slate-50/30 sm:bg-transparent p-4 sm:p-0 rounded-2xl sm:rounded-none border border-slate-100 sm:border-none">
+            <div key={`${fieldKey}-${idx}`} className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-center bg-slate-50/30 sm:bg-transparent p-4 sm:p-0 rounded-2xl sm:rounded-none border border-slate-100 sm:border-none">
               {/* 第一排：粉/水切換 + 材料名稱 */}
-              <div className="flex gap-2 items-center w-full sm:flex-1 min-w-0">
+              <div className="flex gap-2 items-center w-full sm:flex-[55] sm:basis-0 min-w-0">
                 {formRecipe.isBakingRecipe && (
                   <button 
                     type="button" 
@@ -360,9 +360,9 @@ const IngredientList: React.FC<{
               </div>
 
               {/* 第二排：百分比 + 重量 + 單位 + 移除 (手機版併排) */}
-              <div className="flex gap-2 items-center w-full sm:w-auto">
+              <div className="flex gap-2 items-center w-full sm:flex-[45] sm:basis-0 min-w-0">
                 {formRecipe.isBakingRecipe && (
-                  <div className="flex-[3] sm:flex-none sm:w-20 relative min-w-0">
+                  <div className="flex-[3] sm:flex-1 relative min-w-0 sm:min-w-[70px]">
                     <input 
                       type="text" 
                       value={percentage} 
@@ -371,34 +371,34 @@ const IngredientList: React.FC<{
                         const newAmt = (pct * localBase / 100).toFixed(1).replace(/\.0$/, '');
                         handleUpdateIngredient(fieldKey, idx, 'amount', newAmt);
                       }}
-                      className="w-full h-12 sm:h-10 px-4 sm:px-3 rounded-xl border border-slate-100 bg-white sm:bg-slate-50/50 text-base sm:text-xs text-right outline-none focus:ring-1 focus:ring-orange-200 transition-all text-orange-600 font-bold" 
+                      className="w-full h-12 sm:h-10 px-4 sm:px-1 rounded-xl border border-slate-100 bg-white sm:bg-slate-50/50 text-base sm:text-xs text-center outline-none focus:ring-1 focus:ring-orange-200 transition-all text-orange-600 font-bold" 
                       placeholder="%" 
                     />
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-orange-300 font-bold pointer-events-none">%</span>
+                    <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[9px] text-orange-300 font-bold pointer-events-none">%</span>
                   </div>
                 )}
-                <div className="flex-[4] sm:flex-none sm:w-24 relative min-w-0">
+                <div className="flex-[4] sm:flex-1 relative min-w-0 sm:min-w-[70px]">
                   <input 
                     type="text" 
                     value={ing.amount ?? ''} 
                     onChange={(e) => handleUpdateIngredient(fieldKey, idx, 'amount', e.target.value)} 
-                    className="w-full h-12 sm:h-10 px-4 sm:px-3 rounded-xl border border-slate-100 bg-white sm:bg-slate-50/50 text-base sm:text-xs text-right outline-none focus:ring-1 focus:ring-orange-200 transition-all" 
+                    className="w-full h-12 sm:h-10 px-4 sm:px-1 rounded-xl border border-slate-100 bg-white sm:bg-slate-50/50 text-base sm:text-xs text-center outline-none focus:ring-1 focus:ring-orange-200 transition-all" 
                     placeholder="重量" 
                   />
                 </div>
-                <div className="flex-[2] sm:flex-none sm:w-16 relative shrink-0">
+                <div className="flex-[2] sm:w-14 relative shrink-0">
                   <input 
                     type="text" 
                     value={ing.unit ?? ''} 
                     onChange={(e) => handleUpdateIngredient(fieldKey, idx, 'unit', e.target.value)} 
-                    className="w-full h-12 sm:h-10 px-4 sm:px-3 rounded-xl border border-slate-100 bg-white sm:bg-slate-50/50 text-base sm:text-xs outline-none focus:ring-1 focus:ring-orange-200 transition-all" 
+                    className="w-full h-12 sm:h-10 px-4 sm:px-2 rounded-xl border border-slate-100 bg-white sm:bg-slate-50/50 text-base sm:text-xs outline-none focus:ring-1 focus:ring-orange-200 transition-all text-center" 
                     placeholder="單位" 
                   />
                 </div>
                 <button 
                   type="button" 
                   onClick={() => triggerConfirm(() => setFormRecipe(prev => ({ ...prev, [fieldKey]: (prev[fieldKey] as Ingredient[]).filter((_, i) => i !== idx) })))} 
-                  className="flex-[1] sm:w-10 h-12 sm:h-10 flex items-center justify-center text-red-400 hover:text-red-600 transition-all"
+                  className="flex-[1] sm:flex-none sm:w-10 h-12 sm:h-10 flex items-center justify-center text-red-400 hover:text-red-600 transition-all"
                 >
                   🗑️
                 </button>
@@ -460,7 +460,7 @@ const App: React.FC = () => {
   const recipeImageInputRef = useRef<HTMLInputElement>(null);
 
   const [formRecipe, setFormRecipe] = useState<Partial<Recipe>>({
-    title: '', master: '', sourceName: '', sourceUrl: '', sourceLinks: [], onlineCourse: '', sourcePage: '', sourceNote: '', moldName: '', doughWeight: 0, crustWeight: 0, oilPasteWeight: 0, fillingWeight: 0, quantity: 1, 
+    title: '', master: '', sourceName: '', sourceUrl: '', sourceLinks: [], onlineCourse: '', sourcePage: '', sourceNote: '', moldName: '', doughWeight: 0, crustWeight: 0, oilPasteWeight: 0, fillingWeight: 0, quantity: 1, shelfLife: '',
     sourceDate: '', recordDate: getTodayString(),
     fermentationStages: [], bakingStages: [], description: '',
     ingredients: [{ name: '', amount: 0, unit: 'g', isFlour: true }],
@@ -684,7 +684,7 @@ const App: React.FC = () => {
 
   const handleCreateNew = () => {
     setFormRecipe({
-      title: '', master: '', sourceName: '', sourceUrl: '', onlineCourse: '', moldName: '', doughWeight: 0, crustWeight: 0, oilPasteWeight: 0, fillingWeight: 0, quantity: 1, 
+      title: '', master: '', sourceName: '', sourceUrl: '', onlineCourse: '', moldName: '', doughWeight: 0, crustWeight: 0, oilPasteWeight: 0, fillingWeight: 0, quantity: 1, shelfLife: '',
       sourceDate: '', recordDate: getTodayString(),
       fermentationStages: [{ name: '基本發酵', time: '', temperature: '', humidity: '' }], bakingStages: [{ name: 'STAGE 1', topHeat: '', bottomHeat: '', time: '', note: '' }], description: '',
       ingredients: [{ name: '', amount: 0, unit: 'g', isFlour: true }],
@@ -723,6 +723,7 @@ const App: React.FC = () => {
             oilPasteWeight: r.oilPasteWeight || 0,
             fillingWeight: r.fillingWeight || 0,
             quantity: r.quantity || 1,
+            shelfLife: r.shelfLife || '',
             sourceDate: r.sourceDate || '',
             recordDate: r.recordDate || '',
             ingredients: Array.isArray(r.ingredients) ? r.ingredients : [],
@@ -1094,12 +1095,19 @@ const App: React.FC = () => {
                     <input type="text" value={formRecipe.master || ''} onChange={e => setFormRecipe(p => ({ ...p, master: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-50 outline-none text-sm focus:border-orange-200" placeholder="師傅" />
                   </div>
 
-                  {/* 第二排：分類下拉選單 */}
-                  <div className="w-full">
-                    <select value={formRecipe.category || ''} onChange={e => setFormRecipe(p => ({ ...p, category: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200">
-                      {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                    </select>
-                  </div>
+            {/* 第二排：分類下拉選單 與 保存期限 */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="w-full">
+                <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">📂 分類</label>
+                <select value={formRecipe.category || ''} onChange={e => setFormRecipe(p => ({ ...p, category: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200">
+                  {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                </select>
+              </div>
+              <div className="w-full">
+                <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">🕒 保存期限</label>
+                <input type="text" value={formRecipe.shelfLife || ''} onChange={e => setFormRecipe(p => ({ ...p, shelfLife: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200" placeholder="例如：常溫 2 天、冷藏 5 天" />
+              </div>
+            </div>
 
                   {/* 第三排：⚖️ 麵團/糊 (g)、🌰 內餡 (g)、🔢 製作份數 */}
                   <div className="space-y-6">
@@ -1448,9 +1456,74 @@ const App: React.FC = () => {
                 <div className="p-6 bg-white rounded-[32px] border border-orange-50 shadow-sm space-y-4">
                   <div className="flex justify-between items-center">
                     <label className="text-xs font-black text-orange-600 uppercase tracking-widest">製作步驟 (做法)</label>
-                    <button type="button" onClick={() => setFormRecipe(prev => ({ ...prev, instructions: [...(prev.instructions || []), ''] }))} className="text-[10px] font-bold bg-[#E67E22] text-white px-3 py-1.5 rounded-lg shadow-sm active:scale-95 transition-all">＋新增步驟</button>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setFormRecipe(prev => ({ ...prev, instructions: [...(prev.instructions || []), '[SECTION]'] }))} className="text-[10px] font-bold bg-orange-50 text-orange-600 px-3 py-1.5 rounded-lg shadow-sm active:scale-95 transition-all border border-orange-100">＋加入分段</button>
+                      <button type="button" onClick={() => setFormRecipe(prev => ({ ...prev, instructions: [...(prev.instructions || []), ''] }))} className="text-[10px] font-bold bg-[#E67E22] text-white px-3 py-1.5 rounded-lg shadow-sm active:scale-95 transition-all">＋新增步驟</button>
+                    </div>
                   </div>
-                  <div className="space-y-3">{(formRecipe.instructions || []).map((inst, idx) => (<div key={`inst-${idx}`} className="flex gap-2 items-start"><span className="w-6 h-6 bg-orange-100 text-[#E67E22] font-black rounded-lg flex items-center justify-center text-[10px] mt-1.5">{idx + 1}</span><textarea value={inst} onChange={(e) => { const newInst = [...(formRecipe.instructions || [])]; newInst[idx] = e.target.value; setFormRecipe(p => ({ ...p, instructions: newInst })); }} className="flex-grow px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs min-h-[60px] focus:bg-white focus:ring-1 focus:ring-orange-200 transition-all" placeholder={`步驟 ${idx + 1} 說明...`} /><button type="button" onClick={() => { triggerConfirm(() => { const newInst = (formRecipe.instructions || []).filter((_, i) => i !== idx); setFormRecipe(p => ({ ...p, instructions: newInst })); }); }} className="text-red-300 hover:text-red-500 mt-2 transition-colors">🗑️</button></div>))}</div>
+                  <div className="space-y-3">
+                    {(() => {
+                      let stepNumber = 0;
+                      return (formRecipe.instructions || []).map((inst, idx) => {
+                        const isHeader = inst.startsWith('[SECTION]');
+                        const content = isHeader ? inst.replace('[SECTION]', '') : inst;
+                        if (isHeader) stepNumber = 0;
+                        else stepNumber++;
+                        
+                        return (
+                          <div key={`inst-${idx}`} className={`flex gap-2 items-start group ${isHeader ? 'mt-6 mb-2' : ''}`}>
+                            <div className="flex flex-col items-center gap-1 mt-1.5 shrink-0">
+                              {!isHeader ? (
+                                <span className="w-6 h-6 bg-orange-100 text-[#E67E22] font-black rounded-lg flex items-center justify-center text-[10px]">{stepNumber}</span>
+                              ) : (
+                                <span className="w-6 h-6 bg-orange-500 text-white font-black rounded-lg flex items-center justify-center text-[10px]">#</span>
+                              )}
+                              <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button type="button" onClick={() => {
+                                  if (idx === 0) return;
+                                  const newInst = [...(formRecipe.instructions || [])];
+                                  [newInst[idx], newInst[idx-1]] = [newInst[idx-1], newInst[idx]];
+                                  setFormRecipe(p => ({ ...p, instructions: newInst }));
+                                }} className="text-slate-300 hover:text-orange-400 text-[10px] p-0.5">▲</button>
+                                <button type="button" onClick={() => {
+                                  if (idx === (formRecipe.instructions || []).length - 1) return;
+                                  const newInst = [...(formRecipe.instructions || [])];
+                                  [newInst[idx], newInst[idx+1]] = [newInst[idx+1], newInst[idx]];
+                                  setFormRecipe(p => ({ ...p, instructions: newInst }));
+                                }} className="text-slate-300 hover:text-orange-400 text-[10px] p-0.5">▼</button>
+                              </div>
+                            </div>
+                            
+                            {isHeader ? (
+                              <input 
+                                type="text"
+                                value={content}
+                                onChange={(e) => {
+                                  const newInst = [...(formRecipe.instructions || [])];
+                                  newInst[idx] = '[SECTION]' + e.target.value;
+                                  setFormRecipe(p => ({ ...p, instructions: newInst }));
+                                }}
+                                className="flex-grow px-4 py-2 bg-orange-50/50 border border-orange-100 rounded-xl text-xs font-black text-orange-700 placeholder:text-orange-300 focus:bg-white focus:ring-1 focus:ring-orange-200 transition-all"
+                                placeholder="輸入分段名稱 (例如：焦糖、布丁液)..."
+                              />
+                            ) : (
+                              <textarea 
+                                value={content} 
+                                onChange={(e) => { 
+                                  const newInst = [...(formRecipe.instructions || [])]; 
+                                  newInst[idx] = e.target.value; 
+                                  setFormRecipe(p => ({ ...p, instructions: newInst })); 
+                                }} 
+                                className="flex-grow px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs min-h-[60px] focus:bg-white focus:ring-1 focus:ring-orange-200 transition-all" 
+                                placeholder={`步驟 ${stepNumber} 說明...`} 
+                              />
+                            )}
+                            <button type="button" onClick={() => { triggerConfirm(() => { const newInst = (formRecipe.instructions || []).filter((_, i) => i !== idx); setFormRecipe(p => ({ ...p, instructions: newInst })); }); }} className="text-red-300 hover:text-red-500 mt-2 transition-colors shrink-0">🗑️</button>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
                 </div>
 
                 <div className="p-6 bg-white rounded-[32px] border border-orange-50 shadow-sm space-y-4">
@@ -1526,12 +1599,18 @@ const App: React.FC = () => {
               <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-orange-50 shadow-sm -mt-10 sm:-mt-14 relative z-10 print:mt-0 print:shadow-none print:border-none print:p-0">
                 <div className="flex flex-col gap-4">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="px-3 py-1 bg-orange-50 text-orange-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-orange-100 print:bg-white print:text-slate-500 print:border-slate-200">
+                    <span className="px-3 py-1 bg-orange-50 text-orange-600 rounded-full text-xs font-black uppercase tracking-widest border border-orange-100 print:bg-white print:text-slate-500 print:border-slate-200">
                       {selectedRecipe.category}
                     </span>
                     {selectedRecipe.isTried && (
-                      <span className="px-3 py-1 bg-orange-100 text-orange-600 text-[10px] font-black rounded-full uppercase tracking-widest border border-orange-200">
+                      <span className="px-3 py-1 bg-orange-100 text-orange-600 text-xs font-black rounded-full uppercase tracking-widest border border-orange-200">
                         待嘗試
+                      </span>
+                    )}
+                    {selectedRecipe.shelfLife && (
+                      <span className="px-3 py-1 bg-orange-50 text-orange-600 rounded-full text-xs font-black border border-orange-100 flex items-center gap-1.5 shadow-sm print:bg-white print:text-slate-500 print:border-slate-200">
+                        <span className="shrink-0">🕒</span>
+                        <span className="break-words">{selectedRecipe.shelfLife}</span>
                       </span>
                     )}
                   </div>
@@ -1591,27 +1670,27 @@ const App: React.FC = () => {
                       )}
                       {/* 舊有單一連結相容 */}
                       {selectedRecipe.sourceUrl && (
-                        <div className="flex items-center gap-3 p-3 bg-orange-50/30 rounded-2xl border border-orange-50">
-                          <span className="text-lg">🌐</span>
+                        <div className="flex items-center gap-4 p-4 bg-orange-50/30 rounded-2xl border border-orange-50">
+                          <span className="text-xl">🌐</span>
                           <div className="flex flex-col overflow-hidden">
-                            <span className="text-[10px] font-black text-slate-400 uppercase">連結</span>
+                            <span className="text-xs font-black text-slate-400 uppercase mb-0.5">連結</span>
                             {selectedRecipe.sourceUrl.startsWith('http') ? (
-                              <a href={selectedRecipe.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-orange-500 hover:underline truncate">
+                              <a href={selectedRecipe.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-base font-black text-orange-500 hover:underline truncate">
                                 {selectedRecipe.sourceUrl}
                               </a>
                             ) : (
-                              <span className="text-sm font-bold text-slate-700 truncate">{selectedRecipe.sourceUrl}</span>
+                              <span className="text-base font-black text-slate-700 truncate">{selectedRecipe.sourceUrl}</span>
                             )}
                           </div>
                         </div>
                       )}
                       {/* 動態連結清單 */}
                       {(selectedRecipe.sourceLinks || []).map((link, idx) => (
-                        <div key={idx} className="flex items-center gap-3 p-3 bg-orange-50/30 rounded-2xl border border-orange-50">
-                          <span className="text-lg">🔗</span>
+                        <div key={idx} className="flex items-center gap-4 p-4 bg-orange-50/30 rounded-2xl border border-orange-50">
+                          <span className="text-xl">🔗</span>
                           <div className="flex flex-col overflow-hidden">
-                            <span className="text-[10px] font-black text-slate-400 uppercase">參考連結</span>
-                            <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-orange-500 hover:underline truncate">
+                            <span className="text-xs font-black text-slate-400 uppercase mb-0.5">參考連結</span>
+                            <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-base font-black text-orange-500 hover:underline truncate">
                               {link.name || '點擊前往'}
                             </a>
                           </div>
@@ -1712,15 +1791,15 @@ const App: React.FC = () => {
                   </h3>
                   {selectedRecipe.fermentationStages && selectedRecipe.fermentationStages.length > 0 && (
                     <div className="mb-10">
-                      <h4 className="text-[13px] font-black text-orange-400 uppercase tracking-widest mb-4 ml-1 print:text-black">發酵時序</h4>
+                      <h4 className="text-base font-black text-orange-500 uppercase tracking-widest mb-4 ml-1 print:text-black">發酵時序</h4>
                       <div className="space-y-4">
                         {selectedRecipe.fermentationStages.map((stage, idx) => (
-                          <div key={idx} className="flex flex-col p-5 bg-orange-50/20 rounded-3xl border border-orange-50 gap-y-3 print:bg-white print:border-slate-200">
-                            <div className="text-base font-black text-slate-700 print:text-sm">{stage.name || `階段 ${idx+1}`}</div>
-                            <div className="grid grid-cols-3 gap-2 text-sm font-black text-orange-500 tabular-nums border-t border-orange-100/50 pt-3 print:text-black print:border-slate-100">
-                              <div className="flex flex-col items-center gap-1.5"><span className="text-[10px] text-slate-400 font-bold uppercase">時間</span><div className="flex items-center gap-1.5">⏲️ {stage.time ? `${stage.time}m` : '--'}</div></div>
-                              <div className="flex flex-col items-center gap-1.5 border-x border-orange-100/50 print:border-slate-100"><span className="text-[10px] text-slate-400 font-bold uppercase">溫度</span><div className="flex items-center gap-1.5">🌡️ {stage.temperature ? `${stage.temperature}°` : '--'}</div></div>
-                              <div className="flex flex-col items-center gap-1.5"><span className="text-[10px] text-slate-400 font-bold uppercase">濕度</span><div className="flex items-center gap-1.5">💧 {stage.humidity ? `${stage.humidity}%` : '--'}</div></div>
+                          <div key={idx} className="flex flex-col p-6 bg-orange-50/20 rounded-3xl border border-orange-50 gap-y-4 print:bg-white print:border-slate-200">
+                            <div className="text-lg font-black text-slate-700 print:text-base">{stage.name || `階段 ${idx+1}`}</div>
+                            <div className="grid grid-cols-3 gap-2 text-base font-black text-orange-500 tabular-nums border-t border-orange-100/50 pt-4 print:text-black print:border-slate-100">
+                              <div className="flex flex-col items-center gap-1.5"><span className="text-xs text-slate-400 font-bold uppercase">時間</span><div className="flex items-center gap-1.5">⏲️ {stage.time ? `${stage.time}m` : '--'}</div></div>
+                              <div className="flex flex-col items-center gap-1.5 border-x border-orange-100/50 print:border-slate-100"><span className="text-xs text-slate-400 font-bold uppercase">溫度</span><div className="flex items-center gap-1.5">🌡️ {stage.temperature ? `${stage.temperature}°` : '--'}</div></div>
+                              <div className="flex flex-col items-center gap-1.5"><span className="text-xs text-slate-400 font-bold uppercase">濕度</span><div className="flex items-center gap-1.5">💧 {stage.humidity ? `${stage.humidity}%` : '--'}</div></div>
                             </div>
                           </div>
                         ))}
@@ -1728,18 +1807,21 @@ const App: React.FC = () => {
                     </div>
                   )}
                   {selectedRecipe.bakingStages && selectedRecipe.bakingStages.length > 0 && (
-                    <div className="mb-6">
-                      <h4 className="text-[13px] font-black text-orange-400 uppercase tracking-widest mb-4 ml-1 print:text-black">烤焙參數</h4>
+                    <div className="mb-8">
+                      <h4 className="text-base font-black text-orange-500 uppercase tracking-widest mb-4 ml-1 print:text-black">烤焙參數</h4>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 print:grid-cols-2">
                         {selectedRecipe.bakingStages.map((stage, idx) => (
                           <div key={idx} className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm relative overflow-hidden print:rounded-xl print:border-slate-200">
-                            <div className="flex justify-between items-center mb-4"><span className="text-[11px] font-black text-slate-400 uppercase">{stage.name || `STAGE ${idx+1}`}</span><span className="text-sm font-black text-[#E67E22] bg-orange-50 px-3 py-1 rounded-xl print:bg-slate-50 print:text-black">{stage.time} min</span></div>
-                            <div className="flex justify-around text-center items-center">
-                              <div className="flex-1"><div className="text-[10px] text-slate-400 font-bold uppercase mb-1">上火</div><div className="text-2xl font-black text-slate-700 tabular-nums print:text-lg">{stage.topHeat}<span className="text-xs opacity-50 ml-0.5">°C</span></div></div>
-                              <div className="w-px h-10 bg-orange-50 print:bg-slate-100" />
-                              <div className="flex-1"><div className="text-[10px] text-slate-400 font-bold uppercase mb-1">下火</div><div className="text-2xl font-black text-slate-700 tabular-nums print:text-lg">{stage.bottomHeat}<span className="text-xs opacity-50 ml-0.5">°C</span></div></div>
+                            <div className="flex justify-between items-center mb-6">
+                              <span className="text-xs font-black text-slate-400 uppercase">{stage.name || `STAGE ${idx+1}`}</span>
+                              <span className="text-base font-black text-[#E67E22] bg-orange-50 px-4 py-1.5 rounded-xl print:bg-slate-50 print:text-black">{stage.time} min</span>
                             </div>
-                            {stage.note && <div className="mt-4 pt-3 border-t border-orange-50 text-[10px] font-bold text-slate-400 italic text-center">{stage.note}</div>}
+                            <div className="flex justify-around text-center items-center">
+                              <div className="flex-1"><div className="text-xs text-slate-400 font-bold uppercase mb-2">上火</div><div className="text-3xl font-black text-slate-700 tabular-nums print:text-xl">{stage.topHeat}<span className="text-sm opacity-50 ml-0.5">°C</span></div></div>
+                              <div className="w-px h-12 bg-orange-100 print:bg-slate-100" />
+                              <div className="flex-1"><div className="text-xs text-slate-400 font-bold uppercase mb-2">下火</div><div className="text-3xl font-black text-slate-700 tabular-nums print:text-xl">{stage.bottomHeat}<span className="text-sm opacity-50 ml-0.5">°C</span></div></div>
+                            </div>
+                            {stage.note && <div className="mt-6 pt-4 border-t border-orange-50 text-xs font-bold text-slate-400 italic text-center leading-relaxed">{stage.note}</div>}
                           </div>
                         ))}
                       </div>
@@ -1753,14 +1835,35 @@ const App: React.FC = () => {
                     製作步驟
                   </h3>
                   <div className="space-y-8 print:space-y-4">
-                    {(selectedRecipe.instructions || []).map((inst, idx) => (
-                      <div key={idx} className="flex gap-6 items-start group print:gap-3">
-                        <span className="flex-shrink-0 w-10 h-10 bg-orange-50 text-[#E67E22] font-black rounded-2xl flex items-center justify-center text-base shadow-sm border border-orange-100 group-hover:bg-orange-500 group-hover:text-white transition-all print:w-6 print:h-6 print:text-xs print:rounded-lg">{idx+1}</span>
-                        <div className="flex-grow pt-1.5">
-                          <p className="text-base text-slate-700 leading-relaxed font-bold tracking-wide print:text-sm">{inst}</p>
-                        </div>
-                      </div>
-                    ))}
+                    {(() => {
+                      let stepNumber = 0;
+                      return (selectedRecipe.instructions || []).map((inst, idx) => {
+                        const isHeader = inst.startsWith('[SECTION]');
+                        const content = isHeader ? inst.replace('[SECTION]', '') : inst;
+                        
+                        if (isHeader) {
+                          stepNumber = 0;
+                          return (
+                            <div key={idx} className="pt-8 pb-2 border-b-2 border-orange-100 mb-6 print:pt-4 print:pb-1">
+                              <h4 className="text-lg font-black text-orange-600 flex items-center gap-2 print:text-base">
+                                <span className="w-1.5 h-6 bg-orange-400 rounded-full"></span>
+                                {content || '未命名分段'}
+                              </h4>
+                            </div>
+                          );
+                        }
+
+                        stepNumber++;
+                        return (
+                          <div key={idx} className="flex gap-6 items-start group print:gap-3">
+                            <span className="flex-shrink-0 w-10 h-10 bg-orange-50 text-[#E67E22] font-black rounded-2xl flex items-center justify-center text-base shadow-sm border border-orange-100 group-hover:bg-orange-500 group-hover:text-white transition-all print:w-6 print:h-6 print:text-xs print:rounded-lg">{stepNumber}</span>
+                            <div className="flex-grow pt-1.5">
+                              <p className="text-base text-slate-700 leading-relaxed font-bold tracking-wide print:text-sm">{content}</p>
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 </div>
                 
