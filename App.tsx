@@ -1865,9 +1865,10 @@ const App: React.FC = () => {
                     {selectedRecipe && (completedSteps[selectedRecipe.id] || []).length > 0 && (
                       <button 
                         onClick={() => resetProgress(selectedRecipe.id)}
-                        className="text-[10px] font-bold text-orange-400 hover:text-orange-600 bg-orange-50 px-3 py-1.5 rounded-full transition-all active:scale-95 print:hidden"
+                        className="text-sm font-black text-orange-600 bg-orange-50 px-5 py-2.5 rounded-2xl border border-orange-100 shadow-sm hover:bg-orange-100 hover:text-orange-700 transition-all active:scale-95 flex items-center gap-2 print:hidden"
                       >
-                        🔄 重置進度
+                        <span>🔄</span>
+                        <span>重置進度</span>
                       </button>
                     )}
                   </div>
