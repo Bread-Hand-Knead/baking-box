@@ -5,8 +5,8 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 export enum AppView { LIST, CREATE, EDIT, DETAIL, SCALING, COLLECTION, MANAGE_CATEGORIES }
 
 export interface Ingredient { name: string; amount: string | number; unit: string; isFlour: boolean; }
-export interface FermentationStage { name: string; time: string; temperature: string; humidity: string; }
-export interface BakingStage { name: string; topHeat: string; bottomHeat: string; time: string; note: string; }
+export interface FermentationStage { name: string; time: string; timeUnit?: '分鐘' | '小時'; temperature: string; humidity: string; }
+export interface BakingStage { name: string; topHeat: string; bottomHeat: string; time: string; timeUnit?: '分鐘' | '小時'; note: string; }
 export interface ExecutionLog { id: string; date: string; rating: number; feedback: string; photoUrl?: string; }
 export interface Knowledge { id: string; title: string; content: string; master: string; createdAt: number; }
 export interface Resource { id: string; title: string; url: string; category: string; }
@@ -723,7 +723,7 @@ const App: React.FC = () => {
     setFormRecipe({
       title: '', master: '', sourceName: '', sourceUrl: '', onlineCourse: '', moldName: '', doughWeight: 0, crustWeight: 0, oilPasteWeight: 0, fillingWeight: 0, quantity: 1, shelfLife: '', totalDuration: '',
       sourceDate: '', recordDate: getTodayString(),
-      fermentationStages: [{ name: '基本發酵', time: '', temperature: '', humidity: '' }], bakingStages: [{ name: 'STAGE 1', topHeat: '', bottomHeat: '', time: '', note: '' }], description: '',
+      fermentationStages: [{ name: '基本發酵', time: '', timeUnit: '分鐘', temperature: '', humidity: '' }], bakingStages: [{ name: 'STAGE 1', topHeat: '', bottomHeat: '', time: '', timeUnit: '分鐘', note: '' }], description: '',
       ingredients: [{ name: '', amount: 0, unit: 'g', isFlour: true }],
       mainSectionName: '主麵團', liquidStarterName: '液種 / 老麵', liquidStarterIngredients: [], fillingSectionName: '內餡', fillingIngredients: [], decorationSectionName: '裝飾', decorationIngredients: [], customSectionName: '其他區塊', customSectionIngredients: [], sectionsOrder: [...DEFAULT_SECTIONS_ORDER],
       instructions: [''], category: categories[0]?.name || '麵包', imageUrl: '', isBakingRecipe: true, isTried: true, tags: [], notes: '', executionLogs: []
@@ -1380,13 +1380,23 @@ const App: React.FC = () => {
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                             <div className="space-y-1.5">
                               <label className="block text-[11px] font-black text-slate-500 ml-1">⏲️ 時間</label>
-                              <input 
-                                type="text" 
-                                value={stage.time || ''} 
-                                onChange={(e) => handleUpdateFermentationStage(idx, 'time', e.target.value)} 
-                                className="w-full px-4 h-14 rounded-xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center" 
-                                placeholder="分" 
-                              />
+                              <div className="flex gap-2">
+                                <input 
+                                  type="text" 
+                                  value={stage.time || ''} 
+                                  onChange={(e) => handleUpdateFermentationStage(idx, 'time', e.target.value)} 
+                                  className="flex-1 px-4 h-14 rounded-xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center" 
+                                  placeholder="例如：45" 
+                                />
+                                <select
+                                  value={stage.timeUnit || '分鐘'}
+                                  onChange={(e) => handleUpdateFermentationStage(idx, 'timeUnit', e.target.value as any)}
+                                  className="w-24 h-14 rounded-xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center appearance-none cursor-pointer"
+                                >
+                                  <option value="分鐘">分鐘</option>
+                                  <option value="小時">小時</option>
+                                </select>
+                              </div>
                             </div>
                             <div className="space-y-1.5">
                               <label className="block text-[11px] font-black text-slate-500 ml-1">🌡️ 溫度</label>
@@ -1462,13 +1472,23 @@ const App: React.FC = () => {
                             </div>
                             <div className="space-y-1.5">
                               <label className="block text-[11px] font-black text-slate-500 ml-1">⏲️ 時間</label>
-                              <input 
-                                type="text" 
-                                value={stage.time || ''} 
-                                onChange={(e) => handleUpdateBakingStage(idx, 'time', e.target.value)} 
-                                className="w-full px-4 h-14 rounded-xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center" 
-                                placeholder="分" 
-                              />
+                              <div className="flex gap-2">
+                                <input 
+                                  type="text" 
+                                  value={stage.time || ''} 
+                                  onChange={(e) => handleUpdateBakingStage(idx, 'time', e.target.value)} 
+                                  className="flex-1 px-4 h-14 rounded-xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center" 
+                                  placeholder="例如：15" 
+                                />
+                                <select
+                                  value={stage.timeUnit || '分鐘'}
+                                  onChange={(e) => handleUpdateBakingStage(idx, 'timeUnit', e.target.value as any)}
+                                  className="w-24 h-14 rounded-xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold text-slate-700 focus:border-orange-200 text-center appearance-none cursor-pointer"
+                                >
+                                  <option value="分鐘">分鐘</option>
+                                  <option value="小時">小時</option>
+                                </select>
+                              </div>
                             </div>
                           </div>
                           <div className="space-y-1.5">
@@ -1852,7 +1872,7 @@ const App: React.FC = () => {
                               <div key={idx} className="flex flex-col p-6 bg-orange-50/20 rounded-3xl border border-orange-50 gap-y-4 print:bg-white print:border-slate-200">
                                 <div className="text-lg font-black text-slate-700 print:text-base">{stage.name || `階段 ${idx+1}`}</div>
                                 <div className="grid grid-cols-3 gap-2 text-base font-black text-orange-500 tabular-nums border-t border-orange-100/50 pt-4 print:text-black print:border-slate-100">
-                                  <div className="flex flex-col items-center gap-1.5"><span className="text-xs text-slate-400 font-bold uppercase">時間</span><div className="flex items-center gap-1.5">⏲️ {stage.time ? `${stage.time}m` : '--'}</div></div>
+                                  <div className="flex flex-col items-center gap-1.5"><span className="text-xs text-slate-400 font-bold uppercase">時間</span><div className="flex items-center gap-1.5">⏲️ {stage.time || '--'} {stage.time && stage.timeUnit}</div></div>
                                   <div className="flex flex-col items-center gap-1.5 border-x border-orange-100/50 print:border-slate-100"><span className="text-xs text-slate-400 font-bold uppercase">溫度</span><div className="flex items-center gap-1.5">🌡️ {stage.temperature ? `${stage.temperature}°` : '--'}</div></div>
                                   <div className="flex flex-col items-center gap-1.5"><span className="text-xs text-slate-400 font-bold uppercase">濕度</span><div className="flex items-center gap-1.5">💧 {stage.humidity ? `${stage.humidity}%` : '--'}</div></div>
                                 </div>
@@ -1869,7 +1889,7 @@ const App: React.FC = () => {
                               <div key={idx} className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm relative overflow-hidden print:rounded-xl print:border-slate-200">
                                 <div className="flex justify-between items-center mb-6">
                                   <span className="text-xs font-black text-slate-400 uppercase">{stage.name || `STAGE ${idx+1}`}</span>
-                                  <span className="text-base font-black text-[#E67E22] bg-orange-50 px-4 py-1.5 rounded-xl print:bg-slate-50 print:text-black">{stage.time} min</span>
+                                  <span className="text-base font-black text-[#E67E22] bg-orange-50 px-4 py-1.5 rounded-xl print:bg-slate-50 print:text-black">{stage.time} {stage.time && stage.timeUnit}</span>
                                 </div>
                                 <div className="flex justify-around text-center items-center">
                                   <div className="flex-1"><div className="text-xs text-slate-400 font-bold uppercase mb-2">上火</div><div className="text-3xl font-black text-slate-700 tabular-nums print:text-xl">{stage.topHeat}<span className="text-sm opacity-50 ml-0.5">°C</span></div></div>
