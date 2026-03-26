@@ -22,7 +22,7 @@ export interface Recipe {
   fermentationStages?: FermentationStage[]; bakingStages?: BakingStage[];
   notes?: string; tags?: string[]; moldName?: string;
   doughWeight?: number; crustWeight?: number; oilPasteWeight?: number; fillingWeight?: number;
-  quantity?: number; shelfLife?: string; createdAt: number; executionLogs?: ExecutionLog[];
+  quantity?: number; shelfLife?: string; totalDuration?: string; createdAt: number; executionLogs?: ExecutionLog[];
 }
 
 interface Category { id: string; name: string; order: number; }
@@ -32,9 +32,10 @@ const ConfirmDialog: React.FC<{
   isOpen: boolean;
   title: string;
   message: string;
+  confirmLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
-}> = ({ isOpen, title, message, onConfirm, onCancel }) => {
+}> = ({ isOpen, title, message, confirmLabel = "確定", onConfirm, onCancel }) => {
   const [shouldRender, setShouldRender] = useState(isOpen);
   const [isAnimating, setIsAnimating] = useState(false);
 
@@ -59,7 +60,7 @@ const ConfirmDialog: React.FC<{
         <p className="text-sm text-slate-500 font-bold mb-8 leading-relaxed">{message}</p>
         <div className="flex gap-3">
           <button onClick={onCancel} className="flex-1 py-3 bg-slate-100 text-slate-500 rounded-2xl font-black text-sm hover:bg-slate-200 transition-all">取消</button>
-          <button onClick={() => { onConfirm(); onCancel(); }} className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-black text-sm shadow-lg shadow-red-100 hover:bg-red-600 transition-all">確定刪除</button>
+          <button onClick={() => { onConfirm(); onCancel(); }} className="flex-1 py-3 bg-orange-500 text-white rounded-2xl font-black text-sm shadow-lg shadow-orange-100 hover:bg-orange-600 transition-all">{confirmLabel}</button>
         </div>
       </div>
     </div>
@@ -116,7 +117,15 @@ const RecipeCard: React.FC<{ recipe: Recipe; onClick: (r: Recipe) => void }> = (
         <span className="text-xs font-black text-orange-500 bg-orange-50 px-3 py-1 rounded-xl border border-orange-100/50 shrink-0">{recipe.category}</span>
       </div>
       <p className="text-xs text-slate-400 font-bold mb-3">師傅：{recipe.master}</p>
-      <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed h-8">{recipe.description || '點擊查看詳細配方...'}</p>
+      <div className="flex flex-wrap items-center gap-3 mb-3">
+        {recipe.totalDuration && (
+          <div className="flex items-center gap-1 text-[11px] font-black text-orange-500 bg-orange-50/50 px-2 py-0.5 rounded-lg border border-orange-100/30">
+            <span>⏱️</span>
+            <span>{recipe.totalDuration}</span>
+          </div>
+        )}
+        <p className="text-[11px] text-slate-500 line-clamp-1 leading-relaxed flex-grow">{recipe.description || '點擊查看詳細配方...'}</p>
+      </div>
     </div>
   </div>
 );
@@ -471,11 +480,12 @@ const App: React.FC = () => {
     isOpen: boolean;
     title: string;
     message: string;
+    confirmLabel?: string;
     onConfirm: () => void;
   } | null>(null);
 
-  const triggerConfirm = (onConfirm: () => void, title = "確認刪除？", message = "妳確定要移除這個項目嗎？此操作無法復原。") => {
-    setConfirmConfig({ isOpen: true, title, message, onConfirm });
+  const triggerConfirm = (onConfirm: () => void, title = "確認刪除？", message = "妳確定要移除這個項目嗎？此操作無法復原。", confirmLabel = "確定刪除") => {
+    setConfirmConfig({ isOpen: true, title, message, onConfirm, confirmLabel });
   };
 
   const [toast, setToast] = useState<{ show: boolean; message: string }>({ show: false, message: '' });
@@ -487,7 +497,7 @@ const App: React.FC = () => {
   const recipeImageInputRef = useRef<HTMLInputElement>(null);
 
   const [formRecipe, setFormRecipe] = useState<Partial<Recipe>>({
-    title: '', master: '', sourceName: '', sourceUrl: '', sourceLinks: [], onlineCourse: '', sourcePage: '', sourceNote: '', moldName: '', doughWeight: 0, crustWeight: 0, oilPasteWeight: 0, fillingWeight: 0, quantity: 1, shelfLife: '',
+    title: '', master: '', sourceName: '', sourceUrl: '', sourceLinks: [], onlineCourse: '', sourcePage: '', sourceNote: '', moldName: '', doughWeight: 0, crustWeight: 0, oilPasteWeight: 0, fillingWeight: 0, quantity: 1, shelfLife: '', totalDuration: '',
     sourceDate: '', recordDate: getTodayString(),
     fermentationStages: [], bakingStages: [], description: '',
     ingredients: [{ name: '', amount: 0, unit: 'g', isFlour: true }],
@@ -711,7 +721,7 @@ const App: React.FC = () => {
 
   const handleCreateNew = () => {
     setFormRecipe({
-      title: '', master: '', sourceName: '', sourceUrl: '', onlineCourse: '', moldName: '', doughWeight: 0, crustWeight: 0, oilPasteWeight: 0, fillingWeight: 0, quantity: 1, shelfLife: '',
+      title: '', master: '', sourceName: '', sourceUrl: '', onlineCourse: '', moldName: '', doughWeight: 0, crustWeight: 0, oilPasteWeight: 0, fillingWeight: 0, quantity: 1, shelfLife: '', totalDuration: '',
       sourceDate: '', recordDate: getTodayString(),
       fermentationStages: [{ name: '基本發酵', time: '', temperature: '', humidity: '' }], bakingStages: [{ name: 'STAGE 1', topHeat: '', bottomHeat: '', time: '', note: '' }], description: '',
       ingredients: [{ name: '', amount: 0, unit: 'g', isFlour: true }],
@@ -751,6 +761,7 @@ const App: React.FC = () => {
             fillingWeight: r.fillingWeight || 0,
             quantity: r.quantity || 1,
             shelfLife: r.shelfLife || '',
+            totalDuration: r.totalDuration || '',
             sourceDate: r.sourceDate || '',
             recordDate: r.recordDate || '',
             ingredients: Array.isArray(r.ingredients) ? r.ingredients : [],
@@ -1122,8 +1133,8 @@ const App: React.FC = () => {
                     <input type="text" value={formRecipe.master || ''} onChange={e => setFormRecipe(p => ({ ...p, master: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-50 outline-none text-sm focus:border-orange-200" placeholder="師傅" />
                   </div>
 
-            {/* 第二排：分類下拉選單 與 保存期限 */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* 第二排：分類下拉選單 與 保存期限 與 總時長 */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="w-full">
                 <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">📂 分類</label>
                 <select value={formRecipe.category || ''} onChange={e => setFormRecipe(p => ({ ...p, category: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200">
@@ -1132,7 +1143,11 @@ const App: React.FC = () => {
               </div>
               <div className="w-full">
                 <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">🕒 保存期限</label>
-                <input type="text" value={formRecipe.shelfLife || ''} onChange={e => setFormRecipe(p => ({ ...p, shelfLife: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200" placeholder="例如：常溫 2 天、冷藏 5 天" />
+                <input type="text" value={formRecipe.shelfLife || ''} onChange={e => setFormRecipe(p => ({ ...p, shelfLife: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200" placeholder="例如：常溫 2 天" />
+              </div>
+              <div className="w-full">
+                <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">⏱️ 總時長</label>
+                <input type="text" value={formRecipe.totalDuration || ''} onChange={e => setFormRecipe(p => ({ ...p, totalDuration: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200" placeholder="例如：45 分鐘、3 小時" />
               </div>
             </div>
 
@@ -1640,6 +1655,12 @@ const App: React.FC = () => {
                         <span className="break-words">{selectedRecipe.shelfLife}</span>
                       </span>
                     )}
+                    {selectedRecipe.totalDuration && (
+                      <span className="px-3 py-1 bg-orange-50 text-orange-600 rounded-full text-xs font-black border border-orange-100 flex items-center gap-1.5 shadow-sm print:bg-white print:text-slate-500 print:border-slate-200">
+                        <span className="shrink-0">⏱️</span>
+                        <span className="break-words">{selectedRecipe.totalDuration}</span>
+                      </span>
+                    )}
                   </div>
                   
                   <h2 className="text-3xl sm:text-4xl font-black text-slate-800 leading-tight print:text-3xl">
@@ -1811,50 +1832,59 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="bg-white p-8 rounded-[40px] border-2 border-orange-50 shadow-sm print:rounded-2xl print:border-slate-200 print:p-6">
-                  <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-3 px-2 print:text-base print:mb-4">
-                    <span className="w-2 h-8 bg-orange-500 rounded-full"></span>
-                    發酵與烤焙
-                  </h3>
-                  {selectedRecipe.fermentationStages && selectedRecipe.fermentationStages.length > 0 && (
-                    <div className="mb-10">
-                      <h4 className="text-base font-black text-orange-500 uppercase tracking-widest mb-4 ml-1 print:text-black">發酵時序</h4>
-                      <div className="space-y-4">
-                        {selectedRecipe.fermentationStages.map((stage, idx) => (
-                          <div key={idx} className="flex flex-col p-6 bg-orange-50/20 rounded-3xl border border-orange-50 gap-y-4 print:bg-white print:border-slate-200">
-                            <div className="text-lg font-black text-slate-700 print:text-base">{stage.name || `階段 ${idx+1}`}</div>
-                            <div className="grid grid-cols-3 gap-2 text-base font-black text-orange-500 tabular-nums border-t border-orange-100/50 pt-4 print:text-black print:border-slate-100">
-                              <div className="flex flex-col items-center gap-1.5"><span className="text-xs text-slate-400 font-bold uppercase">時間</span><div className="flex items-center gap-1.5">⏲️ {stage.time ? `${stage.time}m` : '--'}</div></div>
-                              <div className="flex flex-col items-center gap-1.5 border-x border-orange-100/50 print:border-slate-100"><span className="text-xs text-slate-400 font-bold uppercase">溫度</span><div className="flex items-center gap-1.5">🌡️ {stage.temperature ? `${stage.temperature}°` : '--'}</div></div>
-                              <div className="flex flex-col items-center gap-1.5"><span className="text-xs text-slate-400 font-bold uppercase">濕度</span><div className="flex items-center gap-1.5">💧 {stage.humidity ? `${stage.humidity}%` : '--'}</div></div>
-                            </div>
+                {(() => {
+                  const hasFermentation = selectedRecipe.fermentationStages?.some(s => s.name || s.time || s.temperature || s.humidity);
+                  const hasBaking = selectedRecipe.bakingStages?.some(s => s.name || s.time || s.topHeat || s.bottomHeat || s.note);
+
+                  if (!hasFermentation && !hasBaking) return null;
+
+                  return (
+                    <div className="bg-white p-8 rounded-[40px] border-2 border-orange-50 shadow-sm print:rounded-2xl print:border-slate-200 print:p-6">
+                      <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-3 px-2 print:text-base print:mb-4">
+                        <span className="w-2 h-8 bg-orange-500 rounded-full"></span>
+                        發酵與烤焙
+                      </h3>
+                      {hasFermentation && (
+                        <div className="mb-10">
+                          <h4 className="text-base font-black text-orange-500 uppercase tracking-widest mb-4 ml-1 print:text-black">發酵時序</h4>
+                          <div className="space-y-4">
+                            {selectedRecipe.fermentationStages?.map((stage, idx) => (
+                              <div key={idx} className="flex flex-col p-6 bg-orange-50/20 rounded-3xl border border-orange-50 gap-y-4 print:bg-white print:border-slate-200">
+                                <div className="text-lg font-black text-slate-700 print:text-base">{stage.name || `階段 ${idx+1}`}</div>
+                                <div className="grid grid-cols-3 gap-2 text-base font-black text-orange-500 tabular-nums border-t border-orange-100/50 pt-4 print:text-black print:border-slate-100">
+                                  <div className="flex flex-col items-center gap-1.5"><span className="text-xs text-slate-400 font-bold uppercase">時間</span><div className="flex items-center gap-1.5">⏲️ {stage.time ? `${stage.time}m` : '--'}</div></div>
+                                  <div className="flex flex-col items-center gap-1.5 border-x border-orange-100/50 print:border-slate-100"><span className="text-xs text-slate-400 font-bold uppercase">溫度</span><div className="flex items-center gap-1.5">🌡️ {stage.temperature ? `${stage.temperature}°` : '--'}</div></div>
+                                  <div className="flex flex-col items-center gap-1.5"><span className="text-xs text-slate-400 font-bold uppercase">濕度</span><div className="flex items-center gap-1.5">💧 {stage.humidity ? `${stage.humidity}%` : '--'}</div></div>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {selectedRecipe.bakingStages && selectedRecipe.bakingStages.length > 0 && (
-                    <div className="mb-8">
-                      <h4 className="text-base font-black text-orange-500 uppercase tracking-widest mb-4 ml-1 print:text-black">烤焙參數</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 print:grid-cols-2">
-                        {selectedRecipe.bakingStages.map((stage, idx) => (
-                          <div key={idx} className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm relative overflow-hidden print:rounded-xl print:border-slate-200">
-                            <div className="flex justify-between items-center mb-6">
-                              <span className="text-xs font-black text-slate-400 uppercase">{stage.name || `STAGE ${idx+1}`}</span>
-                              <span className="text-base font-black text-[#E67E22] bg-orange-50 px-4 py-1.5 rounded-xl print:bg-slate-50 print:text-black">{stage.time} min</span>
-                            </div>
-                            <div className="flex justify-around text-center items-center">
-                              <div className="flex-1"><div className="text-xs text-slate-400 font-bold uppercase mb-2">上火</div><div className="text-3xl font-black text-slate-700 tabular-nums print:text-xl">{stage.topHeat}<span className="text-sm opacity-50 ml-0.5">°C</span></div></div>
-                              <div className="w-px h-12 bg-orange-100 print:bg-slate-100" />
-                              <div className="flex-1"><div className="text-xs text-slate-400 font-bold uppercase mb-2">下火</div><div className="text-3xl font-black text-slate-700 tabular-nums print:text-xl">{stage.bottomHeat}<span className="text-sm opacity-50 ml-0.5">°C</span></div></div>
-                            </div>
-                            {stage.note && <div className="mt-6 pt-4 border-t border-orange-50 text-xs font-bold text-slate-400 italic text-center leading-relaxed">{stage.note}</div>}
+                        </div>
+                      )}
+                      {hasBaking && (
+                        <div className="mb-8">
+                          <h4 className="text-base font-black text-orange-500 uppercase tracking-widest mb-4 ml-1 print:text-black">烤焙參數</h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 print:grid-cols-2">
+                            {selectedRecipe.bakingStages?.map((stage, idx) => (
+                              <div key={idx} className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm relative overflow-hidden print:rounded-xl print:border-slate-200">
+                                <div className="flex justify-between items-center mb-6">
+                                  <span className="text-xs font-black text-slate-400 uppercase">{stage.name || `STAGE ${idx+1}`}</span>
+                                  <span className="text-base font-black text-[#E67E22] bg-orange-50 px-4 py-1.5 rounded-xl print:bg-slate-50 print:text-black">{stage.time} min</span>
+                                </div>
+                                <div className="flex justify-around text-center items-center">
+                                  <div className="flex-1"><div className="text-xs text-slate-400 font-bold uppercase mb-2">上火</div><div className="text-3xl font-black text-slate-700 tabular-nums print:text-xl">{stage.topHeat}<span className="text-sm opacity-50 ml-0.5">°C</span></div></div>
+                                  <div className="w-px h-12 bg-orange-100 print:bg-slate-100" />
+                                  <div className="flex-1"><div className="text-xs text-slate-400 font-bold uppercase mb-2">下火</div><div className="text-3xl font-black text-slate-700 tabular-nums print:text-xl">{stage.bottomHeat}<span className="text-sm opacity-50 ml-0.5">°C</span></div></div>
+                                </div>
+                                {stage.note && <div className="mt-6 pt-4 border-t border-orange-50 text-xs font-bold text-slate-400 italic text-center leading-relaxed">{stage.note}</div>}
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  );
+                })()}
 
                 <div className="bg-white p-8 rounded-[40px] border-2 border-orange-50 shadow-sm print:rounded-2xl print:border-slate-200 print:p-6">
                   <div className="flex justify-between items-center mb-8 print:mb-4">
@@ -1864,7 +1894,7 @@ const App: React.FC = () => {
                     </h3>
                     {selectedRecipe && (completedSteps[selectedRecipe.id] || []).length > 0 && (
                       <button 
-                        onClick={() => resetProgress(selectedRecipe.id)}
+                        onClick={() => triggerConfirm(() => resetProgress(selectedRecipe.id), "確認重置進度？", "這將會取消所有已勾選的製作步驟。", "確定重置")}
                         className="text-sm font-black text-orange-600 bg-orange-50 px-5 py-2.5 rounded-2xl border border-orange-100 shadow-sm hover:bg-orange-100 hover:text-orange-700 transition-all active:scale-95 flex items-center gap-2 print:hidden"
                       >
                         <span>🔄</span>
@@ -2025,6 +2055,7 @@ const App: React.FC = () => {
         isOpen={confirmConfig?.isOpen || false}
         title={confirmConfig?.title || ''}
         message={confirmConfig?.message || ''}
+        confirmLabel={confirmConfig?.confirmLabel}
         onConfirm={confirmConfig?.onConfirm || (() => {})}
         onCancel={() => setConfirmConfig(null)}
       />
