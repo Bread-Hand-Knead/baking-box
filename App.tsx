@@ -440,6 +440,33 @@ const App: React.FC = () => {
 
   const [newNote, setNewNote] = useState({ title: '', content: '', master: '' });
 
+  const [completedSteps, setCompletedSteps] = useState<Record<string, number[]>>(() => {
+    const saved = localStorage.getItem('completedSteps');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  useEffect(() => {
+    localStorage.setItem('completedSteps', JSON.stringify(completedSteps));
+  }, [completedSteps]);
+
+  const toggleStepCompleted = (recipeId: string, stepIdx: number) => {
+    setCompletedSteps(prev => {
+      const current = prev[recipeId] || [];
+      const next = current.includes(stepIdx)
+        ? current.filter(i => i !== stepIdx)
+        : [...current, stepIdx];
+      return { ...prev, [recipeId]: next };
+    });
+  };
+
+  const resetProgress = (recipeId: string) => {
+    setCompletedSteps(prev => {
+      const next = { ...prev };
+      delete next[recipeId];
+      return next;
+    });
+  };
+
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -1830,16 +1857,29 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="bg-white p-8 rounded-[40px] border-2 border-orange-50 shadow-sm print:rounded-2xl print:border-slate-200 print:p-6">
-                  <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-3 px-2 print:text-base print:mb-4">
-                    <span className="w-2 h-8 bg-orange-500 rounded-full"></span>
-                    製作步驟
-                  </h3>
+                  <div className="flex justify-between items-center mb-8 print:mb-4">
+                    <h3 className="text-xl font-black text-slate-800 flex items-center gap-3 px-2 print:text-base">
+                      <span className="w-2 h-8 bg-orange-500 rounded-full"></span>
+                      製作步驟
+                    </h3>
+                    {selectedRecipe && (completedSteps[selectedRecipe.id] || []).length > 0 && (
+                      <button 
+                        onClick={() => resetProgress(selectedRecipe.id)}
+                        className="text-[10px] font-bold text-orange-400 hover:text-orange-600 bg-orange-50 px-3 py-1.5 rounded-full transition-all active:scale-95 print:hidden"
+                      >
+                        🔄 重置進度
+                      </button>
+                    )}
+                  </div>
                   <div className="space-y-8 print:space-y-4">
                     {(() => {
                       let stepNumber = 0;
+                      const currentCompleted = selectedRecipe ? (completedSteps[selectedRecipe.id] || []) : [];
+                      
                       return (selectedRecipe.instructions || []).map((inst, idx) => {
                         const isHeader = inst.startsWith('[SECTION]');
                         const content = isHeader ? inst.replace('[SECTION]', '') : inst;
+                        const isCompleted = currentCompleted.includes(idx);
                         
                         if (isHeader) {
                           stepNumber = 0;
@@ -1855,10 +1895,34 @@ const App: React.FC = () => {
 
                         stepNumber++;
                         return (
-                          <div key={idx} className="flex gap-6 items-start group print:gap-3">
-                            <span className="flex-shrink-0 w-10 h-10 bg-orange-50 text-[#E67E22] font-black rounded-2xl flex items-center justify-center text-base shadow-sm border border-orange-100 group-hover:bg-orange-500 group-hover:text-white transition-all print:w-6 print:h-6 print:text-xs print:rounded-lg">{stepNumber}</span>
-                            <div className="flex-grow pt-1.5">
-                              <p className="text-base text-slate-700 leading-relaxed font-bold tracking-wide print:text-sm">{content}</p>
+                          <div key={idx} className="flex gap-4 sm:gap-6 items-start group print:gap-3">
+                            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                              <button 
+                                onClick={() => selectedRecipe && toggleStepCompleted(selectedRecipe.id, idx)}
+                                className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full border-2 flex items-center justify-center transition-all active:scale-90 print:hidden ${
+                                  isCompleted 
+                                    ? 'bg-orange-500 border-orange-500 text-white' 
+                                    : 'bg-white border-orange-200 text-transparent hover:border-orange-400'
+                                }`}
+                              >
+                                <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M5 13l4 4L19 7" />
+                                </svg>
+                              </button>
+                              <span className={`flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 font-black rounded-2xl flex items-center justify-center text-sm sm:text-base shadow-sm border transition-all print:w-6 print:h-6 print:text-xs print:rounded-lg ${
+                                isCompleted 
+                                  ? 'bg-slate-100 text-slate-400 border-slate-200' 
+                                  : 'bg-orange-50 text-[#E67E22] border-orange-100 group-hover:bg-orange-500 group-hover:text-white'
+                              }`}>
+                                {stepNumber}
+                              </span>
+                            </div>
+                            <div className="flex-grow pt-1.5 sm:pt-2">
+                              <p className={`text-base leading-relaxed font-bold tracking-wide transition-all print:text-sm ${
+                                isCompleted ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-700'
+                              }`}>
+                                {content}
+                              </p>
                             </div>
                           </div>
                         );
