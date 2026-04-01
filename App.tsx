@@ -210,8 +210,11 @@ const DisplayIngredientSection: React.FC<{
   ingredients: Ingredient[], 
   title: string, 
   isBaking: boolean, 
-  showPercentage: boolean
-}> = ({ ingredients, title, isBaking, showPercentage }) => {
+  showPercentage: boolean,
+  scalingFactor?: number,
+  onReverseScale?: (index: number, newAmount: number) => void,
+  baseIngredientIndex?: number | null
+}> = ({ ingredients, title, isBaking, showPercentage, scalingFactor = 1, onReverseScale, baseIngredientIndex }) => {
   if (!ingredients || ingredients.length === 0) return null;
 
   const localBaseInfo = useMemo(() => {
@@ -264,16 +267,21 @@ const DisplayIngredientSection: React.FC<{
         {ingredients.map((ing, idx) => {
           const rawAmt = ing.amount;
           const numericAmt = typeof rawAmt === 'number' ? rawAmt : parseFloat(rawAmt) || 0;
+          const scaledAmt = numericAmt * scalingFactor;
           const shouldHideUnit = typeof ing.amount === 'string' && (ing.amount === '適量' || ing.amount === '少許');
           const isWeight = isWeightUnit(ing.unit || 'g');
           const percentage = (localBaseInfo.weight > 0 && isWeight) ? (numericAmt / localBaseInfo.weight * 100).toFixed(1).replace(/\.0$/, '') : '';
+          const isBase = baseIngredientIndex === idx;
 
           return (
-            <div key={`scaling-ing-${idx}`} className="flex flex-col sm:flex-row sm:items-center py-6 sm:py-6 border-b border-orange-50/50 last:border-0 px-2 sm:px-6 hover:bg-orange-50/20 transition-colors rounded-2xl gap-3 sm:gap-0 mb-4 sm:mb-0">
+            <div key={`scaling-ing-${idx}`} className={`flex flex-col sm:flex-row sm:items-center py-6 sm:py-6 border-b border-orange-50/50 last:border-0 px-2 sm:px-6 hover:bg-orange-50/20 transition-colors rounded-2xl gap-3 sm:gap-0 mb-4 sm:mb-0 ${isBase ? 'bg-orange-50/50 border-orange-200' : ''}`}>
               {/* 第一行：材料名稱 (手機版 100%，電腦版彈性寬度) */}
               <div className="flex items-center gap-4 flex-1 min-w-0 w-full px-2 sm:px-0">
                 <span className={`shrink-0 w-3 h-3 rounded-full ${ing.isFlour ? 'bg-orange-500 shadow-[0_0_8px_rgba(230,126,34,0.4)]' : 'bg-slate-200'}`} />
-                <span className="text-slate-800 font-black text-lg sm:text-[1.1rem] leading-tight truncate">{ing.name}</span>
+                <span className="text-slate-800 font-black text-lg sm:text-[1.1rem] leading-tight truncate flex items-center gap-2">
+                  {ing.name}
+                  {isBase && <span className="text-orange-500 text-sm" title="基準材料">⚖️</span>}
+                </span>
               </div>
 
               {/* 第二行 (手機版) / 數據列 (電腦版) */}
@@ -281,9 +289,22 @@ const DisplayIngredientSection: React.FC<{
                 {/* 重量 - 手機版靠左，電腦版固定寬度並靠右 */}
                 <div className="w-auto sm:w-28 flex justify-start sm:justify-end items-center shrink-0 pr-4">
                   <div className="flex items-baseline gap-1 text-left sm:text-right w-full justify-end">
-                    <span className="text-slate-900 font-black text-xl sm:text-lg leading-none">
-                      {ing.amount}{!shouldHideUnit && ing.unit}
-                    </span>
+                    {onReverseScale && isWeight ? (
+                      <div className="relative flex items-center">
+                        <input 
+                          type="number" 
+                          step="0.1"
+                          value={scaledAmt.toFixed(1).replace(/\.0$/, '')} 
+                          onChange={(e) => onReverseScale(idx, parseFloat(e.target.value) || 0)}
+                          className={`w-24 px-2 py-1 bg-white border-2 rounded-lg text-right font-black text-xl sm:text-lg outline-none transition-all ${isBase ? 'border-orange-400 text-orange-600' : 'border-orange-100 focus:border-orange-300 text-slate-900'}`}
+                        />
+                        {!shouldHideUnit && <span className="ml-1 text-sm font-bold text-slate-400">{ing.unit}</span>}
+                      </div>
+                    ) : (
+                      <span className="text-slate-900 font-black text-xl sm:text-lg leading-none">
+                        {(numericAmt * scalingFactor).toFixed(1).replace(/\.0$/, '')}{!shouldHideUnit && ing.unit}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -307,11 +328,11 @@ const DisplayIngredientSection: React.FC<{
       <div className="mt-6 pt-6 border-t border-orange-100/50 flex justify-between items-center px-2 sm:px-6">
         <span className="text-xs font-black text-slate-400 uppercase tracking-widest">區塊總重 (僅計重量單位):</span>
         <span className="text-xl font-black tabular-nums text-slate-700">
-          {ingredients.reduce((acc, ing) => {
+          {(ingredients.reduce((acc, ing) => {
             if (!isWeightUnit(ing.unit || 'g')) return acc;
             const amt = typeof ing.amount === 'number' ? ing.amount : parseFloat(ing.amount as string) || 0;
             return acc + amt;
-          }, 0).toFixed(1).replace(/\.0$/, '')}
+          }, 0) * scalingFactor).toFixed(1).replace(/\.0$/, '')}
           <span className="text-sm font-bold text-slate-400 ml-1">g</span>
         </span>
       </div>
@@ -522,6 +543,7 @@ const App: React.FC = () => {
   // Scaling states
   const [scalingRecipeId, setScalingRecipeId] = useState<string>('');
   const [targetQuantity, setTargetQuantity] = useState<number>(1);
+  const [reverseScalingBase, setReverseScalingBase] = useState<{ sectionKey: string; index: number } | null>(null);
   const [isMoldPanelOpen, setIsMoldPanelOpen] = useState(false);
   
   // Mold scaling states - split into two independent objects
@@ -731,6 +753,29 @@ const App: React.FC = () => {
     const qtyRatio = targetQuantity / scalingRecipe.quantity;
     return qtyRatio * calculatedMoldFactor;
   }, [scalingRecipe, targetQuantity, calculatedMoldFactor]);
+
+  const handleReverseScale = (sectionKey: string, index: number, newAmount: number) => {
+    if (!scalingRecipe) return;
+    
+    let originalIngredients: Ingredient[] = [];
+    if (sectionKey === 'ingredients') originalIngredients = scalingRecipe.ingredients;
+    else if (sectionKey === 'liquidStarterIngredients') originalIngredients = scalingRecipe.liquidStarterIngredients || [];
+    else if (sectionKey === 'fillingIngredients') originalIngredients = scalingRecipe.fillingIngredients || [];
+    else if (sectionKey === 'decorationIngredients') originalIngredients = scalingRecipe.decorationIngredients || [];
+    else if (sectionKey === 'customSectionIngredients') originalIngredients = scalingRecipe.customSectionIngredients || [];
+
+    const originalIng = originalIngredients[index];
+    if (!originalIng) return;
+
+    const originalAmt = typeof originalIng.amount === 'number' ? originalIng.amount : parseFloat(originalIng.amount as string) || 0;
+    if (originalAmt <= 0) return;
+
+    const requiredScalingFactor = newAmount / originalAmt;
+    const newTargetQuantity = (requiredScalingFactor / calculatedMoldFactor) * (scalingRecipe.quantity || 1);
+    
+    setTargetQuantity(newTargetQuantity);
+    setReverseScalingBase({ sectionKey, index });
+  };
 
   const handleApplyMoldPreset = (mold: 'source' | 'target', presetName: string) => {
     const preset = MOLD_PRESETS.find(p => p.name === presetName);
@@ -1052,6 +1097,7 @@ const App: React.FC = () => {
                       setScalingRecipeId(e.target.value);
                       const r = recipes.find(rec => rec.id === e.target.value);
                       if (r) setTargetQuantity(r.quantity || 1);
+                      setReverseScalingBase(null);
                     }}
                     className="w-full px-5 py-4 bg-orange-50/30 border-2 border-orange-100 rounded-2xl text-lg font-bold outline-none focus:border-orange-300 transition-all"
                   >
@@ -1072,7 +1118,16 @@ const App: React.FC = () => {
                         <div className="space-y-3">
                           <label className="text-sm sm:text-base font-black text-[#E67E22] uppercase tracking-wider">目標產出</label>
                           <div className="relative">
-                            <input type="number" step="0.1" value={targetQuantity} onChange={(e) => setTargetQuantity(Math.max(0.1, parseFloat(e.target.value) || 1))} className="w-full p-5 bg-orange-50 border-2 border-orange-200 rounded-2xl text-3xl font-black text-orange-600 text-center outline-none focus:border-orange-400 transition-all pr-12" />
+                            <input 
+                              type="number" 
+                              step="0.1" 
+                              value={targetQuantity.toFixed(1).replace(/\.0$/, '')} 
+                              onChange={(e) => {
+                                setTargetQuantity(Math.max(0.1, parseFloat(e.target.value) || 1));
+                                setReverseScalingBase(null);
+                              }} 
+                              className="w-full p-5 bg-orange-50 border-2 border-orange-200 rounded-2xl text-3xl font-black text-orange-600 text-center outline-none focus:border-orange-400 transition-all pr-12" 
+                            />
                             <span className="absolute right-5 top-1/2 -translate-y-1/2 text-xl font-black text-orange-400 pointer-events-none">份</span>
                           </div>
                         </div>
@@ -1096,12 +1151,18 @@ const App: React.FC = () => {
                             <div className="space-y-5">
                               <div className="flex flex-col gap-3 px-1">
                                  <span className="text-sm sm:text-base font-black text-slate-500 uppercase tracking-widest">原本食譜模具</span>
-                                 <select onChange={(e) => handleApplyMoldPreset('source', e.target.value)} className="w-full px-4 py-3 bg-white border border-orange-100 rounded-xl text-sm font-bold outline-none">
+                                 <select 
+                                    onChange={(e) => {
+                                      handleApplyMoldPreset('source', e.target.value);
+                                      setReverseScalingBase(null);
+                                    }} 
+                                    className="w-full px-4 py-3 bg-white border border-orange-100 rounded-xl text-sm font-bold outline-none"
+                                  >
                                     {MOLD_PRESETS.map(p => <option key={`src-preset-${p.name}`} value={p.name}>{p.name}</option>)}
                                  </select>
                                  <div className="flex bg-white rounded-xl p-1.5 border border-orange-100 shadow-sm mt-1">
-                                    <button type="button" onClick={() => setSourceMold(p => ({...p, type: 'circular'}))} className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${sourceMold.type === 'circular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🔘 圓形</button>
-                                    <button type="button" onClick={() => setSourceMold(p => ({...p, type: 'rectangular'}))} className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${sourceMold.type === 'rectangular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🟦 方形</button>
+                                    <button type="button" onClick={() => { setSourceMold(p => ({...p, type: 'circular'})); setReverseScalingBase(null); }} className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${sourceMold.type === 'circular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🔘 圓形</button>
+                                    <button type="button" onClick={() => { setSourceMold(p => ({...p, type: 'rectangular'})); setReverseScalingBase(null); }} className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${sourceMold.type === 'rectangular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🟦 方形</button>
                                  </div>
                               </div>
                               <div className="bg-white p-6 rounded-3xl border border-orange-50 space-y-4 shadow-sm">
@@ -1109,7 +1170,7 @@ const App: React.FC = () => {
                                   <div className="flex items-center gap-3">
                                     <span className="text-base font-bold text-slate-400 w-12">直徑</span>
                                     <div className="relative flex-1">
-                                      <input type="number" value={sourceMold.diameter || ''} onChange={e => setSourceMold(p => ({...p, diameter: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-slate-50 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                      <input type="number" value={sourceMold.diameter || ''} onChange={e => { setSourceMold(p => ({...p, diameter: parseFloat(e.target.value) || 0})); setReverseScalingBase(null); }} className="w-full text-xl font-black bg-slate-50 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
                                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300 pointer-events-none">cm</span>
                                     </div>
                                   </div>
@@ -1118,14 +1179,14 @@ const App: React.FC = () => {
                                     <div className="flex items-center gap-3">
                                       <span className="text-base font-bold text-slate-400 w-12">長度</span>
                                       <div className="relative flex-1">
-                                        <input type="number" value={sourceMold.length || ''} onChange={e => setSourceMold(p => ({...p, length: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-slate-50 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                        <input type="number" value={sourceMold.length || ''} onChange={e => { setSourceMold(p => ({...p, length: parseFloat(e.target.value) || 0})); setReverseScalingBase(null); }} className="w-full text-xl font-black bg-slate-50 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
                                         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300 pointer-events-none">cm</span>
                                       </div>
                                     </div>
                                     <div className="flex items-center gap-3">
                                       <span className="text-base font-bold text-slate-400 w-12">寬度</span>
                                       <div className="relative flex-1">
-                                        <input type="number" value={sourceMold.width || ''} onChange={e => setSourceMold(p => ({...p, width: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-slate-50 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                        <input type="number" value={sourceMold.width || ''} onChange={e => { setSourceMold(p => ({...p, width: parseFloat(e.target.value) || 0})); setReverseScalingBase(null); }} className="w-full text-xl font-black bg-slate-50 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
                                         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300 pointer-events-none">cm</span>
                                       </div>
                                     </div>
@@ -1134,7 +1195,7 @@ const App: React.FC = () => {
                                 <div className="flex items-center gap-3 border-t border-slate-50 pt-3">
                                   <span className="text-base font-bold text-slate-400 w-12">高度</span>
                                   <div className="relative flex-1">
-                                    <input type="number" value={sourceMold.height || ''} onChange={e => setSourceMold(p => ({...p, height: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-slate-50 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                    <input type="number" value={sourceMold.height || ''} onChange={e => { setSourceMold(p => ({...p, height: parseFloat(e.target.value) || 0})); setReverseScalingBase(null); }} className="w-full text-xl font-black bg-slate-50 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
                                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300 pointer-events-none">cm</span>
                                   </div>
                                 </div>
@@ -1143,12 +1204,18 @@ const App: React.FC = () => {
                             <div className="space-y-5">
                               <div className="flex flex-col gap-3 px-1">
                                  <span className="text-sm sm:text-base font-black text-[#E67E22] uppercase tracking-widest">我要用的模具</span>
-                                 <select onChange={(e) => handleApplyMoldPreset('target', e.target.value)} className="w-full px-4 py-3 bg-white border border-orange-100 rounded-xl text-sm font-bold outline-none">
+                                 <select 
+                                    onChange={(e) => {
+                                      handleApplyMoldPreset('target', e.target.value);
+                                      setReverseScalingBase(null);
+                                    }} 
+                                    className="w-full px-4 py-3 bg-white border border-orange-100 rounded-xl text-sm font-bold outline-none"
+                                  >
                                     {MOLD_PRESETS.map(p => <option key={`tgt-preset-${p.name}`} value={p.name}>{p.name}</option>)}
                                  </select>
                                  <div className="flex bg-white rounded-xl p-1.5 border border-orange-100 shadow-sm mt-1">
-                                    <button type="button" onClick={() => setTargetMold(p => ({...p, type: 'circular'}))} className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${targetMold.type === 'circular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🔘 圓形</button>
-                                    <button type="button" onClick={() => setTargetMold(p => ({...p, type: 'rectangular'}))} className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${targetMold.type === 'rectangular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🟦 方形</button>
+                                    <button type="button" onClick={() => { setTargetMold(p => ({...p, type: 'circular'})); setReverseScalingBase(null); }} className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${targetMold.type === 'circular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🔘 圓形</button>
+                                    <button type="button" onClick={() => { setTargetMold(p => ({...p, type: 'rectangular'})); setReverseScalingBase(null); }} className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${targetMold.type === 'rectangular' ? 'bg-orange-500 text-white' : 'text-orange-400 hover:bg-orange-50'}`}>🟦 方形</button>
                                  </div>
                               </div>
                               <div className="bg-white p-6 rounded-3xl border border-orange-100 shadow-md">
@@ -1156,7 +1223,7 @@ const App: React.FC = () => {
                                   <div className="flex items-center gap-3">
                                     <span className="text-base font-bold text-slate-400 w-12">直徑</span>
                                     <div className="relative flex-1">
-                                      <input type="number" value={targetMold.diameter || ''} onChange={e => setTargetMold(p => ({...p, diameter: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-orange-50/30 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                      <input type="number" value={targetMold.diameter || ''} onChange={e => { setTargetMold(p => ({...p, diameter: parseFloat(e.target.value) || 0})); setReverseScalingBase(null); }} className="w-full text-xl font-black bg-orange-50/30 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
                                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-300 pointer-events-none">cm</span>
                                     </div>
                                   </div>
@@ -1165,14 +1232,14 @@ const App: React.FC = () => {
                                     <div className="flex items-center gap-3">
                                       <span className="text-base font-bold text-slate-400 w-12">長度</span>
                                       <div className="relative flex-1">
-                                        <input type="number" value={targetMold.length || ''} onChange={e => setTargetMold(p => ({...p, length: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-orange-50/30 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                        <input type="number" value={targetMold.length || ''} onChange={e => { setTargetMold(p => ({...p, length: parseFloat(e.target.value) || 0})); setReverseScalingBase(null); }} className="w-full text-xl font-black bg-orange-50/30 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
                                         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-300 pointer-events-none">cm</span>
                                       </div>
                                     </div>
                                     <div className="flex items-center gap-3">
                                       <span className="text-base font-bold text-slate-400 w-12">寬度</span>
                                       <div className="relative flex-1">
-                                        <input type="number" value={targetMold.width || ''} onChange={e => setTargetMold(p => ({...p, width: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-orange-50/30 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                        <input type="number" value={targetMold.width || ''} onChange={e => { setTargetMold(p => ({...p, width: parseFloat(e.target.value) || 0})); setReverseScalingBase(null); }} className="w-full text-xl font-black bg-orange-50/30 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
                                         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-300 pointer-events-none">cm</span>
                                       </div>
                                     </div>
@@ -1181,7 +1248,7 @@ const App: React.FC = () => {
                                 <div className="flex items-center gap-3 border-t border-orange-50 pt-3">
                                   <span className="text-base font-bold text-slate-400 w-12">高度</span>
                                   <div className="relative flex-1">
-                                    <input type="number" value={targetMold.height || ''} onChange={e => setTargetMold(p => ({...p, height: parseFloat(e.target.value) || 0}))} className="w-full text-xl font-black bg-orange-50/30 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
+                                    <input type="number" value={targetMold.height || ''} onChange={e => { setTargetMold(p => ({...p, height: parseFloat(e.target.value) || 0})); setReverseScalingBase(null); }} className="w-full text-xl font-black bg-orange-50/30 rounded-xl px-3 py-2.5 outline-none text-slate-700 text-center pr-10" placeholder="0" />
                                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-300 pointer-events-none">cm</span>
                                   </div>
                                 </div>
@@ -1215,8 +1282,80 @@ const App: React.FC = () => {
                     <p className="text-orange-600 font-bold mt-2">換算倍率: {scalingFactor.toFixed(2)}x</p>
                   </div>
 
+                  {/* 換算後摘要資訊 */}
+                  <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm flex flex-wrap gap-y-6 items-center justify-around text-center mb-8">
+                    {scalingRecipe.category === '中式點心' ? (
+                      <>
+                        <div className="flex-1 min-w-[80px] space-y-1.5">
+                          <div className="text-xs font-black text-slate-400 uppercase">⚖️ 皮重</div>
+                          <div className="text-2xl font-black text-slate-700 tabular-nums">
+                            {((Number(scalingRecipe.crustWeight) || 0) * scalingFactor).toFixed(1)}
+                            <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
+                          </div>
+                        </div>
+                        <div className="w-px h-10 bg-orange-50 hidden sm:block" />
+                        <div className="flex-1 min-w-[80px] space-y-1.5">
+                          <div className="text-xs font-black text-slate-400 uppercase">🧈 油酥</div>
+                          <div className="text-2xl font-black text-slate-700 tabular-nums">
+                            {((Number(scalingRecipe.oilPasteWeight) || 0) * scalingFactor).toFixed(1)}
+                            <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
+                          </div>
+                        </div>
+                        <div className="w-px h-10 bg-orange-50 hidden sm:block" />
+                        <div className="flex-1 min-w-[80px] space-y-1.5">
+                          <div className="text-xs font-black text-slate-400 uppercase">🍯 餡重</div>
+                          <div className="text-2xl font-black text-slate-700 tabular-nums">
+                            {((Number(scalingRecipe.fillingWeight) || 0) * scalingFactor).toFixed(1)}
+                            <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
+                          </div>
+                        </div>
+                        <div className="w-px h-10 bg-orange-50 hidden sm:block" />
+                        <div className="flex-1 min-w-[80px] space-y-1.5">
+                          <div className="text-xs font-black text-slate-400 uppercase">🔢 份數</div>
+                          <div className="text-2xl font-black text-slate-700 tabular-nums">
+                            {targetQuantity}
+                            <span className="text-sm font-bold text-slate-400 ml-0.5">顆</span>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex-1 min-w-[100px] space-y-1.5">
+                          <div className="text-xs font-black text-slate-400 uppercase">⚖️ 麵團/糊重量</div>
+                          <div className="text-2xl font-black text-slate-700 tabular-nums">
+                            {((Number(scalingRecipe.doughWeight) || 0) * scalingFactor).toFixed(1)}
+                            <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
+                          </div>
+                        </div>
+                        {scalingRecipe.fillingWeight && Number(scalingRecipe.fillingWeight) > 0 && (
+                          <>
+                            <div className="w-px h-10 bg-orange-50 hidden sm:block" />
+                            <div className="flex-1 min-w-[100px] space-y-1.5">
+                              <div className="text-xs font-black text-slate-400 uppercase">🍯 內餡重量</div>
+                              <div className="text-2xl font-black text-slate-700 tabular-nums">
+                                {((Number(scalingRecipe.fillingWeight) || 0) * scalingFactor).toFixed(1)}
+                                <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                        <div className="w-px h-10 bg-orange-50 hidden sm:block" />
+                        <div className="flex-1 min-w-[100px] space-y-1.5">
+                          <div className="text-xs font-black text-slate-400 uppercase">🔢 份數</div>
+                          <div className="text-2xl font-black text-slate-700 tabular-nums">
+                            {targetQuantity}
+                            <span className="text-sm font-bold text-slate-400 ml-0.5">份</span>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
                   <div className="flex flex-col sm:flex-row justify-between items-center gap-4 sm:gap-0 mb-8 print:hidden">
-                    <h3 className="text-xl font-black text-slate-800">換算結果清單</h3>
+                    <div className="flex flex-col gap-1">
+                      <h3 className="text-xl font-black text-slate-800">換算結果清單</h3>
+                      <span className="text-xs font-bold text-orange-400">💡 提示：直接修改材料重量可進行「逆算」</span>
+                    </div>
                     <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-3">
                       <span className="text-sm sm:text-sm font-black text-orange-500 bg-orange-50 px-6 py-2.5 rounded-full border border-orange-100 shadow-sm">目前總倍率: {scalingFactor.toFixed(2)}x</span>
                       <button 
@@ -1230,12 +1369,32 @@ const App: React.FC = () => {
                   </div>
                   <div className="bg-orange-50/20 px-4 py-8 sm:p-8 rounded-[40px] border border-orange-50 print:bg-white print:border-none print:p-0 max-w-3xl mx-auto">
                     {scalingRecipe.sectionsOrder?.map(secKey => {
-                       if (secKey === 'ingredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.ingredients} title={scalingRecipe.mainSectionName || "主麵團"} isBaking={scalingRecipe.isBakingRecipe} showPercentage={true} scalingFactor={scalingFactor} />;
-                       if (secKey === 'liquidStarterIngredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.liquidStarterIngredients || []} title={scalingRecipe.liquidStarterName || "發酵種"} isBaking={scalingRecipe.isBakingRecipe} showPercentage={true} scalingFactor={scalingFactor} />;
-                       if (secKey === 'fillingIngredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.fillingIngredients || []} title={scalingRecipe.fillingSectionName || "內餡"} isBaking={scalingRecipe.isBakingRecipe} showPercentage={true} scalingFactor={scalingFactor} />;
-                       if (secKey === 'decorationIngredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.decorationIngredients || []} title={scalingRecipe.decorationSectionName || "裝飾 / 表面"} isBaking={scalingRecipe.isBakingRecipe} showPercentage={true} scalingFactor={scalingFactor} />;
-                       if (secKey === 'customSectionIngredients') return <DisplayIngredientSection key={secKey} ingredients={scalingRecipe.customSectionIngredients || []} title={scalingRecipe.customSectionName || "其他區塊"} isBaking={scalingRecipe.isBakingRecipe} showPercentage={true} scalingFactor={scalingFactor} />;
-                       return null;
+                       const sectionIngredients = 
+                         secKey === 'ingredients' ? scalingRecipe.ingredients :
+                         secKey === 'liquidStarterIngredients' ? scalingRecipe.liquidStarterIngredients :
+                         secKey === 'fillingIngredients' ? scalingRecipe.fillingIngredients :
+                         secKey === 'decorationIngredients' ? scalingRecipe.decorationIngredients :
+                         secKey === 'customSectionIngredients' ? scalingRecipe.customSectionIngredients : [];
+                       
+                       const sectionTitle = 
+                         secKey === 'ingredients' ? (scalingRecipe.mainSectionName || "主麵團") :
+                         secKey === 'liquidStarterIngredients' ? (scalingRecipe.liquidStarterName || "發酵種") :
+                         secKey === 'fillingIngredients' ? (scalingRecipe.fillingSectionName || "內餡") :
+                         secKey === 'decorationIngredients' ? (scalingRecipe.decorationSectionName || "裝飾 / 表面") :
+                         secKey === 'customSectionIngredients' ? (scalingRecipe.customSectionName || "其他區塊") : "";
+
+                       return (
+                         <DisplayIngredientSection 
+                           key={secKey} 
+                           ingredients={sectionIngredients || []} 
+                           title={sectionTitle} 
+                           isBaking={scalingRecipe.isBakingRecipe} 
+                           showPercentage={true} 
+                           scalingFactor={scalingFactor}
+                           onReverseScale={(idx, newAmt) => handleReverseScale(secKey, idx, newAmt)}
+                           baseIngredientIndex={reverseScalingBase?.sectionKey === secKey ? reverseScalingBase.index : null}
+                         />
+                       );
                     })}
                   </div>
                 </div>
