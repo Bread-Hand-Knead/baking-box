@@ -17,7 +17,7 @@ import {
 // --- 1. 類型定義 (原 types.ts 內容) ---
 export enum AppView { LIST, CREATE, EDIT, DETAIL, SCALING, COLLECTION, MANAGE_CATEGORIES }
 
-export interface Ingredient { name: string; amount: string | number; unit: string; isFlour: boolean; }
+export interface Ingredient { name: string; amount: string | number; unit: string; isFlour: boolean; percentage?: number | string; }
 export interface FermentationStage { name: string; time: string; timeUnit?: '分鐘' | '小時'; temperature: string; humidity: string; note?: string; }
 export interface BakingStage { name: string; topHeat: string; bottomHeat: string; time: string; timeUnit?: '分鐘' | '小時'; note: string; }
 export interface ExecutionLog { id: string; date: string; rating: number; feedback: string; photoUrl?: string; }
@@ -36,6 +36,9 @@ export interface Recipe {
   notes?: string; tags?: string[]; moldName?: string;
   doughWeight?: number | string; crustWeight?: number | string; oilPasteWeight?: number | string; fillingWeight?: number | string;
   quantity?: number; shelfLife?: string; totalDuration?: string; createdAt: number; executionLogs?: ExecutionLog[];
+  uid?: string;
+  author_id?: string;
+  bakingPercentage?: number | string;
 }
 
 interface Category { id: string; name: string; order: number; }
@@ -540,6 +543,51 @@ const IngredientList: React.FC<{
   );
 };
 
+const SubscriptionModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300">
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        className="bg-[#F5E6D3] w-full max-w-md rounded-[40px] overflow-hidden shadow-2xl border border-[#E8D5C0]"
+      >
+        <div className="p-8 text-center">
+          <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">
+            <span className="text-4xl">🌟</span>
+          </div>
+          <h2 className="text-2xl font-black text-[#8B5E3C] mb-4">升級 VIP 即可解鎖</h2>
+          <p className="text-[#A67C52] font-bold mb-8 leading-relaxed">
+            解鎖無限雲端儲存、專業逆算工具、<br />
+            以及一鍵產生 PDF 配方卡功能！
+          </p>
+          
+          <div className="space-y-4">
+            <button 
+              onClick={() => {
+                window.open('https://ais-dev-2v2log3rzdrogmvvnzxg3i-102707397029.asia-east1.run.app', '_blank');
+              }}
+              className="w-full py-4 bg-[#8B5E3C] text-white rounded-full font-black shadow-lg hover:bg-[#724D31] transition-all active:scale-95"
+            >
+              立即升級 (NT$ 99/月)
+            </button>
+            <button 
+              onClick={onClose}
+              className="w-full py-4 bg-white/50 text-[#8B5E3C] rounded-full font-black hover:bg-white/80 transition-all"
+            >
+              稍後再說
+            </button>
+          </div>
+          
+          <p className="mt-6 text-[10px] text-[#A67C52]/60 font-bold uppercase tracking-widest">
+            支持獨立開發者，讓烘焙更簡單
+          </p>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -551,9 +599,11 @@ const App: React.FC = () => {
   const [storageUsage, setStorageUsage] = useState(0);
   const [isVip, setIsVip] = useState(false);
   const [view, setView] = useState<AppView>(AppView.LIST);
+  const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+  const [showUserStatus, setShowUserStatus] = useState(false);
 
   const isAdmin = useMemo(() => {
-    return user?.email === 'linda6623@gmail.com';
+    return user?.email === 'linda6623@gmail.com' || user?.email === 'linda6623@gamil.com';
   }, [user]);
 
   useEffect(() => {
@@ -599,7 +649,7 @@ const App: React.FC = () => {
       return;
     }
 
-    const q = query(collection(db, 'recipes'), where('uid', '==', user.uid));
+    const q = query(collection(db, 'recipes'), where('author_id', '==', user.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Recipe));
       setRecipes(docs);
@@ -695,7 +745,6 @@ const App: React.FC = () => {
     try {
       await signOut(auth);
       showToast("已登出");
-      setRecipes([]); // Clear recipes on logout
       setIsVip(false);
       setView(AppView.LIST);
     } catch (error) {
@@ -721,8 +770,32 @@ const App: React.FC = () => {
         showToast("正在遷移本地食譜至雲端...");
         
         for (const recipe of localRecipes) {
-          const newRecipe = { ...recipe, uid: user.uid, createdAt: recipe.createdAt || Date.now() };
+          const newRecipe = { 
+            ...recipe, 
+            uid: user.uid, 
+            author_id: user.uid, 
+            createdAt: recipe.createdAt || Date.now() 
+          };
           await setDoc(doc(db, 'recipes', recipe.id), newRecipe);
+        }
+
+        // Migrate categories, knowledge, completedSteps
+        const localCatsRaw = localStorage.getItem(CATEGORIES_KEY);
+        if (localCatsRaw) {
+          const localCats = JSON.parse(localCatsRaw);
+          await saveUserSettings({ categories: localCats });
+        }
+
+        const localKnowledgeRaw = localStorage.getItem(KNOWLEDGE_KEY);
+        if (localKnowledgeRaw) {
+          const localKnowledge = JSON.parse(localKnowledgeRaw);
+          await saveUserSettings({ knowledge: localKnowledge });
+        }
+
+        const localStepsRaw = localStorage.getItem(COMPLETED_STEPS_KEY);
+        if (localStepsRaw) {
+          const localSteps = JSON.parse(localStepsRaw);
+          await saveUserSettings({ completedSteps: localSteps });
         }
 
         localStorage.setItem(`migrated_${user.uid}`, 'true');
@@ -1133,7 +1206,7 @@ const App: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const data = JSON.parse(event.target?.result as string);
         if (data.recipes) {
@@ -1170,15 +1243,53 @@ const App: React.FC = () => {
             sectionsOrder: Array.isArray(r.sectionsOrder) ? r.sectionsOrder : [...DEFAULT_SECTIONS_ORDER],
             tags: Array.isArray(r.tags) ? r.tags : [],
             notes: r.notes || '',
-            executionLogs: Array.isArray(r.executionLogs) ? r.executionLogs : []
+            executionLogs: Array.isArray(r.executionLogs) ? r.executionLogs : [],
+            uid: user?.uid || null,
+            author_id: user?.uid || null
           }));
+
+          if (user) {
+            // Write to Firestore
+            await Promise.all(processed.map(async (r: Recipe) => {
+              await setDoc(doc(db, 'recipes', r.id), r);
+            }));
+            // Clear local storage for recipes after cloud import
+            localStorage.removeItem(STORAGE_KEY);
+          }
+          
           setRecipes(processed);
         }
-        if (data.categories) setCategories(data.categories);
-        if (data.knowledge) setKnowledge(data.knowledge);
-        if (data.resources) setResources(data.resources);
-        alert('匯入成功！');
-      } catch (err) { alert('匯入失敗'); }
+        if (data.categories) {
+          if (user) {
+            await saveUserSettings({ categories: data.categories });
+            localStorage.removeItem(CATEGORIES_KEY);
+          } else {
+            setCategories(data.categories);
+          }
+        }
+        if (data.knowledge) {
+          if (user) {
+            await saveUserSettings({ knowledge: data.knowledge });
+            localStorage.removeItem(KNOWLEDGE_KEY);
+          } else {
+            setKnowledge(data.knowledge);
+          }
+        }
+        if (data.resources) {
+          if (user) {
+            await saveUserSettings({ resources: data.resources });
+            localStorage.removeItem(RESOURCE_STORAGE_KEY);
+          } else {
+            setResources(data.resources);
+          }
+        }
+        showToast('匯入成功！雲端資料已同步。');
+        // Reset file input
+        if (backupInputRef.current) backupInputRef.current.value = '';
+      } catch (err) { 
+        console.error("Import Error:", err);
+        showToast('匯入失敗，請檢查檔案格式'); 
+      }
     };
     reader.readAsText(file);
   };
@@ -1245,7 +1356,7 @@ const App: React.FC = () => {
             <div className="flex items-center gap-3 bg-white/80 backdrop-blur-md px-4 py-2 rounded-2xl border border-orange-50 shadow-sm">
               {user ? (
                 <>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 relative cursor-pointer" onClick={() => setShowUserStatus(!showUserStatus)}>
                     {user.photoURL ? (
                       <img src={user.photoURL} alt={user.displayName || ''} className="w-8 h-8 rounded-full border border-orange-100" referrerPolicy="no-referrer" />
                     ) : (
@@ -1254,9 +1365,25 @@ const App: React.FC = () => {
                       </div>
                     )}
                     <div className="hidden sm:block">
-                      <p className="text-[10px] font-black text-slate-400 uppercase leading-none">個人雲端</p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase leading-none">
+                        {isAdmin ? '超級管理員' : '個人雲端'}
+                      </p>
                       <p className="text-xs font-bold text-slate-700">{user.displayName || '烘焙愛好者'}</p>
                     </div>
+
+                    {showUserStatus && (
+                      <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-orange-50 p-4 z-[1100] animate-in fade-in slide-in-from-top-2">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">目前身分</p>
+                        <p className="text-sm font-black text-orange-600">
+                          {isAdmin ? '身分：超級管理員' : (isVip ? '身分：VIP 會員' : '身分：一般用戶')}
+                        </p>
+                        <div className="mt-3 pt-3 border-t border-slate-50">
+                          <p className="text-[10px] font-bold text-slate-400 leading-tight">
+                            {isAdmin ? '已解鎖所有專業功能且永久免費' : (isVip ? '已解鎖無限儲存與專業工具' : '升級 VIP 解鎖更多功能')}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-red-500 transition-colors" title="登出">
                     <LogOut size={18} />
@@ -1281,7 +1408,15 @@ const App: React.FC = () => {
                   <span className="bg-orange-100 p-2 rounded-2xl text-2xl shadow-sm">🥖</span>
                   烘焙靈感箱
                 </h1>
-                <p className="text-orange-300 text-xs mt-1 font-medium">記錄師傅的筆記與經典配方</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="text-orange-300 text-xs font-medium">記錄師傅的筆記與經典配方</p>
+                  {user && (
+                    <span className="flex items-center gap-1 text-[10px] font-black text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100/50 animate-pulse">
+                      <Cloud size={10} />
+                      <span>雲端同步中 (已連線)</span>
+                    </span>
+                  )}
+                </div>
                 
                 {/* 儲存空間進度條 */}
                 <div className="mt-4 max-w-[200px] no-print">
@@ -1389,14 +1524,14 @@ const App: React.FC = () => {
                         type="button"
                         onClick={() => {
                           if (!isVip) {
-                            showToast("進階模具換算為 VIP 專屬功能");
+                            setIsSubscriptionModalOpen(true);
                             return;
                           }
                           setIsMoldPanelOpen(!isMoldPanelOpen);
                         }}
-                        className={`w-full px-6 py-5 flex items-center justify-between ${isVip ? 'bg-orange-100/30 hover:bg-orange-100/50' : 'bg-slate-100/50 cursor-not-allowed'} transition-colors text-left`}
+                        className={`w-full px-6 py-5 flex items-center justify-between ${isVip ? 'bg-orange-100/30 hover:bg-orange-100/50' : 'bg-[#F5E6D3]/50'} transition-colors text-left`}
                       >
-                        <span className={`text-lg font-black ${isVip ? 'text-orange-700' : 'text-slate-400'}`}>3. 模具體積換算 (跨形狀互換工具) {!isVip && '(VIP 專屬)'}</span>
+                        <span className={`text-lg font-black ${isVip ? 'text-orange-700' : 'text-[#8B5E3C]'}`}>3. 模具體積換算 (跨形狀互換工具) {!isVip && '(VIP)'}</span>
                         <span className={`text-orange-400 transition-transform duration-300 ${isMoldPanelOpen ? 'rotate-180' : ''}`}>▼</span>
                       </button>
 
@@ -1610,7 +1745,9 @@ const App: React.FC = () => {
                   <div className="flex flex-col sm:flex-row justify-between items-center gap-4 sm:gap-0 mb-8 print:hidden">
                     <div className="flex flex-col gap-1">
                       <h3 className="text-xl font-black text-slate-800">換算結果清單</h3>
-                      <span className="text-xs font-bold text-orange-400">💡 提示：直接修改材料重量可進行「逆算」</span>
+                      <span className="text-xs font-bold text-orange-400">
+                        {isVip ? '💡 提示：直接修改材料重量可進行「逆算」' : '🌟 升級 VIP 即可使用專業逆算工具'}
+                      </span>
                     </div>
                     <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-3">
                       <span className="text-sm sm:text-sm font-black text-orange-500 bg-orange-50 px-6 py-2.5 rounded-full border border-orange-100 shadow-sm">目前總倍率: {scalingFactor.toFixed(2)}x</span>
@@ -1654,7 +1791,7 @@ const App: React.FC = () => {
                            isBaking={scalingRecipe.isBakingRecipe} 
                            showPercentage={true} 
                            scalingFactor={scalingFactor}
-                           onReverseScale={(idx, newAmt) => handleReverseScale(secKey, idx, newAmt)}
+                           onReverseScale={isVip ? (idx, newAmt) => handleReverseScale(secKey, idx, newAmt) : undefined}
                            baseIngredientIndex={reverseScalingBase?.sectionKey === secKey ? reverseScalingBase.index : null}
                          />
                        );
@@ -2192,16 +2329,17 @@ const App: React.FC = () => {
                       const recipeData = {
                         ...formRecipe,
                         uid: user?.uid || null,
+                        author_id: user?.uid || null,
                         updatedAt: Date.now()
                       };
 
                       if (view === AppView.CREATE) {
                         const newId = 'rec-' + Date.now();
-                        const newRecipe = { ...recipeData, id: newId, createdAt: Date.now(), uid: user?.uid } as Recipe;
+                        const newRecipe = { ...recipeData, id: newId, createdAt: Date.now(), uid: user?.uid, author_id: user?.uid } as Recipe;
                         
                         if (user) {
                           if (!isVip && recipes.length >= 10) {
-                            showToast("非 VIP 用戶最多隻能儲存 10 份食譜");
+                            setIsSubscriptionModalOpen(true);
                             return;
                           }
                           try {
@@ -2720,15 +2858,15 @@ const App: React.FC = () => {
                     <button 
                       onClick={() => {
                         if (!isVip) {
-                          showToast("一鍵產生 PDF 為 VIP 專屬功能");
+                          setIsSubscriptionModalOpen(true);
                           return;
                         }
                         window.print();
                       }} 
-                      className={`flex-grow py-5 ${isVip ? 'bg-orange-500 hover:bg-orange-600' : 'bg-slate-300 cursor-not-allowed'} text-white rounded-[32px] font-black shadow-lg active:scale-95 transition-all text-base flex items-center justify-center gap-2`}
+                      className={`flex-grow py-5 ${isVip ? 'bg-orange-500 hover:bg-orange-600' : 'bg-[#E8D5C0] text-[#8B5E3C]'} text-white rounded-[32px] font-black shadow-lg active:scale-95 transition-all text-base flex items-center justify-center gap-2`}
                     >
                       <span>🖨️</span>
-                      <span>列印 / 存為 PDF {!isVip && '(VIP 專屬)'}</span>
+                      <span>列印 / 存為 PDF {!isVip && '(VIP)'}</span>
                     </button>
                     <button onClick={() => triggerConfirm(handleDeleteRecipe, "確認刪除食譜？", "妳確定要移除這份食譜嗎？此操作將會永久刪除所有相關資料。")} className="flex-grow py-5 bg-red-50 text-red-500 rounded-[32px] font-black shadow-sm active:scale-95 transition-all hover:bg-red-100 text-base">刪除配方</button>
                   </div>
@@ -2745,6 +2883,9 @@ const App: React.FC = () => {
         <button onClick={() => setView(AppView.COLLECTION)} className={`flex flex-col items-center gap-1 transition-all ${view === AppView.COLLECTION ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}><span className="text-2xl">📥</span><span className="text-[10px] font-black">收集</span></button>
       </nav>
 
+      {/* Modals */}
+      <SubscriptionModal isOpen={isSubscriptionModalOpen} onClose={() => setIsSubscriptionModalOpen(false)} />
+      
       {/* 臨時配方卡 Modal */}
       {isRecipeCardModalOpen && scalingRecipe && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-300">
