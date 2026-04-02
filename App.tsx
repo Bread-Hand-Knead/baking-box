@@ -591,6 +591,7 @@ const SubscriptionModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [hasSyncedCloud, setHasSyncedCloud] = useState(false);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [knowledge, setKnowledge] = useState<Knowledge[]>(DEFAULT_KNOWLEDGE);
@@ -653,12 +654,16 @@ const App: React.FC = () => {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Recipe));
       setRecipes(docs);
+      if (!hasSyncedCloud) {
+        showToast("✅ 雲端食譜已同步");
+        setHasSyncedCloud(true);
+      }
     }, (error) => {
       console.error("Firestore Error (Recipes):", error);
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, hasSyncedCloud]);
 
   // Firestore Sync - Settings
   useEffect(() => {
@@ -746,6 +751,19 @@ const App: React.FC = () => {
       await signOut(auth);
       showToast("已登出");
       setIsVip(false);
+      setRecipes([]);
+      setCategories(DEFAULT_CATEGORIES);
+      setKnowledge([]);
+      setCompletedSteps({});
+      setHasSyncedCloud(false);
+      
+      // Clear local storage for privacy
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(CATEGORIES_KEY);
+      localStorage.removeItem(KNOWLEDGE_KEY);
+      localStorage.removeItem(RESOURCE_STORAGE_KEY);
+      localStorage.removeItem(COMPLETED_STEPS_KEY);
+      
       setView(AppView.LIST);
     } catch (error) {
       console.error("Logout Error:", error);
@@ -799,6 +817,14 @@ const App: React.FC = () => {
         }
 
         localStorage.setItem(`migrated_${user.uid}`, 'true');
+        
+        // Clear old local storage after migration
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(CATEGORIES_KEY);
+        localStorage.removeItem(KNOWLEDGE_KEY);
+        localStorage.removeItem(RESOURCE_STORAGE_KEY);
+        localStorage.removeItem(COMPLETED_STEPS_KEY);
+        
         showToast("遷移完成！");
       } catch (error) {
         console.error("Migration Error:", error);
@@ -963,16 +989,20 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const calculateSize = () => {
-      let total = 0;
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key) total += (localStorage.getItem(key) || '').length;
+    const calculateUsage = () => {
+      if (!user) {
+        setStorageUsage(0);
+        return;
       }
-      setStorageUsage(total);
+      // Usage is based on number of recipes (limit 10 for non-VIP)
+      // We'll use a percentage value directly in storageUsage for simplicity
+      // or keep it as a count. Let's keep it as a percentage (0-100)
+      const limit = isVip ? 1000 : 10; // VIP has much higher limit
+      const percentage = (recipes.length / limit) * 100;
+      setStorageUsage(percentage);
     };
-    calculateSize();
-  }, [recipes, categories, knowledge, resources]);
+    calculateUsage();
+  }, [recipes, isVip, user]);
 
   const filteredRecipes = useMemo(() => {
     return recipes.filter(r => {
@@ -1422,14 +1452,14 @@ const App: React.FC = () => {
                 <div className="mt-4 max-w-[200px] no-print">
                   <div className="flex justify-between items-center mb-1">
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">儲存空間</span>
-                    <span className={`text-[11px] font-black ${(storageUsage / (5 * 1024 * 1024)) > 0.8 ? 'text-red-500' : 'text-orange-400'}`}>
-                      {Math.min(100, (storageUsage / (5 * 1024 * 1024)) * 100).toFixed(1)}%
+                    <span className={`text-[11px] font-black ${storageUsage > 80 ? 'text-red-500' : 'text-orange-400'}`}>
+                      {Math.min(100, storageUsage).toFixed(1)}%
                     </span>
                   </div>
                   <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden border border-slate-50">
                     <div 
-                      className={`h-full transition-all duration-500 ${(storageUsage / (5 * 1024 * 1024)) > 0.8 ? 'bg-red-500' : 'bg-orange-400'}`}
-                      style={{ width: `${Math.min(100, (storageUsage / (5 * 1024 * 1024)) * 100)}%` }}
+                      className={`h-full transition-all duration-500 ${storageUsage > 80 ? 'bg-red-500' : 'bg-orange-400'}`}
+                      style={{ width: `${Math.min(100, storageUsage)}%` }}
                     />
                   </div>
                 </div>
