@@ -1,0 +1,67 @@
+{
+  "entities": {
+    "Recipe": {
+      "title": "Recipe",
+      "description": "A baking recipe",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "uid": { "type": "string", "description": "User ID of the owner" },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "quantity": { "type": "number" },
+        "moldType": { "type": "string" },
+        "moldCapacity": { "type": "number" },
+        "moldQuantity": { "type": "number" },
+        "mainSectionName": { "type": "string" },
+        "ingredients": { "type": "array", "items": { "type": "object" } },
+        "liquidStarterName": { "type": "string" },
+        "liquidStarterIngredients": { "type": "array", "items": { "type": "object" } },
+        "fillingSectionName": { "type": "string" },
+        "fillingIngredients": { "type": "array", "items": { "type": "object" } },
+        "decorationSectionName": { "type": "string" },
+        "decorationIngredients": { "type": "array", "items": { "type": "object" } },
+        "customSectionName": { "type": "string" },
+        "customSectionIngredients": { "type": "array", "items": { "type": "object" } },
+        "sectionsOrder": { "type": "array", "items": { "type": "string" } },
+        "steps": { "type": "array", "items": { "type": "string" } },
+        "executionLogs": { "type": "array", "items": { "type": "object" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "title", "category"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "A recipe category",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "uid": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["uid", "name"]
+    },
+    "UserSettings": {
+      "title": "UserSettings",
+      "description": "User specific settings and VIP status",
+      "type": "object",
+      "properties": {
+        "is_vip": { "type": "boolean", "description": "Whether the user has VIP status" },
+        "categories": { "type": "array", "items": { "$ref": "Category" } },
+        "knowledge": { "type": "array", "items": { "type": "object" } },
+        "completedSteps": { "type": "object" }
+      }
+    }
+  },
+  "firestore": {
+    "/recipes/{recipeId}": {
+      "schema": "Recipe",
+      "description": "User recipes"
+    },
+    "/userSettings/{userId}": {
+      "schema": "UserSettings",
+      "description": "User settings and VIP status"
+    }
+  }
+}

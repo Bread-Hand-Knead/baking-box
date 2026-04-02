@@ -1,5 +1,18 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { 
+  auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged, User,
+  collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, updateDoc, deleteDoc,
+  getDocFromServer
+} from './firebase';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  Plus, Search, Book, Scale, Settings, LogOut, LogIn, User as UserIcon, 
+  ChevronRight, Trash2, Edit3, Share2, Printer, Save, X, RotateCcw,
+  Clock, Thermometer, Droplets, Tag, BookOpen, ExternalLink, Calendar,
+  ChevronUp, ChevronDown, Camera, Image as ImageIcon, CheckCircle2, AlertCircle,
+  Cloud, CloudOff, Smartphone
+} from 'lucide-react';
 
 // --- 1. 類型定義 (原 types.ts 內容) ---
 export enum AppView { LIST, CREATE, EDIT, DETAIL, SCALING, COLLECTION, MANAGE_CATEGORIES }
@@ -132,9 +145,10 @@ const RecipeCard: React.FC<{ recipe: Recipe; onClick: (r: Recipe) => void }> = (
 
 // --- 3. 妳原本的主程式 App (修正了獨立計算與排版) ---
 const STORAGE_KEY = 'ai_recipe_box_data_v4';
-const CATEGORY_STORAGE_KEY = 'ai_recipe_box_categories_v4';
-const KNOWLEDGE_STORAGE_KEY = 'ai_recipe_box_knowledge_v4';
+const CATEGORIES_KEY = 'ai_recipe_box_categories_v4';
+const KNOWLEDGE_KEY = 'ai_recipe_box_knowledge_v4';
 const RESOURCE_STORAGE_KEY = 'ai_recipe_box_resources_v4';
+const COMPLETED_STEPS_KEY = 'ai_recipe_box_completed_steps_v4';
 
 const DEFAULT_SECTIONS_ORDER = [
   'liquidStarterIngredients', 'ingredients', 'fillingIngredients', 'decorationIngredients', 'customSectionIngredients'
@@ -527,23 +541,206 @@ const IngredientList: React.FC<{
 };
 
 const App: React.FC = () => {
-  const [recipes, setRecipes] = useState<Recipe[]>(() => JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'));
-  const [categories, setCategories] = useState<Category[]>(() => JSON.parse(localStorage.getItem(CATEGORY_STORAGE_KEY) || JSON.stringify(DEFAULT_CATEGORIES)));
-  const [knowledge, setKnowledge] = useState<Knowledge[]>(() => JSON.parse(localStorage.getItem(KNOWLEDGE_STORAGE_KEY) || JSON.stringify(DEFAULT_KNOWLEDGE)));
-  const [resources, setResources] = useState<Resource[]>(() => JSON.parse(localStorage.getItem(RESOURCE_STORAGE_KEY) || '[]'));
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
+  const [knowledge, setKnowledge] = useState<Knowledge[]>(DEFAULT_KNOWLEDGE);
+  const [resources, setResources] = useState<Resource[]>([]);
   
   const [storageUsage, setStorageUsage] = useState(0);
-
+  const [isVip, setIsVip] = useState(false);
   const [view, setView] = useState<AppView>(AppView.LIST);
+
+  const isAdmin = useMemo(() => {
+    return user?.email === 'linda6623@gmail.com';
+  }, [user]);
+
+  useEffect(() => {
+    if (isAdmin) {
+      setIsVip(true);
+    }
+  }, [isAdmin]);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('全部');
+
+  const [completedSteps, setCompletedSteps] = useState<Record<string, number[]>>({});
+
+  // Firebase Auth Listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setIsAuthReady(true);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Test Connection
+  useEffect(() => {
+    const testConnection = async () => {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('the client is offline')) {
+          console.error("Please check your Firebase configuration.");
+        }
+      }
+    };
+    testConnection();
+  }, []);
+
+  // Firestore Sync - Recipes
+  useEffect(() => {
+    if (!user) {
+      const localData = localStorage.getItem(STORAGE_KEY);
+      if (localData) setRecipes(JSON.parse(localData));
+      return;
+    }
+
+    const q = query(collection(db, 'recipes'), where('uid', '==', user.uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Recipe));
+      setRecipes(docs);
+    }, (error) => {
+      console.error("Firestore Error (Recipes):", error);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // Firestore Sync - Settings
+  useEffect(() => {
+    if (!user) {
+      const localCats = localStorage.getItem(CATEGORIES_KEY);
+      if (localCats) setCategories(JSON.parse(localCats));
+      const localKnowledge = localStorage.getItem(KNOWLEDGE_KEY);
+      if (localKnowledge) setKnowledge(JSON.parse(localKnowledge));
+      const localSteps = localStorage.getItem(COMPLETED_STEPS_KEY);
+      if (localSteps) setCompletedSteps(JSON.parse(localSteps));
+      return;
+    }
+
+    const docRef = doc(db, 'userSettings', user.uid);
+    const unsubscribe = onSnapshot(docRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data.categories) setCategories(data.categories);
+        if (data.knowledge) setKnowledge(data.knowledge);
+        if (data.completedSteps) setCompletedSteps(data.completedSteps);
+        if (data.is_vip !== undefined) {
+          setIsVip(isAdmin || data.is_vip);
+        }
+      }
+    }, (error) => {
+      console.error("Firestore Error (Settings):", error);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // Helper to save settings to Firestore
+  const saveUserSettings = async (updates: any) => {
+    if (!user) return;
+    try {
+      await setDoc(doc(db, 'userSettings', user.uid), updates, { merge: true });
+    } catch (error) {
+      console.error("Error saving user settings:", error);
+    }
+  };
+
+  // Update LocalStorage and Firestore
+  useEffect(() => {
+    if (!user) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
+    }
+  }, [recipes, user]);
+
+  useEffect(() => {
+    if (!user) {
+      localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
+    } else {
+      saveUserSettings({ categories });
+    }
+  }, [categories, user]);
+
+  useEffect(() => {
+    if (!user) {
+      localStorage.setItem(KNOWLEDGE_KEY, JSON.stringify(knowledge));
+    } else {
+      saveUserSettings({ knowledge });
+    }
+  }, [knowledge, user]);
+
+  useEffect(() => {
+    if (!user) {
+      localStorage.setItem(COMPLETED_STEPS_KEY, JSON.stringify(completedSteps));
+    } else {
+      saveUserSettings({ completedSteps });
+    }
+  }, [completedSteps, user]);
+
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+      showToast("登入成功！");
+    } catch (error) {
+      console.error("Login Error:", error);
+      showToast("登入失敗");
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      showToast("已登出");
+      setRecipes([]); // Clear recipes on logout
+      setIsVip(false);
+      setView(AppView.LIST);
+    } catch (error) {
+      console.error("Logout Error:", error);
+    }
+  };
+
+  // Data Migration Logic
+  useEffect(() => {
+    const migrateData = async () => {
+      if (!user || !isAuthReady) return;
+      
+      const migrationFlag = localStorage.getItem(`migrated_${user.uid}`);
+      if (migrationFlag) return;
+
+      const localRecipesRaw = localStorage.getItem(STORAGE_KEY);
+      if (!localRecipesRaw) return;
+
+      try {
+        const localRecipes = JSON.parse(localRecipesRaw) as Recipe[];
+        if (localRecipes.length === 0) return;
+
+        showToast("正在遷移本地食譜至雲端...");
+        
+        for (const recipe of localRecipes) {
+          const newRecipe = { ...recipe, uid: user.uid, createdAt: recipe.createdAt || Date.now() };
+          await setDoc(doc(db, 'recipes', recipe.id), newRecipe);
+        }
+
+        localStorage.setItem(`migrated_${user.uid}`, 'true');
+        showToast("遷移完成！");
+      } catch (error) {
+        console.error("Migration Error:", error);
+        showToast("遷移失敗，請稍後再試");
+      }
+    };
+
+    migrateData();
+  }, [user, isAuthReady]);
   
   // Scaling states
   const [scalingRecipeId, setScalingRecipeId] = useState<string>('');
   const [targetQuantity, setTargetQuantity] = useState<number>(1);
   const [reverseScalingBase, setReverseScalingBase] = useState<{ sectionKey: string; index: number } | null>(null);
+  const [isRecipeCardModalOpen, setIsRecipeCardModalOpen] = useState(false);
   const [isMoldPanelOpen, setIsMoldPanelOpen] = useState(false);
   
   // Mold scaling states - split into two independent objects
@@ -556,15 +753,6 @@ const App: React.FC = () => {
   const logPhotoInputRef = useRef<HTMLInputElement>(null);
 
   const [newNote, setNewNote] = useState({ title: '', content: '', master: '' });
-
-  const [completedSteps, setCompletedSteps] = useState<Record<string, number[]>>(() => {
-    const saved = localStorage.getItem('completedSteps');
-    return saved ? JSON.parse(saved) : {};
-  });
-
-  useEffect(() => {
-    localStorage.setItem('completedSteps', JSON.stringify(completedSteps));
-  }, [completedSteps]);
 
   const toggleStepCompleted = (recipeId: string, stepIdx: number) => {
     setCompletedSteps(prev => {
@@ -701,11 +889,6 @@ const App: React.FC = () => {
     migrateData();
   }, []);
 
-  useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes)); }, [recipes]);
-  useEffect(() => { localStorage.setItem(CATEGORY_STORAGE_KEY, JSON.stringify(categories)); }, [categories]);
-  useEffect(() => { localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(knowledge)); }, [knowledge]);
-  useEffect(() => { localStorage.setItem(RESOURCE_STORAGE_KEY, JSON.stringify(resources)); }, [resources]);
-
   useEffect(() => {
     const calculateSize = () => {
       let total = 0;
@@ -753,6 +936,27 @@ const App: React.FC = () => {
     const qtyRatio = targetQuantity / scalingRecipe.quantity;
     return qtyRatio * calculatedMoldFactor;
   }, [scalingRecipe, targetQuantity, calculatedMoldFactor]);
+
+  const totalScaledWeight = useMemo(() => {
+    if (!scalingRecipe) return 0;
+    let total = 0;
+    const allSections = [
+      scalingRecipe.ingredients,
+      scalingRecipe.liquidStarterIngredients,
+      scalingRecipe.fillingIngredients,
+      scalingRecipe.decorationIngredients,
+      scalingRecipe.customSectionIngredients
+    ];
+    allSections.forEach(section => {
+      (section || []).forEach(ing => {
+        const amt = typeof ing.amount === 'number' ? ing.amount : parseFloat(ing.amount as string) || 0;
+        if (ing.unit === 'g' || ing.unit === '克') {
+          total += amt * scalingFactor;
+        }
+      });
+    });
+    return total;
+  }, [scalingRecipe, scalingFactor]);
 
   const handleReverseScale = (sectionKey: string, index: number, newAmount: number) => {
     if (!scalingRecipe) return;
@@ -1006,22 +1210,68 @@ const App: React.FC = () => {
     showToast("筆記儲存成功！");
   };
 
-  const handleDeleteRecipe = () => {
+  const handleDeleteRecipe = async () => {
     if (!selectedRecipe) return;
     const recipeIdToDelete = String(selectedRecipe.id);
-    const updatedRecipes = recipes.filter(r => String(r.id) !== recipeIdToDelete);
-    setRecipes(updatedRecipes);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedRecipes));
+    
+    if (user) {
+      try {
+        await deleteDoc(doc(db, 'recipes', recipeIdToDelete));
+      } catch (error) {
+        console.error("Error deleting recipe:", error);
+        showToast("刪除失敗");
+        return;
+      }
+    } else {
+      const updatedRecipes = recipes.filter(r => String(r.id) !== recipeIdToDelete);
+      setRecipes(updatedRecipes);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedRecipes));
+    }
+    
     setSelectedRecipe(null);
     setSearchQuery('');
     setActiveCategory('全部');
     setView(AppView.LIST);
+    showToast("食譜已刪除");
   };
 
   return (
     <div className="min-h-screen bg-[#FFFBF7] text-slate-900 pb-28 print:bg-white print:pb-0">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 print:max-w-none print:px-0 print:py-0">
         
+        {/* Auth Header */}
+        <div className="flex justify-end mb-4 no-print">
+          {isAuthReady && (
+            <div className="flex items-center gap-3 bg-white/80 backdrop-blur-md px-4 py-2 rounded-2xl border border-orange-50 shadow-sm">
+              {user ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    {user.photoURL ? (
+                      <img src={user.photoURL} alt={user.displayName || ''} className="w-8 h-8 rounded-full border border-orange-100" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-orange-500">
+                        <UserIcon size={16} />
+                      </div>
+                    )}
+                    <div className="hidden sm:block">
+                      <p className="text-[10px] font-black text-slate-400 uppercase leading-none">個人雲端</p>
+                      <p className="text-xs font-bold text-slate-700">{user.displayName || '烘焙愛好者'}</p>
+                    </div>
+                  </div>
+                  <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-red-500 transition-colors" title="登出">
+                    <LogOut size={18} />
+                  </button>
+                </>
+              ) : (
+                <button onClick={handleLogin} className="flex items-center gap-2 text-orange-600 font-black text-sm hover:text-orange-700 transition-colors">
+                  <LogIn size={18} />
+                  <span>Google 登入</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* LIST View Header */}
         {view === AppView.LIST && (
           <header className="flex flex-col gap-6 mb-8 animate-in fade-in slide-in-from-top-4 no-print">
@@ -1137,10 +1387,16 @@ const App: React.FC = () => {
                     <div className={`bg-orange-50/20 rounded-[40px] border border-orange-100 overflow-hidden transition-all duration-500 ease-in-out ${(['餡料', '果醬', '抹醬/其他'].includes(scalingRecipe?.category || '')) ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-[2000px] opacity-100'}`}>
                       <button 
                         type="button"
-                        onClick={() => setIsMoldPanelOpen(!isMoldPanelOpen)}
-                        className="w-full px-6 py-5 flex items-center justify-between bg-orange-100/30 hover:bg-orange-100/50 transition-colors text-left"
+                        onClick={() => {
+                          if (!isVip) {
+                            showToast("進階模具換算為 VIP 專屬功能");
+                            return;
+                          }
+                          setIsMoldPanelOpen(!isMoldPanelOpen);
+                        }}
+                        className={`w-full px-6 py-5 flex items-center justify-between ${isVip ? 'bg-orange-100/30 hover:bg-orange-100/50' : 'bg-slate-100/50 cursor-not-allowed'} transition-colors text-left`}
                       >
-                        <span className="text-lg font-black text-orange-700">3. 模具體積換算 (跨形狀互換工具)</span>
+                        <span className={`text-lg font-black ${isVip ? 'text-orange-700' : 'text-slate-400'}`}>3. 模具體積換算 (跨形狀互換工具) {!isVip && '(VIP 專屬)'}</span>
                         <span className={`text-orange-400 transition-transform duration-300 ${isMoldPanelOpen ? 'rotate-180' : ''}`}>▼</span>
                       </button>
 
@@ -1358,6 +1614,13 @@ const App: React.FC = () => {
                     </div>
                     <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-3">
                       <span className="text-sm sm:text-sm font-black text-orange-500 bg-orange-50 px-6 py-2.5 rounded-full border border-orange-100 shadow-sm">目前總倍率: {scalingFactor.toFixed(2)}x</span>
+                      <button 
+                        onClick={() => setIsRecipeCardModalOpen(true)} 
+                        className="w-auto px-6 py-3 bg-green-600 text-white rounded-2xl text-sm font-black shadow-lg hover:bg-green-700 transition-all flex items-center gap-2 active:scale-95"
+                      >
+                        <span className="text-xl">📋</span>
+                        <span>產生臨時配方卡</span>
+                      </button>
                       <button 
                         onClick={() => window.print()} 
                         className="w-auto px-6 py-3 bg-orange-500 text-white rounded-2xl text-sm font-black shadow-lg hover:bg-orange-600 transition-all flex items-center gap-2 active:scale-95"
@@ -1921,7 +2184,59 @@ const App: React.FC = () => {
                   <label className="text-xs font-black text-orange-600 uppercase tracking-widest">📝 老師的小叮嚀</label>
                   <textarea value={formRecipe.notes || ''} onChange={(e) => setFormRecipe(p => ({ ...p, notes: e.target.value }))} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs min-h-[150px] focus:bg-white focus:ring-1 focus:ring-orange-200 transition-all leading-relaxed" placeholder="紀錄製作時的心得、建議改進之處..." />
                 </div>
-                <div id="save-recipe-btn" className="pt-6"><button onClick={() => { if (!formRecipe.title) return; if (view === AppView.CREATE) { setRecipes(prev => [{ ...formRecipe as Recipe, id: 'rec-' + Date.now(), createdAt: Date.now() }, ...prev]); } else { setRecipes(prev => prev.map(r => r.id === formRecipe.id ? (formRecipe as Recipe) : r)); } showToast("食譜儲存成功！"); setView(AppView.LIST); }} className="w-full py-4 bg-[#E67E22] text-white rounded-3xl font-black text-lg shadow-lg active:scale-95">儲存配方</button></div>
+                <div id="save-recipe-btn" className="pt-6">
+                  <button 
+                    onClick={async () => { 
+                      if (!formRecipe.title) return; 
+                      
+                      const recipeData = {
+                        ...formRecipe,
+                        uid: user?.uid || null,
+                        updatedAt: Date.now()
+                      };
+
+                      if (view === AppView.CREATE) {
+                        const newId = 'rec-' + Date.now();
+                        const newRecipe = { ...recipeData, id: newId, createdAt: Date.now(), uid: user?.uid } as Recipe;
+                        
+                        if (user) {
+                          if (!isVip && recipes.length >= 10) {
+                            showToast("非 VIP 用戶最多隻能儲存 10 份食譜");
+                            return;
+                          }
+                          try {
+                            await setDoc(doc(db, 'recipes', newId), newRecipe);
+                          } catch (error) {
+                            console.error("Error creating recipe:", error);
+                            showToast("儲存失敗");
+                            return;
+                          }
+                        } else {
+                          setRecipes(prev => [newRecipe, ...prev]);
+                        }
+                      } else {
+                        const updatedRecipe = recipeData as Recipe;
+                        if (user) {
+                          try {
+                            await setDoc(doc(db, 'recipes', updatedRecipe.id), updatedRecipe);
+                          } catch (error) {
+                            console.error("Error updating recipe:", error);
+                            showToast("儲存失敗");
+                            return;
+                          }
+                        } else {
+                          setRecipes(prev => prev.map(r => r.id === updatedRecipe.id ? updatedRecipe : r));
+                        }
+                      }
+                      
+                      showToast("食譜儲存成功！");
+                      setView(AppView.LIST);
+                    }} 
+                    className="w-full py-4 bg-[#E67E22] text-white rounded-3xl font-black text-lg shadow-lg active:scale-95"
+                  >
+                    儲存配方
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -2402,7 +2717,19 @@ const App: React.FC = () => {
 
                   <div className="flex flex-wrap gap-4 relative z-[100] no-print">
                     <button onClick={() => { setFormRecipe(selectedRecipe); setView(AppView.EDIT); }} className="flex-grow py-5 bg-white border border-orange-100 rounded-[32px] font-black text-orange-600 shadow-sm active:scale-95 transition-all hover:bg-orange-50 text-base">編輯配方</button>
-                    <button onClick={() => window.print()} className="flex-grow py-5 bg-orange-500 text-white rounded-[32px] font-black shadow-lg active:scale-95 transition-all hover:bg-orange-600 text-base flex items-center justify-center gap-2"><span>🖨️</span><span>列印 / 存為 PDF</span></button>
+                    <button 
+                      onClick={() => {
+                        if (!isVip) {
+                          showToast("一鍵產生 PDF 為 VIP 專屬功能");
+                          return;
+                        }
+                        window.print();
+                      }} 
+                      className={`flex-grow py-5 ${isVip ? 'bg-orange-500 hover:bg-orange-600' : 'bg-slate-300 cursor-not-allowed'} text-white rounded-[32px] font-black shadow-lg active:scale-95 transition-all text-base flex items-center justify-center gap-2`}
+                    >
+                      <span>🖨️</span>
+                      <span>列印 / 存為 PDF {!isVip && '(VIP 專屬)'}</span>
+                    </button>
                     <button onClick={() => triggerConfirm(handleDeleteRecipe, "確認刪除食譜？", "妳確定要移除這份食譜嗎？此操作將會永久刪除所有相關資料。")} className="flex-grow py-5 bg-red-50 text-red-500 rounded-[32px] font-black shadow-sm active:scale-95 transition-all hover:bg-red-100 text-base">刪除配方</button>
                   </div>
                 </div>
@@ -2417,6 +2744,98 @@ const App: React.FC = () => {
         <button onClick={() => setView(AppView.SCALING)} className={`flex flex-col items-center gap-1 transition-all ${view === AppView.SCALING ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}><span className="text-2xl">⚖️</span><span className="text-[10px] font-black">換算</span></button>
         <button onClick={() => setView(AppView.COLLECTION)} className={`flex flex-col items-center gap-1 transition-all ${view === AppView.COLLECTION ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}><span className="text-2xl">📥</span><span className="text-[10px] font-black">收集</span></button>
       </nav>
+
+      {/* 臨時配方卡 Modal */}
+      {isRecipeCardModalOpen && scalingRecipe && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-300">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsRecipeCardModalOpen(false)} />
+          <div className="bg-white w-full max-w-2xl rounded-[40px] shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300 border-4 border-orange-100">
+            {/* Header */}
+            <div className="p-6 sm:p-8 border-b border-orange-50 flex items-center justify-between bg-orange-50/30">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-black text-orange-400 uppercase tracking-widest">臨時換算配方卡</span>
+                <h2 className="text-2xl sm:text-3xl font-black text-slate-800 leading-tight">{scalingRecipe.title}</h2>
+              </div>
+              <button 
+                onClick={() => setIsRecipeCardModalOpen(false)}
+                className="w-12 h-12 bg-white rounded-full shadow-md flex items-center justify-center text-slate-400 hover:text-red-500 transition-all active:scale-90 border border-orange-50"
+              >
+                <span className="text-2xl">✕</span>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-8 custom-scrollbar">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-orange-50/50 p-5 rounded-3xl border border-orange-100 text-center">
+                  <span className="text-xs font-black text-orange-400 uppercase block mb-1">目標份數</span>
+                  <span className="text-3xl font-black text-orange-600">{targetQuantity} <span className="text-lg">{scalingRecipe.category === '中式點心' ? '顆' : '份'}</span></span>
+                </div>
+                <div className="bg-orange-50/50 p-5 rounded-3xl border border-orange-100 text-center">
+                  <span className="text-xs font-black text-orange-400 uppercase block mb-1">總重量 (約)</span>
+                  <span className="text-3xl font-black text-orange-600">{totalScaledWeight.toFixed(1)} <span className="text-lg">g</span></span>
+                </div>
+              </div>
+
+              <div className="space-y-8">
+                {scalingRecipe.sectionsOrder?.map(secKey => {
+                  const sectionIngredients = 
+                    secKey === 'ingredients' ? scalingRecipe.ingredients :
+                    secKey === 'liquidStarterIngredients' ? scalingRecipe.liquidStarterIngredients :
+                    secKey === 'fillingIngredients' ? scalingRecipe.fillingIngredients :
+                    secKey === 'decorationIngredients' ? scalingRecipe.decorationIngredients :
+                    secKey === 'customSectionIngredients' ? scalingRecipe.customSectionIngredients : [];
+                  
+                  const sectionTitle = 
+                    secKey === 'ingredients' ? (scalingRecipe.mainSectionName || "主麵團") :
+                    secKey === 'liquidStarterIngredients' ? (scalingRecipe.liquidStarterName || "發酵種") :
+                    secKey === 'fillingIngredients' ? (scalingRecipe.fillingSectionName || "內餡") :
+                    secKey === 'decorationIngredients' ? (scalingRecipe.decorationSectionName || "裝飾 / 表面") :
+                    secKey === 'customSectionIngredients' ? (scalingRecipe.customSectionName || "其他區塊") : "";
+
+                  if (!sectionIngredients || sectionIngredients.length === 0) return null;
+
+                  return (
+                    <div key={`modal-${secKey}`} className="space-y-4">
+                      <h3 className="text-lg font-black text-slate-700 flex items-center gap-2">
+                        <span className="w-1.5 h-6 bg-orange-400 rounded-full" />
+                        {sectionTitle}
+                      </h3>
+                      <div className="bg-slate-50/50 rounded-3xl p-4 sm:p-6 border border-slate-100 space-y-3">
+                        {sectionIngredients.map((ing, idx) => {
+                          const originalAmt = typeof ing.amount === 'number' ? ing.amount : parseFloat(ing.amount as string) || 0;
+                          const scaledAmt = originalAmt * scalingFactor;
+                          return (
+                            <div key={idx} className="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
+                              <span className="text-xl font-bold text-slate-700">{ing.name}</span>
+                              <div className="flex items-baseline gap-1">
+                                <span className="text-2xl font-black text-orange-600 tabular-nums">
+                                  {scaledAmt.toFixed(1).replace(/\.0$/, '')}
+                                </span>
+                                <span className="text-sm font-black text-slate-400 uppercase">{ing.unit}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 sm:p-8 bg-slate-50 border-t border-slate-100">
+              <button 
+                onClick={() => setIsRecipeCardModalOpen(false)}
+                className="w-full py-4 bg-slate-800 text-white rounded-2xl font-black text-lg shadow-lg hover:bg-slate-900 transition-all active:scale-95"
+              >
+                關閉視窗
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog 
         isOpen={confirmConfig?.isOpen || false}

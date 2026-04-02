@@ -12,8 +12,12 @@
   },
   "dependencies": {
     "@google/genai": "^1.40.0",
+    "firebase": "^12.11.0",
+    "lucide-react": "^1.7.0",
+    "motion": "^12.38.0",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "vite-plugin-pwa": "^1.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
