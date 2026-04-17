@@ -1,14 +1,49 @@
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Component } from 'react';
 import { 
   auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged, User,
   collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, updateDoc, deleteDoc,
   getDocFromServer, setPersistence, browserLocalPersistence
 } from './firebase';
+import { GoogleGenAI, Type } from "@google/genai";
+
+// Initialize Gemini AI
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+
+const AI_RECIPE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    title: { type: Type.STRING, description: "配方名稱" },
+    master: { type: Type.STRING, description: "作者/師傅" },
+    category: { type: Type.STRING, description: "分類" },
+    description: { type: Type.STRING, description: "簡短描述" },
+    ingredients: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          name: { type: Type.STRING },
+          amount: { type: Type.STRING },
+          unit: { type: Type.STRING },
+          isFlour: { type: Type.BOOLEAN }
+        }
+      }
+    },
+    instructions: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING }
+    },
+    tags: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING }
+    },
+    notes: { type: Type.STRING, description: "心得提示" }
+  }
+};
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, Search, Book, Scale, Settings, LogOut, LogIn, User as UserIcon, 
-  ChevronRight, Trash2, Edit3, Share2, Printer, Save, X, RotateCcw,
+  ChevronRight, Trash2, Edit2, Edit3, Share2, Printer, Save, X, RotateCcw,
   Clock, Thermometer, Droplets, Tag, BookOpen, ExternalLink, Calendar,
   ChevronUp, ChevronDown, Camera, Image as ImageIcon, CheckCircle2, AlertCircle,
   Cloud, CloudOff, Smartphone
@@ -199,10 +234,19 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(`Firestore ${operationType} failed at ${path}. Please check rules.`);
 }
 
-export class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; errorMessage: string }> {
-  constructor(props: { children: React.ReactNode }) {
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  errorMessage: string;
+}
+
+export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false, errorMessage: '' };
+    (this as any).state = { hasError: false, errorMessage: '' };
   }
 
   static getDerivedStateFromError(error: any) {
@@ -214,7 +258,8 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
   }
 
   render() {
-    if (this.state.hasError) {
+    const s = (this as any).state;
+    if (s.hasError) {
       return (
         <div className="min-h-screen bg-[#F5E6D3] flex items-center justify-center p-6">
           <div className="bg-white p-8 rounded-[40px] shadow-xl max-w-md text-center border-2 border-orange-100">
@@ -224,7 +269,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
               系統遇到一些問題，請嘗試重新整理。
             </p>
             <div className="bg-red-50 p-4 rounded-2xl mb-6 overflow-hidden">
-              <p className="text-xs text-red-500 font-mono break-all">{this.state.errorMessage}</p>
+              <p className="text-xs text-red-500 font-mono break-all">{s.errorMessage}</p>
             </div>
             <button 
               onClick={() => window.location.reload()}
@@ -236,7 +281,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
         </div>
       );
     }
-    return this.props.children;
+    return (this as any).props.children;
   }
 }
 
@@ -650,10 +695,11 @@ const SubscriptionModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
           <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">
             <span className="text-4xl">🌟</span>
           </div>
-          <h2 className="text-2xl font-black text-[#8B5E3C] mb-4">升級 VIP 即可解鎖</h2>
-          <p className="text-[#A67C52] font-bold mb-8 leading-relaxed">
+          <h2 className="text-2xl font-black text-[#8B5E3C] mb-4">🌟 升級 VIP，開啟永久雲端備份</h2>
+          <p className="text-[#A67C52] font-bold mb-8 leading-relaxed text-sm">
+            連線上雲端，更換手機也不怕資料遺失！<br />
             解鎖無限雲端儲存、專業逆算工具、<br />
-            以及一鍵產生 PDF 配方卡功能！
+            以及一鍵產生 PDF 配方卡功能。
           </p>
           
           <div className="space-y-4">
@@ -687,6 +733,7 @@ const App: React.FC = () => {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [hasSyncedCloud, setHasSyncedCloud] = useState(false);
   const isSyncingFromCloud = useRef(false);
+  const autoSaveTimerRef = useRef<any>(null);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [knowledge, setKnowledge] = useState<Knowledge[]>(DEFAULT_KNOWLEDGE);
@@ -694,6 +741,7 @@ const App: React.FC = () => {
   
   const [storageUsage, setStorageUsage] = useState(0);
   const [isVip, setIsVip] = useState(false);
+  const [isCloudSyncEnabled, setIsCloudSyncEnabled] = useState(false);
   const [view, setView] = useState<AppView>(AppView.LIST);
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
   const [showUserStatus, setShowUserStatus] = useState(false);
@@ -705,12 +753,15 @@ const App: React.FC = () => {
   useEffect(() => {
     if (isAdmin) {
       setIsVip(true);
+      setIsCloudSyncEnabled(true);
     }
   }, [isAdmin]);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('全部');
+  const [isAiParsing, setIsAiParsing] = useState(false);
+  const [smartPasteText, setSmartPasteText] = useState('');
 
   const [completedSteps, setCompletedSteps] = useState<Record<string, number[]>>({});
 
@@ -733,19 +784,29 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!isAuthReady) return;
 
-    if (!user) {
+    if (!user || !isCloudSyncEnabled) {
       const localData = localStorage.getItem(STORAGE_KEY);
-      if (localData) setRecipes(JSON.parse(localData));
+      if (localData) {
+        setRecipes(JSON.parse(localData));
+      } else {
+        setRecipes([]);
+      }
       return;
     }
 
-    console.log("登入成功，正在抓取 UID:", user.uid);
+    console.log("雲端同步啟動，正在抓取 UID:", user.uid);
     const q = query(collection(db, 'recipes'), where('author_id', '==', user.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Recipe));
+      
+      // If VIP just logged in and cloud is empty, but they are not VIP yet or it's their first time
+      if (!hasSyncedCloud && docs.length === 0 && !isVip) {
+        setIsSubscriptionModalOpen(true);
+      }
+
       setRecipes(docs);
       if (!hasSyncedCloud) {
-        showToast("✅ 雲端食譜已同步");
+        showToast("☁️ 雲端食譜同步成功");
         setHasSyncedCloud(true);
       }
     }, (error) => {
@@ -753,7 +814,7 @@ const App: React.FC = () => {
     });
 
     return () => unsubscribe();
-  }, [user, isAuthReady]);
+  }, [user, isAuthReady, isCloudSyncEnabled]);
 
   // Firestore Sync - Settings
   useEffect(() => {
@@ -779,6 +840,9 @@ const App: React.FC = () => {
         if (data.completedSteps) setCompletedSteps(data.completedSteps);
         if (data.is_vip !== undefined) {
           setIsVip(isAdmin || data.is_vip);
+        }
+        if (data.is_cloud_sync_enabled !== undefined) {
+          setIsCloudSyncEnabled(isAdmin || data.is_cloud_sync_enabled);
         }
         setTimeout(() => { isSyncingFromCloud.current = false; }, 100);
       }
@@ -999,6 +1063,8 @@ const App: React.FC = () => {
   });
 
   const [newCatName, setNewCatName] = useState('');
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
+  const [editingCatValue, setEditingCatValue] = useState('');
   const [showJumpBtn, setShowJumpBtn] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(false);
 
@@ -1263,6 +1329,75 @@ const App: React.FC = () => {
     setFormRecipe(prev => ({ ...prev, tags: tagArray }));
   };
 
+  const handleSmartPaste = async () => {
+    if (!smartPasteText.trim()) return;
+    setIsAiParsing(true);
+    try {
+      const resp = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `請解析以下烘焙筆記，並將其轉換為正確的 JSON 格式。如果材料中包含麵粉、高筋、低筋等，則 isFlour 為 true。\n\n筆記內容：\n${smartPasteText}`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: AI_RECIPE_SCHEMA,
+          systemInstruction: "你是一個專業的烘焙助手。請從亂糟糟的筆記中精確提取食譜資訊。",
+        }
+      });
+      
+      const parsed = JSON.parse(resp.text || '{}');
+      setFormRecipe(prev => ({
+        ...prev,
+        ...parsed,
+        ingredients: parsed.ingredients || prev.ingredients,
+        instructions: parsed.instructions || prev.instructions,
+        tags: [...new Set([...(prev.tags || []), ...(parsed.tags || [])])]
+      }));
+      setSmartPasteText('');
+      showToast("✨ AI 解析成功！");
+    } catch (err) {
+      console.error("AI Parsing Error:", err);
+      showToast("AI 解析失敗，請手動輸入");
+    } finally {
+      setIsAiParsing(false);
+    }
+  };
+
+  // Auto-save draft logic
+  useEffect(() => {
+    if ((view === AppView.CREATE || view === AppView.EDIT) && user && formRecipe.title) {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = setTimeout(async () => {
+        try {
+          await setDoc(doc(db, 'drafts', user.uid), {
+            ...formRecipe,
+            savedAt: Date.now()
+          });
+          console.log("Draft auto-saved");
+        } catch (e) {
+          console.warn("Draft auto-save failed");
+        }
+      }, 5000); // 5 seconds debounce
+    }
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [formRecipe, view, user]);
+
+  const restoreDraft = async () => {
+    if (!user) return;
+    try {
+      const draftDoc = await getDoc(doc(db, 'drafts', user.uid));
+      if (draftDoc.exists()) {
+        const draftData = draftDoc.data() as Recipe;
+        setFormRecipe(draftData);
+        showToast("✅ 已還原最新草稿");
+      } else {
+        showToast("尚未發現可還原的草稿");
+      }
+    } catch (e) {
+      showToast("讀取草稿失敗");
+    }
+  };
+
   const currentOrder = formRecipe.sectionsOrder || DEFAULT_SECTIONS_ORDER;
 
   const handleUpdateIngredient = (fieldKey: keyof Recipe, index: number, field: keyof Ingredient, val: any) => {
@@ -1305,6 +1440,47 @@ const App: React.FC = () => {
       else if (direction === 'down' && index < order.length - 1) [order[index], order[index+1]] = [order[index+1], order[index]];
       return { ...prev, sectionsOrder: order };
     });
+  };
+
+  const renameCategory = async (oldName: string, newName: string) => {
+    if (!newName.trim() || oldName === newName) {
+      setEditingCatId(null);
+      return;
+    }
+
+    // 1. 更新本機食譜狀態
+    const updatedRecipes = recipes.map(r => {
+      if (r.category === oldName) {
+        return { ...r, category: newName };
+      }
+      return r;
+    });
+    setRecipes(updatedRecipes);
+
+    // 2. 更新分類列表
+    const updatedCats = categories.map(c => 
+      c.name === oldName ? { ...c, name: newName } : c
+    );
+    setCategories(updatedCats);
+
+    // 3. 更新同步邏輯
+    if (user && isCloudSyncEnabled) {
+      // 更新雲端食譜
+      const recipesToUpdate = recipes.filter(r => r.category === oldName);
+      await Promise.all(recipesToUpdate.map(async (r) => {
+        try {
+          await updateDoc(doc(db, 'recipes', r.id), { category: newName });
+        } catch (e) {
+          console.error("Renaming cloud recipe failed", e);
+        }
+      }));
+    } else {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedRecipes));
+      localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updatedCats));
+    }
+
+    setEditingCatId(null);
+    showToast(`分類「${oldName}」已更新為「${newName}」並同步所有食譜`);
   };
 
   const handleCreateNew = () => {
@@ -1457,19 +1633,20 @@ const App: React.FC = () => {
     if (!selectedRecipe) return;
     const recipeIdToDelete = String(selectedRecipe.id);
     
-    if (user) {
+    if (user && isCloudSyncEnabled) {
       try {
         await deleteDoc(doc(db, 'recipes', recipeIdToDelete));
       } catch (error) {
         console.error("Error deleting recipe:", error);
-        showToast("刪除失敗");
+        showToast("雲端刪除失敗");
         return;
       }
-    } else {
-      const updatedRecipes = recipes.filter(r => String(r.id) !== recipeIdToDelete);
-      setRecipes(updatedRecipes);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedRecipes));
     }
+    
+    // Always update local state
+    const updatedRecipes = recipes.filter(r => String(r.id) !== recipeIdToDelete);
+    setRecipes(updatedRecipes);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedRecipes));
     
     setSelectedRecipe(null);
     setSearchQuery('');
@@ -1509,10 +1686,37 @@ const App: React.FC = () => {
                         <p className="text-sm font-black text-orange-600">
                           {isAdmin ? '身分：超級管理員' : (isVip ? '身分：VIP 會員' : '身分：一般用戶')}
                         </p>
-                        <div className="mt-3 pt-3 border-t border-slate-50">
+                        <div className="mt-3 pt-3 border-t border-slate-50 space-y-3">
                           <p className="text-[10px] font-bold text-slate-400 leading-tight">
                             {isAdmin ? '已解鎖所有專業功能且永久免費' : (isVip ? '已解鎖無限儲存與專業工具' : '升級 VIP 解鎖更多功能')}
                           </p>
+                          
+                          {(isVip || isAdmin) && (
+                            <div className="flex items-center justify-between py-1">
+                              <span className="text-xs font-bold text-slate-600">雲端同步</span>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (isAdmin) return; // Linda forced enabled
+                                  const newVal = !isCloudSyncEnabled;
+                                  setIsCloudSyncEnabled(newVal);
+                                  saveUserSettings({ is_cloud_sync_enabled: newVal });
+                                }}
+                                className={`w-10 h-5 rounded-full relative transition-all ${isCloudSyncEnabled ? 'bg-emerald-500' : 'bg-slate-200'} ${isAdmin ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              >
+                                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${isCloudSyncEnabled ? 'left-6' : 'left-1'}`} />
+                              </button>
+                            </div>
+                          )}
+
+                          {!isVip && !isAdmin && (
+                            <button 
+                              onClick={() => setIsSubscriptionModalOpen(true)}
+                              className="w-full py-2 bg-orange-100 text-orange-600 rounded-xl text-[10px] font-black hover:bg-orange-200 transition-all"
+                            >
+                              🌟 升級 VIP 開啟雲端備份
+                            </button>
+                          )}
                         </div>
                       </div>
                     )}
@@ -1546,15 +1750,23 @@ const App: React.FC = () => {
                   <span className="bg-orange-100 p-2 rounded-2xl text-2xl shadow-sm">🥖</span>
                   烘焙靈感箱
                 </h1>
-                <div className="flex items-center gap-2 mt-1">
-                  <p className="text-orange-300 text-xs font-medium">記錄師傅的筆記與經典配方</p>
-                  {user && (
-                    <span className="flex items-center gap-1 text-[10px] font-black text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100/50 animate-pulse">
-                      <Cloud size={10} />
-                      <span>雲端同步中 (已連線)</span>
-                    </span>
-                  )}
-                </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-orange-300 text-xs font-medium">記錄師傅的筆記與經典配方</p>
+                      {user && isCloudSyncEnabled ? (
+                        <span className="flex items-center gap-1 text-[10px] font-black text-emerald-500 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100/50 shadow-sm">
+                          <Cloud size={10} />
+                          <span>☁️ 已安全備份至雲端</span>
+                        </span>
+                      ) : (
+                        <button 
+                          onClick={() => setIsSubscriptionModalOpen(true)}
+                          className="flex items-center gap-1 text-[10px] font-black text-orange-500 bg-orange-50 px-2.5 py-1 rounded-full border border-orange-100 hover:bg-orange-100 transition-all"
+                        >
+                          <CloudOff size={10} />
+                          <span>⚠️ 僅存在此裝置 (升級開啟雲端備份)</span>
+                        </button>
+                      )}
+                    </div>
                 
                 {/* 儲存空間進度條 */}
                 <div className="mt-4 max-w-[200px] no-print">
@@ -1984,6 +2196,65 @@ const App: React.FC = () => {
                 <button onClick={() => setView(AppView.MANAGE_CATEGORIES)} className="p-2.5 bg-white border border-orange-100 rounded-xl shadow-sm text-sm font-bold text-orange-600 flex items-center gap-2 hover:bg-orange-50 transition-all active:scale-95">⚙️ 分類管理</button>
               </div>
               <div className="space-y-6 px-4 sm:px-0">
+                {/* 0. 圖片預留位 (優先顯示) */}
+                <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-4">
+                  <label className="block text-xs font-black text-orange-600 uppercase tracking-widest flex items-center gap-2 mb-2">
+                    <ImageIcon size={16} /> 📸作品照片展示區
+                  </label>
+                  <div className="aspect-video bg-orange-50/20 rounded-3xl border-2 border-dashed border-orange-100 flex items-center justify-center overflow-hidden relative group transition-all hover:bg-orange-50/40">
+                    {formRecipe.imageUrl ? (
+                      <>
+                        <img src={formRecipe.imageUrl} className="w-full h-full object-cover" alt="預覽" referrerPolicy="no-referrer" />
+                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
+                          <button onClick={() => recipeImageInputRef.current?.click()} className="p-3 bg-white/90 rounded-full text-orange-600 hover:bg-white transition-all transform hover:scale-110"><Camera size={24} /></button>
+                          <button onClick={() => setFormRecipe(prev => ({ ...prev, imageUrl: '' }))} className="p-3 bg-red-500/90 rounded-full text-white hover:bg-red-600 transition-all transform hover:scale-110"><Trash2 size={24} /></button>
+                        </div>
+                      </>
+                    ) : (
+                      <button onClick={() => recipeImageInputRef.current?.click()} className="flex flex-col items-center gap-3 text-orange-300 hover:text-orange-500 transition-all">
+                        <Camera size={48} strokeWidth={1.5} />
+                        <span className="text-sm font-black">點擊上傳成品美照</span>
+                      </button>
+                    )}
+                  </div>
+                  <input type="file" ref={recipeImageInputRef} onChange={handleImageUpload} className="hidden" accept="image/*" />
+                </div>
+
+                {/* 1. 快速解析貼上 (Smart Paste) & 草稿還原 */}
+                <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-4">
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-xs font-black text-orange-600 uppercase tracking-widest flex items-center gap-2">
+                      <Edit3 size={16} /> ✨ AI 快速筆記助手
+                    </label>
+                    <button onClick={restoreDraft} className="text-[10px] font-black bg-orange-50 text-orange-600 px-3 py-1.5 rounded-xl border border-orange-100 hover:bg-orange-100 transition-all active:scale-95">🕒 還原最近草稿</button>
+                  </div>
+                  <div className="relative">
+                    <textarea 
+                      value={smartPasteText}
+                      onChange={(e) => setSmartPasteText(e.target.value)}
+                      placeholder="貼上亂糟糟的筆記（例如 Line 訊息、網頁複製內容）..."
+                      className="w-full h-32 px-4 py-4 bg-slate-50 border border-orange-100 rounded-2xl text-xs outline-none focus:bg-white focus:ring-2 focus:ring-orange-100 transition-all leading-relaxed"
+                    />
+                    <button 
+                      onClick={handleSmartPaste}
+                      disabled={isAiParsing || !smartPasteText.trim()}
+                      className={`absolute bottom-4 right-4 px-6 py-2.5 rounded-xl font-black text-xs shadow-lg flex items-center gap-2 transition-all active:scale-95 ${isAiParsing || !smartPasteText.trim() ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-[#E67E22] text-white hover:bg-orange-600'}`}
+                    >
+                      {isAiParsing ? (
+                        <>
+                          <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          <span>正在解析中...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>🚀 AI 即刻解析</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-bold ml-1">💡 貼入內容後點擊解析，AI 將自動填充材料、重量與步驟。</p>
+                </div>
+
                 <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-6">
                   {/* 第一排：配方名稱、師傅 */}
                   <div className="grid grid-cols-2 gap-4">
@@ -2167,7 +2438,26 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-6">
-                  <div className="w-full"><label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">🏷️ 心得標籤</label><input type="text" value={(formRecipe.tags || []).join(', ')} onChange={e => handleTagsInput(e.target.value)} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm" placeholder="逗號分隔" /></div>
+                  <div className="w-full">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1 flex items-center gap-2">
+                      <Tag size={12} /> 心得標籤 (分類標記)
+                    </label>
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {(formRecipe.tags || []).map((t, idx) => (
+                        <span key={idx} className="bg-orange-50 text-orange-600 px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1 group border border-orange-100">
+                          {t}
+                          <button onClick={() => setFormRecipe(prev => ({ ...prev, tags: prev.tags?.filter((_, i) => i !== idx) }))} className="hover:text-red-500 transition-colors">✕</button>
+                        </span>
+                      ))}
+                    </div>
+                    <input 
+                      type="text" 
+                      value={(formRecipe.tags || []).join(', ')} 
+                      onChange={e => handleTagsInput(e.target.value)} 
+                      className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:bg-white focus:border-orange-200 transition-all" 
+                      placeholder="逗號分隔，例如：呂昇達老師配方, 戚風系列, 待測試" 
+                    />
+                  </div>
                   <div className="w-full flex gap-4">
                     <label className="flex-1 flex items-center justify-center gap-2 cursor-pointer bg-orange-50 px-3 py-1.5 rounded-xl border border-orange-100">
                       <input type="checkbox" checked={formRecipe.isBakingRecipe} onChange={(e) => setFormRecipe(prev => ({ ...prev, isBakingRecipe: e.target.checked }))} className="w-4 h-4 accent-orange-500" />
@@ -2180,32 +2470,6 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-4">
-                  <label className="block text-xs font-black text-orange-600 uppercase tracking-widest">📸 圖片預覽與上傳</label>
-                  <div className="aspect-video bg-orange-50/30 rounded-2xl border-2 border-dashed border-orange-100 flex items-center justify-center overflow-hidden relative group">
-                    {formRecipe.imageUrl ? (
-                      <>
-                        <img src={formRecipe.imageUrl} className="w-full h-full object-cover" alt="預覽" />
-                        <button 
-                          type="button"
-                          onClick={() => setFormRecipe(prev => ({ ...prev, imageUrl: '' }))}
-                          className="absolute top-3 right-3 w-10 h-10 bg-black/40 backdrop-blur-md text-white rounded-full flex items-center justify-center text-lg hover:bg-red-500 transition-all opacity-0 group-hover:opacity-100 shadow-lg"
-                          title="移除照片"
-                        >
-                          ✕
-                        </button>
-                      </>
-                    ) : (
-                      <span className="text-orange-200 text-sm font-bold">尚未上傳圖片</span>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-1 gap-4">
-                    <button onClick={() => recipeImageInputRef.current?.click()} className="py-5 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-2xl font-black text-lg shadow-lg shadow-orange-200 hover:shadow-orange-300 active:scale-95 transition-all">
-                      選擇並上傳作品照片
-                    </button>
-                  </div>
-                  <input type="file" ref={recipeImageInputRef} onChange={handleImageUpload} className="hidden" accept="image/*" />
-                </div>
 
                 <div className={`transition-all duration-500 ease-in-out overflow-hidden ${(['餡料', '果醬', '抹醬/其他'].includes(formRecipe.category || '')) ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-[5000px] opacity-100 mt-6'}`}>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -2484,7 +2748,7 @@ const App: React.FC = () => {
                         const newId = 'rec-' + Date.now();
                         const newRecipe = { ...recipeData, id: newId, createdAt: Date.now(), uid: user?.uid, author_id: user?.uid } as Recipe;
                         
-                        if (user) {
+                        if (user && isCloudSyncEnabled) {
                           if (!isVip && recipes.length >= 10) {
                             setIsSubscriptionModalOpen(true);
                             return;
@@ -2493,23 +2757,25 @@ const App: React.FC = () => {
                             await setDoc(doc(db, 'recipes', newId), newRecipe);
                           } catch (error) {
                             console.error("Error creating recipe:", error);
-                            showToast("儲存失敗");
+                            showToast("雲端儲存失敗");
                             return;
                           }
                         } else {
+                          // 本地模式：直接更新狀態（會在 useEffect 中存入 localStorage）
                           setRecipes(prev => [newRecipe, ...prev]);
                         }
                       } else {
                         const updatedRecipe = recipeData as Recipe;
-                        if (user) {
+                        if (user && isCloudSyncEnabled) {
                           try {
                             await setDoc(doc(db, 'recipes', updatedRecipe.id), updatedRecipe);
                           } catch (error) {
                             console.error("Error updating recipe:", error);
-                            showToast("儲存失敗");
+                            showToast("雲端更新失敗");
                             return;
                           }
                         } else {
+                          // 本地模式
                           setRecipes(prev => prev.map(r => r.id === updatedRecipe.id ? updatedRecipe : r));
                         }
                       }
@@ -2550,22 +2816,114 @@ const App: React.FC = () => {
             <div className="max-w-2xl mx-auto bg-white p-8 rounded-[40px] shadow-sm border border-orange-50 animate-in zoom-in-95">
               <h2 className="text-xl font-black text-[#E67E22] mb-6">分類管理與排序</h2>
               <div className="flex gap-2 mb-8">
-                <input type="text" value={newCatName || ''} onChange={(e) => setNewCatName(e.target.value)} className="flex-grow px-4 py-2 rounded-xl bg-orange-50/30 border border-orange-50 outline-none text-sm" placeholder="輸入新分類..." />
-                <button onClick={() => { if(!newCatName.trim()) return; setCategories(prev=>[...prev,{id:'cat-'+Date.now(), name:newCatName.trim(), order:categories.length}]); setNewCatName(''); showToast("分類新增成功！"); }} className="bg-[#E67E22] text-white px-5 py-2 rounded-xl font-bold text-sm">新增</button>
+                <input type="text" value={newCatName || ''} onChange={(e) => setNewCatName(e.target.value)} className="flex-grow px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-50 outline-none text-sm focus:border-orange-200 transition-all" placeholder="增加新分類，例如：甜點、抹醬..." />
+                <button 
+                  onClick={() => { 
+                    if(!newCatName.trim()) return; 
+                    if(categories.find(c => c.name === newCatName.trim())) {
+                      showToast("分類名稱已存在");
+                      return;
+                    }
+                    const newId = 'cat-' + Date.now();
+                    setCategories(prev => [...prev, { id: newId, name: newCatName.trim(), order: categories.length }]); 
+                    setNewCatName(''); 
+                    showToast("分類新增成功！"); 
+                  }} 
+                  className="bg-[#E67E22] text-white px-6 py-2 rounded-2xl font-black text-sm shadow-md active:scale-95"
+                >
+                  新增
+                </button>
               </div>
-              <div className="space-y-3">
-                {categories.map((cat, idx) => (
-                  <div key={cat.id} className="flex items-center justify-between p-4 bg-orange-50/20 rounded-2xl border border-orange-50 shadow-sm">
-                    <span className="font-bold text-slate-700 text-sm">{cat.name}</span>
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => { const nc = [...categories]; [nc[idx],nc[idx-1]] = [nc[idx-1],nc[idx]]; setCategories(nc.map((c,i)=>({...c,order:i}))); }} disabled={idx === 0} className="p-1.5 text-slate-300 disabled:opacity-10 hover:text-[#E67E22]">↑</button>
-                      <button onClick={() => { const nc = [...categories]; [nc[idx],nc[idx+1]] = [nc[idx+1],nc[idx]]; setCategories(nc.map((c,i)=>({...c,order:i}))); }} disabled={idx === categories.length-1} className="p-1.5 text-slate-300 disabled:opacity-10 hover:text-[#E67E22]">↓</button>
-                      <button onClick={() => triggerConfirm(() => setCategories(categories.filter(c=>c.id!==cat.id)))} className="p-1.5 text-red-200 hover:text-red-500 ml-2">🗑️</button>
+              <div className="space-y-4">
+                {categories.map((cat, idx) => {
+                  const recipeCount = recipes.filter(r => r.category === cat.name).length;
+                  const isEditing = editingCatId === cat.id;
+
+                  return (
+                    <div key={cat.id} className="flex items-center justify-between p-4 bg-orange-50/20 rounded-2xl border border-orange-100 shadow-sm transition-all hover:bg-orange-50/40">
+                      <div className="flex items-center gap-3 flex-grow pr-4">
+                        <span className="text-[10px] font-black text-orange-300 w-4">#{idx + 1}</span>
+                        {isEditing ? (
+                          <input 
+                            autoFocus
+                            type="text"
+                            value={editingCatValue}
+                            onChange={(e) => setEditingCatValue(e.target.value)}
+                            onBlur={() => renameCategory(cat.name, editingCatValue)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') renameCategory(cat.name, editingCatValue);
+                              if (e.key === 'Escape') setEditingCatId(null);
+                            }}
+                            className="flex-grow px-2 py-1 bg-white border border-orange-300 rounded-lg text-sm font-bold outline-none"
+                          />
+                        ) : (
+                          <div className="flex items-center gap-2 group">
+                            <span className="font-black text-slate-700 text-sm">{cat.name}</span>
+                            <span className="text-[10px] font-bold text-slate-400">({recipeCount})</span>
+                            <button 
+                              onClick={() => {
+                                setEditingCatId(cat.id);
+                                setEditingCatValue(cat.name);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-orange-500 transition-all"
+                            >
+                              <Edit2 size={12} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex flex-col">
+                          <button 
+                            onClick={() => { 
+                              const nc = [...categories]; 
+                              [nc[idx], nc[idx-1]] = [nc[idx-1], nc[idx]]; 
+                              setCategories(nc.map((c,i)=>({...c,order:i}))); 
+                            }} 
+                            disabled={idx === 0} 
+                            className="p-1 px-2 text-[#E67E22] disabled:opacity-10 hover:bg-white rounded-md transition-all font-black text-lg"
+                            title="上移"
+                          >
+                            ▲
+                          </button>
+                          <button 
+                            onClick={() => { 
+                              const nc = [...categories]; 
+                              [nc[idx], nc[idx+1]] = [nc[idx+1], nc[idx]]; 
+                              setCategories(nc.map((c,i)=>({...c,order:i}))); 
+                            }} 
+                            disabled={idx === categories.length-1} 
+                            className="p-1 px-2 text-[#E67E22] disabled:opacity-10 hover:bg-white rounded-md transition-all font-black text-lg"
+                            title="下移"
+                          >
+                            ▼
+                          </button>
+                        </div>
+                        <button 
+                          onClick={() => {
+                            const hasRecipes = recipes.some(r => r.category === cat.name);
+                            const confirmMsg = hasRecipes ? `「${cat.name}」分類下還有 ${recipeCount} 份食譜，確定要刪除嗎？` : null;
+                            triggerConfirm(() => {
+                              setCategories(categories.filter(c => c.id !== cat.id));
+                              showToast(`分類「${cat.name}」已刪除`);
+                            }, confirmMsg);
+                          }}
+                          className="p-2 text-red-200 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                          title="刪除"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-              <button onClick={() => setView(AppView.CREATE)} className="w-full mt-10 py-3 bg-orange-50 text-orange-600 rounded-2xl font-black text-sm">返回建立頁面</button>
+              <button 
+                onClick={() => setView(AppView.CREATE)} 
+                className="w-full mt-10 py-4 bg-orange-50 text-orange-600 rounded-3xl font-black text-sm border border-orange-100 hover:bg-orange-100 transition-all active:scale-95"
+              >
+                返回建立頁面
+              </button>
             </div>
           )}
 
