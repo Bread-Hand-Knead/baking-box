@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged, User,
   collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, updateDoc, deleteDoc,
-  getDocFromServer
+  getDocFromServer, setPersistence, browserLocalPersistence
 } from './firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -146,7 +146,101 @@ const RecipeCard: React.FC<{ recipe: Recipe; onClick: (r: Recipe) => void }> = (
   </div>
 );
 
-// --- 3. 妳原本的主程式 App (修正了獨立計算與排版) ---
+// --- Helper: Firestore Error Handling ---
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error Details: ', JSON.stringify(errInfo));
+  // We throw a user-friendly message locally but log the full detail for the AI/developer
+  throw new Error(`Firestore ${operationType} failed at ${path}. Please check rules.`);
+}
+
+export class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; errorMessage: string }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, errorMessage: '' };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, errorMessage: error.message };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-[#F5E6D3] flex items-center justify-center p-6">
+          <div className="bg-white p-8 rounded-[40px] shadow-xl max-w-md text-center border-2 border-orange-100">
+            <span className="text-4xl mb-4 block">⚠️</span>
+            <h2 className="text-2xl font-black text-slate-800 mb-4">糟糕，出錯了</h2>
+            <p className="text-slate-600 font-bold mb-6 leading-relaxed">
+              系統遇到一些問題，請嘗試重新整理。
+            </p>
+            <div className="bg-red-50 p-4 rounded-2xl mb-6 overflow-hidden">
+              <p className="text-xs text-red-500 font-mono break-all">{this.state.errorMessage}</p>
+            </div>
+            <button 
+              onClick={() => window.location.reload()}
+              className="w-full py-4 bg-[#E67E22] text-white rounded-full font-black shadow-lg hover:bg-orange-600 transition-all"
+            >
+              重新整理
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// --- 3. 妳原本的主程式 App ---
 const STORAGE_KEY = 'ai_recipe_box_data_v4';
 const CATEGORIES_KEY = 'ai_recipe_box_categories_v4';
 const KNOWLEDGE_KEY = 'ai_recipe_box_knowledge_v4';
@@ -592,6 +686,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [hasSyncedCloud, setHasSyncedCloud] = useState(false);
+  const isSyncingFromCloud = useRef(false);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [knowledge, setKnowledge] = useState<Knowledge[]>(DEFAULT_KNOWLEDGE);
@@ -621,35 +716,30 @@ const App: React.FC = () => {
 
   // Firebase Auth Listener
   useEffect(() => {
+    console.clear();
+    console.log("烘焙百寶箱已啟動，正在初始化 Firebase...");
+    
     const unsubscribe = onAuthStateChanged(auth, (u) => {
+      console.log("Auth state changed:", u ? `User logged in (UID: ${u.uid})` : "No user logged in");
       setUser(u);
       setIsAuthReady(true);
+      // Reset sync states on any auth change
+      setHasSyncedCloud(false);
     });
-    return () => unsubscribe();
-  }, []);
-
-  // Test Connection
-  useEffect(() => {
-    const testConnection = async () => {
-      try {
-        await getDocFromServer(doc(db, 'test', 'connection'));
-      } catch (error) {
-        if (error instanceof Error && error.message.includes('the client is offline')) {
-          console.error("Please check your Firebase configuration.");
-        }
-      }
-    };
-    testConnection();
+    return unsubscribe;
   }, []);
 
   // Firestore Sync - Recipes
   useEffect(() => {
+    if (!isAuthReady) return;
+
     if (!user) {
       const localData = localStorage.getItem(STORAGE_KEY);
       if (localData) setRecipes(JSON.parse(localData));
       return;
     }
 
+    console.log("登入成功，正在抓取 UID:", user.uid);
     const q = query(collection(db, 'recipes'), where('author_id', '==', user.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Recipe));
@@ -659,14 +749,16 @@ const App: React.FC = () => {
         setHasSyncedCloud(true);
       }
     }, (error) => {
-      console.error("Firestore Error (Recipes):", error);
+      handleFirestoreError(error, OperationType.LIST, 'recipes');
     });
 
     return () => unsubscribe();
-  }, [user, hasSyncedCloud]);
+  }, [user, isAuthReady]);
 
   // Firestore Sync - Settings
   useEffect(() => {
+    if (!isAuthReady) return;
+
     if (!user) {
       const localCats = localStorage.getItem(CATEGORIES_KEY);
       if (localCats) setCategories(JSON.parse(localCats));
@@ -681,19 +773,21 @@ const App: React.FC = () => {
     const unsubscribe = onSnapshot(docRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
+        isSyncingFromCloud.current = true;
         if (data.categories) setCategories(data.categories);
         if (data.knowledge) setKnowledge(data.knowledge);
         if (data.completedSteps) setCompletedSteps(data.completedSteps);
         if (data.is_vip !== undefined) {
           setIsVip(isAdmin || data.is_vip);
         }
+        setTimeout(() => { isSyncingFromCloud.current = false; }, 100);
       }
     }, (error) => {
-      console.error("Firestore Error (Settings):", error);
+      handleFirestoreError(error, OperationType.GET, `userSettings/${user.uid}`);
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, isAuthReady, isAdmin]);
 
   // Helper to save settings to Firestore
   const saveUserSettings = async (updates: any) => {
@@ -701,7 +795,7 @@ const App: React.FC = () => {
     try {
       await setDoc(doc(db, 'userSettings', user.uid), updates, { merge: true });
     } catch (error) {
-      console.error("Error saving user settings:", error);
+      handleFirestoreError(error, OperationType.WRITE, `userSettings/${user.uid}`);
     }
   };
 
@@ -715,7 +809,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!user) {
       localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
-    } else {
+    } else if (!isSyncingFromCloud.current) {
       saveUserSettings({ categories });
     }
   }, [categories, user]);
@@ -723,7 +817,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!user) {
       localStorage.setItem(KNOWLEDGE_KEY, JSON.stringify(knowledge));
-    } else {
+    } else if (!isSyncingFromCloud.current) {
       saveUserSettings({ knowledge });
     }
   }, [knowledge, user]);
@@ -731,7 +825,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!user) {
       localStorage.setItem(COMPLETED_STEPS_KEY, JSON.stringify(completedSteps));
-    } else {
+    } else if (!isSyncingFromCloud.current) {
       saveUserSettings({ completedSteps });
     }
   }, [completedSteps, user]);
@@ -794,7 +888,11 @@ const App: React.FC = () => {
             author_id: user.uid, 
             createdAt: recipe.createdAt || Date.now() 
           };
-          await setDoc(doc(db, 'recipes', recipe.id), newRecipe);
+          try {
+            await setDoc(doc(db, 'recipes', recipe.id), newRecipe);
+          } catch (error) {
+            handleFirestoreError(error, OperationType.CREATE, `recipes/${recipe.id}`);
+          }
         }
 
         // Migrate categories, knowledge, completedSteps
@@ -1281,7 +1379,11 @@ const App: React.FC = () => {
           if (user) {
             // Write to Firestore
             await Promise.all(processed.map(async (r: Recipe) => {
-              await setDoc(doc(db, 'recipes', r.id), r);
+              try {
+                await setDoc(doc(db, 'recipes', r.id), r);
+              } catch (error) {
+                handleFirestoreError(error, OperationType.WRITE, `recipes/${r.id}`);
+              }
             }));
             // Clear local storage for recipes after cloud import
             localStorage.removeItem(STORAGE_KEY);
@@ -1432,6 +1534,12 @@ const App: React.FC = () => {
         {/* LIST View Header */}
         {view === AppView.LIST && (
           <header className="flex flex-col gap-6 mb-8 animate-in fade-in slide-in-from-top-4 no-print">
+            {!isAuthReady && (
+              <div className="bg-orange-50/50 border border-orange-100 rounded-2xl p-4 flex items-center justify-center gap-3 animate-pulse">
+                <span className="text-xl">🔄</span>
+                <span className="text-sm font-black text-orange-600">正在同步雲端資料庫...</span>
+              </div>
+            )}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h1 className="text-3xl font-black tracking-tight text-[#E67E22] flex items-center gap-2">
@@ -1493,10 +1601,19 @@ const App: React.FC = () => {
         <main>
           {view === AppView.LIST && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 animate-in fade-in no-print">
-              {filteredRecipes.map(recipe => (
-                <RecipeCard key={recipe.id} recipe={recipe} onClick={(r) => { setSelectedRecipe(r); setView(AppView.DETAIL); }} />
-              ))}
-              {filteredRecipes.length === 0 && <div className="col-span-full py-20 text-center text-orange-200 font-bold bg-white rounded-[32px] border border-dashed border-orange-100">目前沒有任何食譜，點擊下方「建立」來新增吧！</div>}
+              {isAuthReady ? (
+                <>
+                  {filteredRecipes.map(recipe => (
+                    <RecipeCard key={recipe.id} recipe={recipe} onClick={(r) => { setSelectedRecipe(r); setView(AppView.DETAIL); }} />
+                  ))}
+                  {filteredRecipes.length === 0 && <div className="col-span-full py-20 text-center text-orange-200 font-bold bg-white rounded-[32px] border border-dashed border-orange-100">目前沒有任何食譜，點擊下方「建立」來新增吧！</div>}
+                </>
+              ) : (
+                <div className="col-span-full py-20 text-center text-orange-300 font-bold bg-white rounded-[32px] border border-dashed border-orange-100 flex flex-col items-center gap-4">
+                  <div className="w-10 h-10 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin"></div>
+                  正在同步雲端資料庫...
+                </div>
+              )}
             </div>
           )}
 
