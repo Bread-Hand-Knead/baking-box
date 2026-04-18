@@ -32,6 +32,10 @@ service cloud.firestore {
       allow read, write: if isOwner(userId) || isAdmin();
     }
 
+    match /user_categories/{userId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+    }
+
     match /recipes/{recipeId} {
       allow read: if isAuthenticated() && (isAdmin() || resource == null || isDocOwner());
       allow create: if isAuthenticated() && (isAdmin() || request.resource.data.get('author_id', '') == request.auth.uid || request.resource.data.get('uid', '') == request.auth.uid);

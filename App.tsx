@@ -10,6 +10,40 @@ import { GoogleGenAI, Type } from "@google/genai";
 // Initialize Gemini AI
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
+const INGREDIENT_OBJECT_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    name: { type: Type.STRING },
+    amount: { type: Type.STRING },
+    unit: { type: Type.STRING },
+    isFlour: { type: Type.BOOLEAN }
+  }
+};
+
+const FERMENTATION_STAGE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    name: { type: Type.STRING, description: "階段名稱 (如: 基本發酵、最終發酵)" },
+    time: { type: Type.STRING, description: "時間數字" },
+    timeUnit: { type: Type.STRING, enum: ["分鐘", "小時"] },
+    temperature: { type: Type.STRING, description: "度數" },
+    humidity: { type: Type.STRING, description: "濕度百分比" },
+    note: { type: Type.STRING }
+  }
+};
+
+const BAKING_STAGE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    name: { type: Type.STRING, description: "階段名稱 (如: 烘烤、降溫)" },
+    topHeat: { type: Type.STRING, description: "上火溫標" },
+    bottomHeat: { type: Type.STRING, description: "下火溫標" },
+    time: { type: Type.STRING, description: "時間數字" },
+    timeUnit: { type: Type.STRING, enum: ["分鐘", "小時"] },
+    note: { type: Type.STRING }
+  }
+};
+
 const AI_RECIPE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
@@ -17,17 +51,45 @@ const AI_RECIPE_SCHEMA = {
     master: { type: Type.STRING, description: "作者/師傅" },
     category: { type: Type.STRING, description: "分類" },
     description: { type: Type.STRING, description: "簡短描述" },
-    ingredients: {
+    ingredients: { 
+      type: Type.ARRAY, 
+      items: INGREDIENT_OBJECT_SCHEMA,
+      description: "主要材料 (主麵團、麵糊、餅乾基底、油皮、塔皮等)"
+    },
+    liquidStarterIngredients: { 
+      type: Type.ARRAY, 
+      items: INGREDIENT_OBJECT_SCHEMA,
+      description: "發酵種/種麵材料 (老麵、液種、湯種、中種等)"
+    },
+    fillingIngredients: { 
+      type: Type.ARRAY, 
+      items: INGREDIENT_OBJECT_SCHEMA,
+      description: "內餡材料 (卡士達、紅豆餡、油酥、甘納許等)"
+    },
+    decorationIngredients: { 
+      type: Type.ARRAY, 
+      items: INGREDIENT_OBJECT_SCHEMA,
+      description: "裝飾材料 (表面刷液、裝飾果乾、糖粉等)"
+    },
+    customSectionIngredients: { 
+      type: Type.ARRAY, 
+      items: INGREDIENT_OBJECT_SCHEMA,
+      description: "其他未歸類材料區塊" 
+    },
+    mainSectionName: { type: Type.STRING },
+    liquidStarterName: { type: Type.STRING },
+    fillingSectionName: { type: Type.STRING },
+    decorationSectionName: { type: Type.STRING },
+    customSectionName: { type: Type.STRING },
+    fermentationStages: {
       type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          name: { type: Type.STRING },
-          amount: { type: Type.STRING },
-          unit: { type: Type.STRING },
-          isFlour: { type: Type.BOOLEAN }
-        }
-      }
+      items: FERMENTATION_STAGE_SCHEMA,
+      description: "發酵資訊 (基本發酵、中間發酵、最終發酵)"
+    },
+    bakingStages: {
+      type: Type.ARRAY,
+      items: BAKING_STAGE_SCHEMA,
+      description: "烘烤資訊 (上火、下火、時間)"
     },
     instructions: {
       type: Type.ARRAY,
@@ -38,6 +100,16 @@ const AI_RECIPE_SCHEMA = {
       items: { type: Type.STRING }
     },
     notes: { type: Type.STRING, description: "心得提示" }
+  }
+};
+const AI_MULTI_RECIPE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    recipes: {
+      type: Type.ARRAY,
+      items: AI_RECIPE_SCHEMA,
+      description: "從筆記中識別出的所有完整食譜列表。如果一個食譜有多個材料分區（如主麵團、內餡），應合併為一個食譜對象。"
+    }
   }
 };
 import { motion, AnimatePresence } from 'motion/react';
@@ -118,6 +190,83 @@ const ConfirmDialog: React.FC<{
   );
 };
 
+const AIPreviewModal: React.FC<{
+  isOpen: boolean;
+  recipes: Partial<Recipe>[];
+  onClose: () => void;
+  onImport: (recipe: Partial<Recipe>) => void;
+  onImportAll: () => void;
+  onMerge: () => void;
+}> = ({ isOpen, recipes, onClose, onImport, onImportAll, onMerge }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+        <div className="bg-white w-full max-w-xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 border-4 border-orange-100">
+            <div className="p-6 sm:p-8 border-b border-orange-50 bg-orange-50/30 flex justify-between items-start">
+                <div>
+                   <h3 className="text-2xl font-black text-slate-800 leading-tight">✨ AI 偵測到 {recipes.length} 組配方</h3>
+                   <p className="text-xs font-bold text-orange-400 mt-1">我們已自動識別多段內容，請選擇匯入方式</p>
+                </div>
+                <button onClick={onClose} className="w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center text-slate-400 hover:text-red-500 transition-all border border-orange-50">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-white">
+                {recipes.map((r, idx) => (
+                    <div key={idx} className="p-5 bg-orange-50/20 rounded-3xl border border-orange-100 hover:bg-orange-50 transition-all relative group">
+                        <div className="flex justify-between items-start mb-2">
+                           <h4 className="font-black text-slate-700 flex items-center gap-2">
+                             <span className="w-5 h-5 bg-orange-200 rounded-full text-[10px] flex items-center justify-center text-orange-600">#{idx+1}</span>
+                             {r.title || '未命名食譜'}
+                           </h4>
+                           <button onClick={() => onImport(r)} className="px-4 py-1.5 bg-white text-orange-600 border border-orange-200 rounded-xl text-xs font-black shadow-sm hover:bg-orange-500 hover:text-white transition-all">單獨匯入</button>
+                        </div>
+                        <div className="flex flex-wrap gap-2 items-center mb-2">
+                            {(() => {
+                               const sections = [
+                                 { count: r.ingredients?.length || 0, label: '主材料' },
+                                 { count: r.liquidStarterIngredients?.length || 0, label: '發酵種' },
+                                 { count: r.fillingIngredients?.length || 0, label: '內餡' },
+                                 { count: r.decorationIngredients?.length || 0, label: '裝飾' },
+                                 { count: r.fermentationStages?.length || 0, label: '發酵' },
+                                 { count: r.bakingStages?.length || 0, label: '烘烤' }
+                               ].filter(s => s.count > 0);
+                               
+                               if (sections.length > 0) {
+                                 return (
+                                   <div className="flex flex-wrap gap-1">
+                                      {sections.map(s => (
+                                        <span key={s.label} className="text-[9px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded-md font-black border border-orange-100">
+                                          {s.label}x{s.count}
+                                        </span>
+                                      ))}
+                                      <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold tracking-tight">✨ 偵測到全方資訊</span>
+                                   </div>
+                                 );
+                               }
+                               return null;
+                            })()}
+                            <span className="text-[10px] text-slate-400 font-bold italic line-clamp-1">
+                               🥗 {([...(r.ingredients || []), ...(r.liquidStarterIngredients || []), ...(r.fillingIngredients || [])].slice(0, 3).map(i => i.name).join('、'))}...
+                            </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-bold line-clamp-1 italic">📝 步驟預覽: {r.instructions?.[0] || '無內容'}...</div>
+                    </div>
+                ))}
+            </div>
+            <div className="p-6 sm:p-8 bg-slate-50 border-t border-slate-100 flex flex-col gap-3">
+                <button onClick={onImportAll} className="w-full py-5 bg-orange-500 text-white rounded-[32px] font-black text-base shadow-lg hover:bg-orange-600 transition-all flex items-center justify-center gap-2">
+                    <span>✨</span>
+                    <span>一鍵全方位歸位 (合併為一個食譜)</span>
+                </button>
+                <div className="flex gap-3">
+                  <button onClick={onClose} className="flex-1 py-4 bg-white border border-slate-200 text-slate-500 rounded-2xl font-black text-sm hover:bg-slate-50 transition-all">取消</button>
+                  <button onClick={onMerge} className="flex-1 py-4 bg-orange-50 text-orange-600 border border-orange-100 rounded-2xl font-black text-sm hover:bg-orange-100 transition-all">僅合併預覽</button>
+                </div>
+            </div>
+        </div>
+    </div>
+  );
+};
+
 const Toast: React.FC<{
   isOpen: boolean;
   message: string;
@@ -154,6 +303,21 @@ const Toast: React.FC<{
   );
 };
 
+const renderHighlightedText = (text: string, isTitle: boolean = false) => {
+  if (!text) return null;
+  const parts = text.split(/(#[\w\u4e00-\u9fa5]+)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('#')) {
+      return (
+        <span key={i} className="text-[#8B5E3C] font-black tracking-tighter">
+          {part}
+        </span>
+      );
+    }
+    return part;
+  });
+};
+
 const RecipeCard: React.FC<{ recipe: Recipe; onClick: (r: Recipe) => void }> = ({ recipe, onClick }) => (
   <div onClick={() => onClick(recipe)} className="bg-white rounded-[32px] overflow-hidden border border-orange-50 shadow-sm hover:shadow-md transition-all cursor-pointer group">
     <div className="aspect-[16/10] relative overflow-hidden">
@@ -164,18 +328,23 @@ const RecipeCard: React.FC<{ recipe: Recipe; onClick: (r: Recipe) => void }> = (
     </div>
     <div className="p-5">
       <div className="flex justify-between items-start gap-2 mb-3">
-        <h3 className="text-lg font-black text-slate-800 break-words leading-tight">{recipe.title}</h3>
+        <h3 className="text-lg font-black text-slate-800 break-words leading-tight">
+          {renderHighlightedText(recipe.title, true)}
+        </h3>
         <span className="text-xs font-black text-orange-500 bg-orange-50 px-3 py-1 rounded-xl border border-orange-100/50 shrink-0">{recipe.category}</span>
       </div>
-      <p className="text-xs text-slate-400 font-bold mb-3">師傅：{recipe.master}</p>
-      <div className="flex flex-wrap items-center gap-3 mb-3">
+      <p className="text-xs text-slate-400 font-bold mb-2">師傅：{recipe.master}</p>
+      <div className="space-y-3">
         {recipe.totalDuration && (
-          <div className="flex items-center gap-1 text-[11px] font-black text-[#E67E22] bg-orange-50/50 px-2 py-0.5 rounded-lg border border-orange-100/30">
+          <div className="flex items-center gap-1 text-[11px] font-black text-[#E67E22] bg-orange-50/50 px-2 py-0.5 rounded-lg border border-orange-100/30 w-fit">
             <span>⏱️</span>
             <span>{formatTimeWithUnit(recipe.totalDuration)}</span>
           </div>
         )}
-        <p className="text-[11px] text-slate-500 line-clamp-1 leading-relaxed flex-grow">{recipe.description || '點擊查看詳細配方...'}</p>
+        <p className="text-[14px] text-slate-700 font-medium leading-relaxed mt-1">
+          {renderHighlightedText(recipe.description || '點擊查看詳細配方...')}
+          {!recipe.description && recipe.notes && renderHighlightedText(recipe.notes.slice(0, 80) + '...')}
+        </p>
       </div>
     </div>
   </div>
@@ -496,7 +665,7 @@ const DisplayIngredientSection: React.FC<{
   );
 };
 
-const isWeightUnit = (unit: string) => ['g', 'kg', 'ml'].includes(unit);
+const isWeightUnit = (unit: string) => ['g', 'kg', 'ml', 'L'].includes(unit);
 
 // Core UI: Stable Ingredient List
 const IngredientList: React.FC<{ 
@@ -511,10 +680,13 @@ const IngredientList: React.FC<{
   setFormRecipe: React.Dispatch<React.SetStateAction<Partial<Recipe>>>,
   handleUpdateIngredient: (fieldKey: keyof Recipe, index: number, field: keyof Ingredient, val: any) => void,
   moveIngredient: (fieldKey: keyof Recipe, index: number, direction: 'up' | 'down') => void,
-  triggerConfirm: (onConfirm: () => void) => void
+  triggerConfirm: (onConfirm: () => void) => void,
+  lastUsedUnit: string,
+  setLastUsedUnit: (unit: string) => void
 }> = ({ 
   items, title, fieldKey, customTitleKey, onMoveSection, sectionIndex, totalSections, 
-  formRecipe, setFormRecipe, handleUpdateIngredient, moveIngredient, triggerConfirm
+  formRecipe, setFormRecipe, handleUpdateIngredient, moveIngredient, triggerConfirm,
+  lastUsedUnit, setLastUsedUnit
 }) => {
   const localBaseInfo = useMemo(() => {
     let flourTotal = 0;
@@ -560,7 +732,7 @@ const IngredientList: React.FC<{
         </div>
         <button 
           type="button" 
-          onClick={() => setFormRecipe(prev => ({ ...prev, [fieldKey]: [...(prev[fieldKey] as Ingredient[] || []), { name: '', amount: '', unit: 'g', isFlour: false }] }))} 
+          onClick={() => setFormRecipe(prev => ({ ...prev, [fieldKey]: [...(prev[fieldKey] as Ingredient[] || []), { name: '', amount: '', unit: lastUsedUnit, isFlour: false }] }))} 
           className="shrink-0 text-[10px] font-bold bg-[#E67E22] text-white px-3 py-1.5 rounded-lg shadow-sm active:scale-95 transition-all whitespace-nowrap"
         >
           + 新增材料
@@ -639,22 +811,27 @@ const IngredientList: React.FC<{
                     value={ing.unit ?? 'g'} 
                     onChange={(e) => {
                       const newUnit = e.target.value;
+                      setLastUsedUnit(newUnit);
                       handleUpdateIngredient(fieldKey, idx, 'unit', newUnit);
                       // If changing to non-weight unit, turn off isFlour
                       if (!isWeightUnit(newUnit) && ing.isFlour) {
                         handleUpdateIngredient(fieldKey, idx, 'isFlour', false);
                       }
                     }} 
-                    className="w-full h-12 sm:h-10 px-1 rounded-xl border border-slate-100 bg-orange-50/30 sm:bg-orange-50/50 text-base sm:text-xs outline-none focus:ring-1 focus:ring-orange-200 transition-all text-center appearance-none cursor-pointer font-bold text-slate-700"
+                    className="w-full h-12 sm:h-10 px-1 rounded-xl border border-slate-100 bg-orange-50/50 text-base sm:text-xs outline-none focus:ring-1 focus:ring-orange-200 transition-all text-center appearance-none cursor-pointer font-bold text-slate-700"
                   >
                     <option value="g">g</option>
                     <option value="kg">kg</option>
                     <option value="ml">ml</option>
+                    <option value="L">L</option>
                     <option value="顆">顆</option>
                     <option value="個">個</option>
+                    <option value="條">條</option>
                     <option value="小匙">小匙</option>
                     <option value="大匙">大匙</option>
                     <option value="適量">適量</option>
+                    <option value="少許">少許</option>
+                    <option value="份">份</option>
                   </select>
                 </div>
                 <button 
@@ -695,11 +872,11 @@ const SubscriptionModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
           <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">
             <span className="text-4xl">🌟</span>
           </div>
-          <h2 className="text-2xl font-black text-[#8B5E3C] mb-4">🌟 升級 VIP，開啟永久雲端備份</h2>
+          <h2 className="text-2xl font-black text-[#8B5E3C] mb-4">🌟 升級 Premium，開啟雲端備份與 AI 助手</h2>
           <p className="text-[#A67C52] font-bold mb-8 leading-relaxed text-sm">
-            連線上雲端，更換手機也不怕資料遺失！<br />
-            解鎖無限雲端儲存、專業逆算工具、<br />
-            以及一鍵產生 PDF 配方卡功能。
+            連線上雲端，隨時隨地同步您的烘焙筆記！<br />
+            解鎖 ✨ AI 快速解析筆記、無限雲端儲存、<br />
+            專業逆算工具與一鍵 PDF 導出。
           </p>
           
           <div className="space-y-4">
@@ -731,6 +908,9 @@ const SubscriptionModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isCategoriesReady, setIsCategoriesReady] = useState(false);
+  const [isSettingsReady, setIsSettingsReady] = useState(false);
+  const [isRecipesLoading, setIsRecipesLoading] = useState(true);
   const [hasSyncedCloud, setHasSyncedCloud] = useState(false);
   const isSyncingFromCloud = useRef(false);
   const autoSaveTimerRef = useRef<any>(null);
@@ -741,6 +921,8 @@ const App: React.FC = () => {
   
   const [storageUsage, setStorageUsage] = useState(0);
   const [isVip, setIsVip] = useState(false);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<'free' | 'active'>('free');
+  const [aiUsage, setAiUsage] = useState({ date: '', count: 0 });
   const [isCloudSyncEnabled, setIsCloudSyncEnabled] = useState(false);
   const [view, setView] = useState<AppView>(AppView.LIST);
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
@@ -759,6 +941,23 @@ const App: React.FC = () => {
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  
+  // Debounce for search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+      if (searchQuery.trim().length > 1) {
+        setSearchHistory(prev => {
+          const filtered = prev.filter(h => h !== searchQuery.trim());
+          return [searchQuery.trim(), ...filtered].slice(0, 5);
+        });
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const [activeCategory, setActiveCategory] = useState<string>('全部');
   const [isAiParsing, setIsAiParsing] = useState(false);
   const [smartPasteText, setSmartPasteText] = useState('');
@@ -774,7 +973,9 @@ const App: React.FC = () => {
       console.log("Auth state changed:", u ? `User logged in (UID: ${u.uid})` : "No user logged in");
       setUser(u);
       setIsAuthReady(true);
-      // Reset sync states on any auth change
+      setIsCategoriesReady(false); // Reset readiness on auth change
+      setIsSettingsReady(false);
+      setIsRecipesLoading(true);
       setHasSyncedCloud(false);
     });
     return unsubscribe;
@@ -782,51 +983,93 @@ const App: React.FC = () => {
 
   // Firestore Sync - Recipes
   useEffect(() => {
+    // 1. Auth Guard & Sequential Check
+    // We must wait for auth to be determined, and if logged in, wait for categories/settings
     if (!isAuthReady) return;
+    if (user && (!isCategoriesReady || !isSettingsReady)) return; 
 
-    if (!user || !isCloudSyncEnabled) {
+    setIsRecipesLoading(true);
+
+    // 2. Forced Cache Conflict Resolution
+    // If logged in, strictly use Firebase (bypass LocalStorage entirely)
+    if (user) {
+      console.log("雲端同步啟動，正在抓取 UID:", user.uid);
+      const q = query(collection(db, 'recipes'), where('author_id', '==', user.uid));
+      
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const docs = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Recipe));
+        
+        if (docs.length === 0) {
+          console.log(`[Debug] 雲端回傳食譜數為 0，請檢查 UID: ${user.uid}`);
+        }
+
+        // If VIP just logged in and cloud is empty
+        if (!hasSyncedCloud && docs.length === 0 && !isVip && !isAdmin) {
+          setIsSubscriptionModalOpen(true);
+        }
+
+        setRecipes(docs);
+        setIsRecipesLoading(false);
+        if (!hasSyncedCloud) {
+          showToast("☁️ 雲端食譜同步成功");
+          setHasSyncedCloud(true);
+        }
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'recipes');
+        setIsRecipesLoading(false);
+      });
+
+      return () => unsubscribe();
+    } else {
+      // 3. Local Mode (Not Logged In)
       const localData = localStorage.getItem(STORAGE_KEY);
       if (localData) {
         setRecipes(JSON.parse(localData));
       } else {
         setRecipes([]);
       }
-      return;
+      setIsRecipesLoading(false);
     }
+  }, [user, isAuthReady, isCategoriesReady, isSettingsReady, isAdmin, isVip]);
 
-    console.log("雲端同步啟動，正在抓取 UID:", user.uid);
-    const q = query(collection(db, 'recipes'), where('author_id', '==', user.uid));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Recipe));
-      
-      // If VIP just logged in and cloud is empty, but they are not VIP yet or it's their first time
-      if (!hasSyncedCloud && docs.length === 0 && !isVip) {
-        setIsSubscriptionModalOpen(true);
-      }
-
-      setRecipes(docs);
-      if (!hasSyncedCloud) {
-        showToast("☁️ 雲端食譜同步成功");
-        setHasSyncedCloud(true);
-      }
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'recipes');
-    });
-
-    return () => unsubscribe();
-  }, [user, isAuthReady, isCloudSyncEnabled]);
-
-  // Firestore Sync - Settings
+  // Firestore Sync - Categories (Independent Collection)
   useEffect(() => {
     if (!isAuthReady) return;
 
     if (!user) {
       const localCats = localStorage.getItem(CATEGORIES_KEY);
       if (localCats) setCategories(JSON.parse(localCats));
-      const localKnowledge = localStorage.getItem(KNOWLEDGE_KEY);
-      if (localKnowledge) setKnowledge(JSON.parse(localKnowledge));
-      const localSteps = localStorage.getItem(COMPLETED_STEPS_KEY);
-      if (localSteps) setCompletedSteps(JSON.parse(localSteps));
+      setIsCategoriesReady(true);
+      return;
+    }
+
+    const docRef = doc(db, 'user_categories', user.uid);
+    const unsubscribe = onSnapshot(docRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        isSyncingFromCloud.current = true;
+        if (data.categories) setCategories(data.categories);
+        setTimeout(() => { isSyncingFromCloud.current = false; }, 100);
+      }
+      setIsCategoriesReady(true);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `user_categories/${user.uid}`);
+      setIsCategoriesReady(true); // Fallback to allow recipes to load even on error
+    });
+
+    return () => unsubscribe();
+  }, [user, isAuthReady]);
+
+  // Firestore Sync - Settings (Remaining settings)
+  useEffect(() => {
+    if (!isAuthReady || !user) {
+      if (!user) {
+        const localKnowledge = localStorage.getItem(KNOWLEDGE_KEY);
+        if (localKnowledge) setKnowledge(JSON.parse(localKnowledge));
+        const localSteps = localStorage.getItem(COMPLETED_STEPS_KEY);
+        if (localSteps) setCompletedSteps(JSON.parse(localSteps));
+        setIsSettingsReady(true);
+      }
       return;
     }
 
@@ -835,23 +1078,53 @@ const App: React.FC = () => {
       if (snapshot.exists()) {
         const data = snapshot.data();
         isSyncingFromCloud.current = true;
-        if (data.categories) setCategories(data.categories);
+        
+        let subStatus: 'free' | 'active' = 'free';
+        if (isAdmin) {
+          subStatus = 'active';
+        } else if (data.subscriptionStatus === 'active' || data.is_vip) {
+          subStatus = 'active';
+        }
+
+        setSubscriptionStatus(subStatus);
+        setIsVip(subStatus === 'active');
+        
         if (data.knowledge) setKnowledge(data.knowledge);
         if (data.completedSteps) setCompletedSteps(data.completedSteps);
-        if (data.is_vip !== undefined) {
-          setIsVip(isAdmin || data.is_vip);
-        }
+        if (data.aiUsage) setAiUsage(data.aiUsage);
+        
         if (data.is_cloud_sync_enabled !== undefined) {
-          setIsCloudSyncEnabled(isAdmin || data.is_cloud_sync_enabled);
+          setIsCloudSyncEnabled(isAdmin || (data.is_cloud_sync_enabled && subStatus === 'active'));
         }
+        setIsSettingsReady(true);
         setTimeout(() => { isSyncingFromCloud.current = false; }, 100);
+      } else {
+        // Doc doesn't exist yet, but settings are "ready" (with defaults)
+        setIsSettingsReady(true);
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, `userSettings/${user.uid}`);
+      setIsSettingsReady(true); // Allow fallback even on error
     });
 
     return () => unsubscribe();
   }, [user, isAuthReady, isAdmin]);
+
+  // Helper to sync categories to cloud immediately
+  const syncCategoriesToCloud = async (newCategories: Category[]) => {
+    if (!user) {
+      localStorage.setItem(CATEGORIES_KEY, JSON.stringify(newCategories));
+      return;
+    }
+    try {
+      await setDoc(doc(db, 'user_categories', user.uid), { 
+        categories: newCategories,
+        updatedAt: Date.now() 
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `user_categories/${user.uid}`);
+    }
+  };
 
   // Helper to save settings to Firestore
   const saveUserSettings = async (updates: any) => {
@@ -873,9 +1146,8 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!user) {
       localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
-    } else if (!isSyncingFromCloud.current) {
-      saveUserSettings({ categories });
     }
+    // Categories are now synced explicitly in manage actions
   }, [categories, user]);
 
   useEffect(() => {
@@ -1065,8 +1337,14 @@ const App: React.FC = () => {
   const [newCatName, setNewCatName] = useState('');
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
   const [editingCatValue, setEditingCatValue] = useState('');
+  const [lastUsedUnit, setLastUsedUnit] = useState('g');
   const [showJumpBtn, setShowJumpBtn] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(false);
+  const [tagInput, setTagInput] = useState('');
+  const [isComposing, setIsComposing] = useState(false);
+
+  // AI 預覽彈窗狀態
+  const [aiPreviewData, setAiPreviewData] = useState<Partial<Recipe>[] | null>(null);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -1168,16 +1446,66 @@ const App: React.FC = () => {
     calculateUsage();
   }, [recipes, isVip, user]);
 
+  const extractHashtags = (text: string): string[] => {
+    if (!text) return [];
+    const hashRegex = /#([\w\u4e00-\u9fa5]+)/g;
+    const matches = text.match(hashRegex);
+    return matches ? matches.map(m => m.slice(1)) : [];
+  };
+
+  const allTags = useMemo(() => {
+    const tagsFromFields = recipes.flatMap(r => r.tags || []);
+    const tagsFromTitles = recipes.flatMap(r => extractHashtags(r.title));
+    const tagsFromNotes = recipes.flatMap(r => extractHashtags(r.notes || ''));
+    const tagsFromSteps = recipes.flatMap(r => (r.instructions || []).flatMap(s => extractHashtags(s)));
+    return [...new Set([...tagsFromFields, ...tagsFromTitles, ...tagsFromNotes, ...tagsFromSteps])];
+  }, [recipes]);
+
+  const hotTags = useMemo(() => {
+    return allTags.slice(0, 8);
+  }, [allTags]);
+
   const filteredRecipes = useMemo(() => {
+    const query = debouncedSearchQuery.toLowerCase().trim();
+    const isHashtagSearch = query.startsWith('#');
+    const tagToSearch = isHashtagSearch ? query.slice(1) : '';
+
     return recipes.filter(r => {
-      const matchSearch = r.title.toLowerCase().includes(searchQuery.toLowerCase()) || (r.master && r.master.toLowerCase().includes(searchQuery.toLowerCase()));
+      // Hashtag matching logic
+      if (isHashtagSearch && tagToSearch) {
+        const recipeTags = [
+          ...(r.tags || []),
+          ...extractHashtags(r.title),
+          ...extractHashtags(r.notes || ''),
+          ...(r.instructions || []).flatMap(s => extractHashtags(s))
+        ].map(t => t.toLowerCase());
+        
+        return recipeTags.includes(tagToSearch);
+      }
+
+      const matchSearch = !query || (
+        r.title.toLowerCase().includes(query) || 
+        (r.master && r.master.toLowerCase().includes(query)) ||
+        // 全文檢索材料
+        (r.ingredients || []).some(i => i.name.toLowerCase().includes(query)) ||
+        (r.liquidStarterIngredients || []).some(i => i.name.toLowerCase().includes(query)) ||
+        (r.fillingIngredients || []).some(i => i.name.toLowerCase().includes(query)) ||
+        (r.decorationIngredients || []).some(i => i.name.toLowerCase().includes(query)) ||
+        (r.customSectionIngredients || []).some(i => i.name.toLowerCase().includes(query)) ||
+        // 全文檢索步驟
+        (r.instructions || []).some(step => step.toLowerCase().includes(query)) ||
+        // 全文檢索備註與介紹
+        (r.description && r.description.toLowerCase().includes(query)) ||
+        (r.notes && r.notes.toLowerCase().includes(query))
+      );
+      
       const matchCategory = 
         activeCategory === '全部' ? true :
         activeCategory === '⏳ 待嘗試' ? r.isTried :
         r.category === activeCategory;
       return matchSearch && matchCategory;
     }).sort((a, b) => b.createdAt - a.createdAt);
-  }, [recipes, searchQuery, activeCategory]);
+  }, [recipes, debouncedSearchQuery, activeCategory]);
 
   const scalingRecipe = useMemo(() => recipes.find(r => r.id === scalingRecipeId), [recipes, scalingRecipeId]);
   
@@ -1324,41 +1652,153 @@ const App: React.FC = () => {
     }
   };
 
-  const handleTagsInput = (val: string) => {
-    const tagArray = val.split(/[，,]/).map(t => t.trim()).filter(t => t !== '');
-    setFormRecipe(prev => ({ ...prev, tags: tagArray }));
+  const addTag = (val: string) => {
+    const cleanTag = val.trim().replace(/[，,]/g, '');
+    if (!cleanTag) return;
+    setFormRecipe(prev => ({
+      ...prev,
+      tags: Array.from(new Set([...(prev.tags || []), cleanTag]))
+    }));
+    setTagInput('');
+  };
+
+  const handleTagsInputChange = (val: string) => {
+    setTagInput(val);
+    if (!isComposing && (val.endsWith(',') || val.endsWith('，'))) {
+      addTag(val);
+    }
   };
 
   const handleSmartPaste = async () => {
     if (!smartPasteText.trim()) return;
+    
+    // 訂閱檢查
+    if (!user || subscriptionStatus !== 'active') {
+      setIsSubscriptionModalOpen(true);
+      return;
+    }
+
+    // 次數限制檢查
+    const today = getTodayString();
+    const currentCount = aiUsage.date === today ? aiUsage.count : 0;
+    const LIMIT = 20;
+
+    if (currentCount >= LIMIT && !isAdmin) {
+      showToast("今日 AI 額度已達上限，請明天再試，或改用手動輸入。");
+      return;
+    }
+
     setIsAiParsing(true);
     try {
       const resp = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `請解析以下烘焙筆記，並將其轉換為正確的 JSON 格式。如果材料中包含麵粉、高筋、低筋等，則 isFlour 為 true。\n\n筆記內容：\n${smartPasteText}`,
+        contents: `你是一個專業的烘焙助手。請解析以下筆記，識別出其中所有的食譜結構。
+        
+        【重要解析規則】：
+        1. 嚴格全方位整合：除非內容明顯是兩個完全不同的食譜，否則請將所有材料、步驟、發酵、烘烤資訊整合進同一個食譜對象中。
+        2. 分區對應邏輯：
+           - 「主麵團」、「麵糊」、「油皮」 -> ingredients。
+           - 「發酵種」、「老麵」、「液種」、「湯種」 -> liquidStarterIngredients。
+           - 「內餡」、「夾心」、「油酥」 -> fillingIngredients。
+           - 「表面裝飾」、「頂料」、「糖粉」 -> decorationIngredients。
+        3. 發酵與烘烤偵測 (智慧關鍵字容錯)：
+           - 發酵：偵測「一發/基發/二發/終發/中間發酵/室溫/冷藏發酵」。提取時間(分鐘/小時)與溫度。
+           - 烘烤：偵測「烘烤/烤箱/氣炸」。提取「上火」、「下火」及「時間」。
+           - 如果只有一個溫度，請同時填入上下火。
+        4. 排除空內容：如果某個食譜不包含任何材料，請直接忽略，不要匯出。
+        5. 不要因為空行就停止掃描，請掃描全文並合併。
+        
+        筆記內容：
+        ${smartPasteText}`,
         config: {
           responseMimeType: "application/json",
-          responseSchema: AI_RECIPE_SCHEMA,
-          systemInstruction: "你是一個專業的烘焙助手。請從亂糟糟的筆記中精確提取食譜資訊。",
+          responseSchema: AI_MULTI_RECIPE_SCHEMA,
+          systemInstruction: "你是一個專業、細心的烘焙解析專家。請精確識別筆記中的食譜分區。如果材料中包含麵粉、高筋、低筋等關鍵字，則 isFlour 為 true。對於發酵與烘烤，請靈活判斷口語化的時間與溫度。",
         }
       });
       
-      const parsed = JSON.parse(resp.text || '{}');
-      setFormRecipe(prev => ({
-        ...prev,
-        ...parsed,
-        ingredients: parsed.ingredients || prev.ingredients,
-        instructions: parsed.instructions || prev.instructions,
-        tags: [...new Set([...(prev.tags || []), ...(parsed.tags || [])])]
-      }));
-      setSmartPasteText('');
-      showToast("✨ AI 解析成功！");
+      const parsed = JSON.parse(resp.text || '{"recipes":[]}');
+      const allFound = parsed.recipes || [];
+      
+      // 成功解析後，更新次數
+      const newUsage = { date: today, count: currentCount + 1 };
+      setAiUsage(newUsage);
+      saveUserSettings({ aiUsage: newUsage });
+
+      // 排除沒有任何材料的食譜
+      const recipesFound = allFound.filter((r: any) => {
+        return (r.ingredients?.length || 0) > 0 || 
+               (r.liquidStarterIngredients?.length || 0) > 0 || 
+               (r.fillingIngredients?.length || 0) > 0 || 
+               (r.decorationIngredients?.length || 0) > 0 || 
+               (r.customSectionIngredients?.length || 0) > 0;
+      });
+
+      if (recipesFound.length === 0) {
+        showToast("未能識別出有效的食譜材料，請調整內容後再試");
+      } else if (recipesFound.length === 1) {
+        // 單一食譜直接套用
+        applyParsedRecipe(recipesFound[0]);
+      } else {
+        // 多個食譜開啟預覽視窗
+        setAiPreviewData(recipesFound);
+      }
     } catch (err) {
       console.error("AI Parsing Error:", err);
-      showToast("AI 解析失敗，請手動輸入");
+      showToast("AI 解析失敗，請檢查筆記內容或手動輸入");
     } finally {
       setIsAiParsing(false);
     }
+  };
+
+  const applyParsedRecipe = (parsed: Partial<Recipe>) => {
+    setFormRecipe(prev => ({
+      ...prev,
+      ...parsed,
+      ingredients: parsed.ingredients?.length ? parsed.ingredients : prev.ingredients,
+      liquidStarterIngredients: parsed.liquidStarterIngredients || [],
+      fillingIngredients: parsed.fillingIngredients || [],
+      decorationIngredients: parsed.decorationIngredients || [],
+      customSectionIngredients: parsed.customSectionIngredients || [],
+      mainSectionName: parsed.mainSectionName || prev.mainSectionName,
+      liquidStarterName: parsed.liquidStarterName || prev.liquidStarterName,
+      fillingSectionName: parsed.fillingSectionName || prev.fillingSectionName,
+      decorationSectionName: parsed.decorationSectionName || prev.decorationSectionName,
+      customSectionName: parsed.customSectionName || prev.customSectionName,
+      fermentationStages: parsed.fermentationStages || [],
+      bakingStages: parsed.bakingStages || [],
+      instructions: parsed.instructions || prev.instructions,
+      tags: [...new Set([...(prev.tags || []), ...(parsed.tags || [])])]
+    }));
+    setAiPreviewData(null);
+    setSmartPasteText('');
+    showToast("✨ 食譜全方位歸位完成！");
+  };
+
+  const handleMergeParsedRecipes = () => {
+    if (!aiPreviewData) return;
+    const merged: Partial<Recipe> = {
+      title: aiPreviewData[0].title || '合併解析食譜',
+      ingredients: aiPreviewData.flatMap(r => r.ingredients || []) as Ingredient[],
+      liquidStarterIngredients: aiPreviewData.flatMap(r => r.liquidStarterIngredients || []) as Ingredient[],
+      fillingIngredients: aiPreviewData.flatMap(r => r.fillingIngredients || []) as Ingredient[],
+      decorationIngredients: aiPreviewData.flatMap(r => r.decorationIngredients || []) as Ingredient[],
+      customSectionIngredients: aiPreviewData.flatMap(r => r.customSectionIngredients || []) as Ingredient[],
+      fermentationStages: aiPreviewData.flatMap(r => r.fermentationStages || []) as FermentationStage[],
+      bakingStages: aiPreviewData.flatMap(r => r.bakingStages || []) as BakingStage[],
+      instructions: aiPreviewData.flatMap(r => r.instructions || []) as string[],
+      tags: [...new Set(aiPreviewData.flatMap(r => r.tags || []) as string[])],
+      notes: aiPreviewData.map(r => r.notes).filter(Boolean).join('\n---\n'),
+      description: aiPreviewData.map(r => r.description).filter(Boolean).join('\n'),
+      master: aiPreviewData.find(r => r.master)?.master || ''
+    };
+    applyParsedRecipe(merged);
+  };
+
+  const handleImportAllParsedRecipes = async () => {
+    if (!aiPreviewData) return;
+    handleMergeParsedRecipes();
+    showToast(`✨ 全方位歸位完成！`);
   };
 
   // Auto-save draft logic
@@ -1464,6 +1904,8 @@ const App: React.FC = () => {
     setCategories(updatedCats);
 
     // 3. 更新同步邏輯
+    await syncCategoriesToCloud(updatedCats);
+    
     if (user && isCloudSyncEnabled) {
       // 更新雲端食譜
       const recipesToUpdate = recipes.filter(r => r.category === oldName);
@@ -1476,7 +1918,6 @@ const App: React.FC = () => {
       }));
     } else {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedRecipes));
-      localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updatedCats));
     }
 
     setEditingCatId(null);
@@ -1484,6 +1925,7 @@ const App: React.FC = () => {
   };
 
   const handleCreateNew = () => {
+    setTagInput('');
     setFormRecipe({
       title: '', master: '', sourceName: '', sourceUrl: '', onlineCourse: '', moldName: '', doughWeight: '', crustWeight: '', oilPasteWeight: '', fillingWeight: '', quantity: 1, shelfLife: '', totalDuration: '',
       sourceDate: '', recordDate: getTodayString(),
@@ -1684,20 +2126,20 @@ const App: React.FC = () => {
                       <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-orange-50 p-4 z-[1100] animate-in fade-in slide-in-from-top-2">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">目前身分</p>
                         <p className="text-sm font-black text-orange-600">
-                          {isAdmin ? '身分：超級管理員' : (isVip ? '身分：VIP 會員' : '身分：一般用戶')}
+                          {isAdmin ? '身分：超級管理員' : (subscriptionStatus === 'active' ? '身分：Premium 會員' : '身分：一般用戶')}
                         </p>
                         <div className="mt-3 pt-3 border-t border-slate-50 space-y-3">
                           <p className="text-[10px] font-bold text-slate-400 leading-tight">
-                            {isAdmin ? '已解鎖所有專業功能且永久免費' : (isVip ? '已解鎖無限儲存與專業工具' : '升級 VIP 解鎖更多功能')}
+                            {isAdmin ? '已解鎖所有專業功能且永久免費' : (subscriptionStatus === 'active' ? '已解鎖 AI 解析與無限雲端同步' : '升級 Premium 解鎖 AI 助手與雲端同步')}
                           </p>
                           
-                          {(isVip || isAdmin) && (
+                          {(subscriptionStatus === 'active' || isAdmin) && (
                             <div className="flex items-center justify-between py-1">
                               <span className="text-xs font-bold text-slate-600">雲端同步</span>
                               <button 
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  if (isAdmin) return; // Linda forced enabled
+                                  if (isAdmin) return; 
                                   const newVal = !isCloudSyncEnabled;
                                   setIsCloudSyncEnabled(newVal);
                                   saveUserSettings({ is_cloud_sync_enabled: newVal });
@@ -1709,12 +2151,12 @@ const App: React.FC = () => {
                             </div>
                           )}
 
-                          {!isVip && !isAdmin && (
+                          {subscriptionStatus !== 'active' && !isAdmin && (
                             <button 
                               onClick={() => setIsSubscriptionModalOpen(true)}
-                              className="w-full py-2 bg-orange-100 text-orange-600 rounded-xl text-[10px] font-black hover:bg-orange-200 transition-all"
+                              className="w-full py-2 bg-orange-100 text-orange-600 rounded-xl text-[10px] font-black hover:bg-orange-200 transition-all font-sans"
                             >
-                              🌟 升級 VIP 開啟雲端備份
+                              🌟 升級 Premium 開啟 AI 與雲端
                             </button>
                           )}
                         </div>
@@ -1738,10 +2180,10 @@ const App: React.FC = () => {
         {/* LIST View Header */}
         {view === AppView.LIST && (
           <header className="flex flex-col gap-6 mb-8 animate-in fade-in slide-in-from-top-4 no-print">
-            {!isAuthReady && (
+            {isRecipesLoading && (
               <div className="bg-orange-50/50 border border-orange-100 rounded-2xl p-4 flex items-center justify-center gap-3 animate-pulse">
                 <span className="text-xl">🔄</span>
-                <span className="text-sm font-black text-orange-600">正在同步雲端資料庫...</span>
+                <span className="text-sm font-black text-orange-600">正在從雲端同步您的筆記...</span>
               </div>
             )}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1798,9 +2240,73 @@ const App: React.FC = () => {
             </div>
             <div className="space-y-4">
               <div className="relative group">
-                <input type="text" placeholder="搜尋食譜或師傅..." value={searchQuery || ''} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-white border border-orange-100 rounded-2xl focus:ring-2 focus:ring-orange-400 outline-none shadow-sm text-sm transition-all" />
+                <input 
+                  type="text" 
+                  placeholder="搜尋食譜標題、材料或輸入 #標籤..." 
+                  value={searchQuery || ''} 
+                  onChange={(e) => setSearchQuery(e.target.value)} 
+                  className="w-full pl-11 pr-12 py-3 bg-white border border-orange-100 rounded-2xl focus:ring-2 focus:ring-orange-400 outline-none shadow-sm text-sm transition-all" 
+                />
                 <span className="absolute left-4 top-3.5 text-orange-300 transition-colors group-focus-within:text-orange-500">🔍</span>
+                {searchQuery && (
+                  <button 
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-4 top-3 text-slate-300 hover:text-orange-500 transition-all"
+                  >
+                    <X size={18} />
+                  </button>
+                )}
+
+                {/* Hashtag Suggestion Menu */}
+                {searchQuery === '#' && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-orange-50 z-[1100] p-4 max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-1">可用標籤</p>
+                    <div className="flex flex-wrap gap-2">
+                      {allTags.length > 0 ? allTags.map(tag => (
+                        <button 
+                          key={`suggest-${tag}`} 
+                          onClick={() => setSearchQuery('#' + tag)}
+                          className="px-3 py-1.5 bg-orange-50 text-orange-600 rounded-xl text-xs font-black border border-orange-100 hover:bg-orange-100 transition-all"
+                        >
+                          #{tag}
+                        </button>
+                      )) : <p className="text-xs text-slate-400 italic px-1">目前還沒有任何標籤...</p>}
+                    </div>
+                  </div>
+                )}
               </div>
+
+              {/* 熱門標籤區塊 */}
+              {hotTags.length > 0 && (
+                <div className="flex flex-wrap gap-2 px-1">
+                  <span className="text-[10px] font-black text-slate-300 uppercase self-center tracking-widest mr-1">熱門標籤</span>
+                  {hotTags.map(tag => (
+                    <button 
+                      key={`hot-${tag}`} 
+                      onClick={() => setSearchQuery('#' + tag)}
+                      className="px-3 py-1 bg-[#E67E22]/10 text-[11px] font-black text-[#8B5E3C] rounded-lg hover:bg-orange-100 transition-all border border-orange-100/50"
+                    >
+                      #{tag}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {searchHistory.length > 0 && searchQuery.length === 0 && (
+                <div className="flex flex-wrap gap-2 px-1">
+                   <span className="text-[10px] font-black text-slate-300 uppercase self-center tracking-widest mr-1">最近搜尋</span>
+                   {searchHistory.map(h => (
+                     <button 
+                       key={h} 
+                       onClick={() => setSearchQuery(h)}
+                       className="px-3 py-1 bg-slate-50 text-[11px] font-bold text-slate-400 rounded-lg hover:bg-orange-50 hover:text-orange-500 transition-all border border-slate-100"
+                     >
+                       {h}
+                     </button>
+                   ))}
+                </div>
+              )}
+
               <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
                 {['⏳ 待嘗試', '全部', ...categories.map(c => c.name)].map(cat => (
                   <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${activeCategory === cat ? 'bg-[#E67E22] text-white shadow-md' : 'bg-white text-orange-400 border border-orange-100 hover:border-orange-300'}`}>{cat}</button>
@@ -1813,17 +2319,33 @@ const App: React.FC = () => {
         <main>
           {view === AppView.LIST && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 animate-in fade-in no-print">
-              {isAuthReady ? (
+              {!isRecipesLoading ? (
                 <>
                   {filteredRecipes.map(recipe => (
                     <RecipeCard key={recipe.id} recipe={recipe} onClick={(r) => { setSelectedRecipe(r); setView(AppView.DETAIL); }} />
                   ))}
-                  {filteredRecipes.length === 0 && <div className="col-span-full py-20 text-center text-orange-200 font-bold bg-white rounded-[32px] border border-dashed border-orange-100">目前沒有任何食譜，點擊下方「建立」來新增吧！</div>}
+                  {filteredRecipes.length === 0 && (
+                    <div className="col-span-full py-20 text-center bg-white rounded-[32px] border border-dashed border-orange-100 flex flex-col items-center gap-4">
+                      <div className="text-4xl">🔍</div>
+                      <div className="space-y-1">
+                        <p className="text-orange-400 font-bold">找不到相關食譜，要不要換個關鍵字試試？</p>
+                        <p className="text-slate-300 text-xs text-center">可以嘗試搜尋具體的材料，如「奶油」、「法國麵粉」等</p>
+                      </div>
+                      {searchQuery && (
+                        <button 
+                          onClick={() => setSearchQuery('')}
+                          className="mt-2 text-xs font-black text-white bg-[#E67E22] px-6 py-2 rounded-xl shadow-md active:scale-95"
+                        >
+                          回全部食譜
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="col-span-full py-20 text-center text-orange-300 font-bold bg-white rounded-[32px] border border-dashed border-orange-100 flex flex-col items-center gap-4">
                   <div className="w-10 h-10 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin"></div>
-                  正在同步雲端資料庫...
+                  正在從雲端同步您的筆記...
                 </div>
               )}
             </div>
@@ -2034,71 +2556,94 @@ const App: React.FC = () => {
 
                   {/* 換算後摘要資訊 */}
                   <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm flex flex-wrap gap-y-6 items-center justify-around text-center mb-8">
-                    {scalingRecipe.category === '中式點心' ? (
-                      <>
-                        <div className="flex-1 min-w-[80px] space-y-1.5">
-                          <div className="text-xs font-black text-slate-400 uppercase">⚖️ 皮重</div>
-                          <div className="text-2xl font-black text-slate-700 tabular-nums">
-                            {((Number(scalingRecipe.crustWeight) || 0) * scalingFactor).toFixed(1)}
-                            <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
-                          </div>
-                        </div>
-                        <div className="w-px h-10 bg-orange-50 hidden sm:block" />
-                        <div className="flex-1 min-w-[80px] space-y-1.5">
-                          <div className="text-xs font-black text-slate-400 uppercase">🧈 油酥</div>
-                          <div className="text-2xl font-black text-slate-700 tabular-nums">
-                            {((Number(scalingRecipe.oilPasteWeight) || 0) * scalingFactor).toFixed(1)}
-                            <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
-                          </div>
-                        </div>
-                        <div className="w-px h-10 bg-orange-50 hidden sm:block" />
-                        <div className="flex-1 min-w-[80px] space-y-1.5">
-                          <div className="text-xs font-black text-slate-400 uppercase">🍯 餡重</div>
-                          <div className="text-2xl font-black text-slate-700 tabular-nums">
-                            {((Number(scalingRecipe.fillingWeight) || 0) * scalingFactor).toFixed(1)}
-                            <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
-                          </div>
-                        </div>
-                        <div className="w-px h-10 bg-orange-50 hidden sm:block" />
-                        <div className="flex-1 min-w-[80px] space-y-1.5">
-                          <div className="text-xs font-black text-slate-400 uppercase">🔢 份數</div>
-                          <div className="text-2xl font-black text-slate-700 tabular-nums">
-                            {targetQuantity}
-                            <span className="text-sm font-bold text-slate-400 ml-0.5">顆</span>
-                          </div>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex-1 min-w-[100px] space-y-1.5">
-                          <div className="text-xs font-black text-slate-400 uppercase">⚖️ 麵團/糊重量</div>
-                          <div className="text-2xl font-black text-slate-700 tabular-nums">
-                            {((Number(scalingRecipe.doughWeight) || 0) * scalingFactor).toFixed(1)}
-                            <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
-                          </div>
-                        </div>
-                        {scalingRecipe.fillingWeight && Number(scalingRecipe.fillingWeight) > 0 && (
-                          <>
-                            <div className="w-px h-10 bg-orange-50 hidden sm:block" />
-                            <div className="flex-1 min-w-[100px] space-y-1.5">
-                              <div className="text-xs font-black text-slate-400 uppercase">🍯 內餡重量</div>
-                              <div className="text-2xl font-black text-slate-700 tabular-nums">
-                                {((Number(scalingRecipe.fillingWeight) || 0) * scalingFactor).toFixed(1)}
+                    {(() => {
+                      const items = [];
+                      if (scalingRecipe.category === '中式點心') {
+                        if (scalingRecipe.crustWeight && Number(scalingRecipe.crustWeight) > 0) {
+                          items.push(
+                            <div key="crust_scale" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
+                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">⚖️ 分割後一個<br/>油皮重 (克)</div>
+                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">
+                                {((Number(scalingRecipe.crustWeight) || 0) * scalingFactor).toFixed(1).replace(/\.0$/, '')}
                                 <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
                               </div>
                             </div>
-                          </>
-                        )}
-                        <div className="w-px h-10 bg-orange-50 hidden sm:block" />
-                        <div className="flex-1 min-w-[100px] space-y-1.5">
-                          <div className="text-xs font-black text-slate-400 uppercase">🔢 份數</div>
-                          <div className="text-2xl font-black text-slate-700 tabular-nums">
-                            {targetQuantity}
-                            <span className="text-sm font-bold text-slate-400 ml-0.5">份</span>
+                          );
+                        }
+                        if (scalingRecipe.oilPasteWeight && Number(scalingRecipe.oilPasteWeight) > 0) {
+                          items.push(
+                            <div key="oilPaste_scale" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
+                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🧈 分割後一個<br/>油酥重 (克)</div>
+                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">
+                                {((Number(scalingRecipe.oilPasteWeight) || 0) * scalingFactor).toFixed(1).replace(/\.0$/, '')}
+                                <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
+                              </div>
+                            </div>
+                          );
+                        }
+                        if (scalingRecipe.fillingWeight && Number(scalingRecipe.fillingWeight) > 0) {
+                          items.push(
+                            <div key="filling_pastry_scale" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
+                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🌰 分割後一個<br/>餡料重 (克)</div>
+                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">
+                                {((Number(scalingRecipe.fillingWeight) || 0) * scalingFactor).toFixed(1).replace(/\.0$/, '')}
+                                <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
+                              </div>
+                            </div>
+                          );
+                        }
+                        items.push(
+                          <div key="quantity_pastry_scale" className="flex-1 min-w-[80px] space-y-1.5">
+                            <div className="text-xs font-black text-slate-400 uppercase">🔢 份數</div>
+                            <div className="text-2xl font-black text-slate-700 tabular-nums">
+                              {targetQuantity.toFixed(1).replace(/\.0$/, '')}
+                              <span className="text-sm font-bold text-slate-400 ml-0.5">顆</span>
+                            </div>
                           </div>
-                        </div>
-                      </>
-                    )}
+                        );
+                      } else {
+                        if (scalingRecipe.doughWeight && Number(scalingRecipe.doughWeight) > 0) {
+                          items.push(
+                            <div key="dough_scale" className="flex-1 min-w-[140px] sm:min-w-[170px] space-y-2">
+                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">⚖️ 分割後一個<br/>麵團/糊重 (克)</div>
+                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">
+                                {((Number(scalingRecipe.doughWeight) || 0) * scalingFactor).toFixed(1).replace(/\.0$/, '')}
+                                <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
+                              </div>
+                            </div>
+                          );
+                        }
+                        if (scalingRecipe.fillingWeight && Number(scalingRecipe.fillingWeight) > 0) {
+                          items.push(
+                            <div key="filling_gen_scale" className="flex-1 min-w-[140px] sm:min-w-[170px] space-y-2">
+                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🌰 分割後一個<br/>內餡重 (克)</div>
+                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">
+                                {((Number(scalingRecipe.fillingWeight) || 0) * scalingFactor).toFixed(1).replace(/\.0$/, '')}
+                                <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
+                              </div>
+                            </div>
+                          );
+                        }
+                        items.push(
+                          <div key="quantity_gen_scale" className="flex-1 min-w-[100px] space-y-1.5">
+                            <div className="text-xs font-black text-slate-400 uppercase">🔢 製作份數</div>
+                            <div className="text-2xl font-black text-slate-700 tabular-nums">
+                              {targetQuantity.toFixed(1).replace(/\.0$/, '')}
+                              <span className="text-sm font-bold text-slate-400 ml-0.5">份</span>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return items.map((item, idx) => (
+                        <React.Fragment key={idx}>
+                          {item}
+                          {idx < items.length - 1 && (
+                            <div className="w-px h-10 bg-orange-50 hidden sm:block" />
+                          )}
+                        </React.Fragment>
+                      ));
+                    })()}
                   </div>
 
                   <div className="flex flex-col sm:flex-row justify-between items-center gap-4 sm:gap-0 mb-8 print:hidden">
@@ -2224,7 +2769,10 @@ const App: React.FC = () => {
                 <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-4">
                   <div className="flex justify-between items-center mb-1">
                     <label className="text-xs font-black text-orange-600 uppercase tracking-widest flex items-center gap-2">
-                      <Edit3 size={16} /> ✨ AI 快速筆記助手
+                       ✨ AI 快速筆記助手
+                      {subscriptionStatus !== 'active' && !isAdmin && (
+                        <span className="bg-orange-100 text-[#E67E22] px-2 py-0.5 rounded-lg text-[10px] border border-orange-200">Premium</span>
+                      )}
                     </label>
                     <button onClick={restoreDraft} className="text-[10px] font-black bg-orange-50 text-orange-600 px-3 py-1.5 rounded-xl border border-orange-100 hover:bg-orange-100 transition-all active:scale-95">🕒 還原最近草稿</button>
                   </div>
@@ -2257,26 +2805,32 @@ const App: React.FC = () => {
 
                 <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-6">
                   {/* 第一排：配方名稱、師傅 */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <input type="text" value={formRecipe.title || ''} onChange={e => setFormRecipe(p => ({ ...p, title: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-50 outline-none text-sm focus:border-orange-200" placeholder="配方名稱" />
-                    <input type="text" value={formRecipe.master || ''} onChange={e => setFormRecipe(p => ({ ...p, master: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-50 outline-none text-sm focus:border-orange-200" placeholder="師傅" />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div className="relative">
+                      <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">📖 配方名稱</label>
+                      <input type="text" value={formRecipe.title || ''} onChange={e => setFormRecipe(p => ({ ...p, title: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold focus:border-orange-200 transition-all" placeholder="輸入食譜標題" />
+                    </div>
+                    <div className="relative">
+                      <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">👨‍🍳 師傅 / 來源</label>
+                      <input type="text" value={formRecipe.master || ''} onChange={e => setFormRecipe(p => ({ ...p, master: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold focus:border-orange-200 transition-all" placeholder="作者或出處" />
+                    </div>
                   </div>
 
             {/* 第二排：分類下拉選單 與 保存期限 與 總時長 */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
               <div className="w-full">
-                <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">📂 分類</label>
-                <select value={formRecipe.category || ''} onChange={e => setFormRecipe(p => ({ ...p, category: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200">
+                <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">📂 分類</label>
+                <select value={formRecipe.category || ''} onChange={e => setFormRecipe(p => ({ ...p, category: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold focus:border-orange-200 transition-all">
                   {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                 </select>
               </div>
               <div className="w-full">
-                <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">🕒 保存期限</label>
-                <input type="text" value={formRecipe.shelfLife || ''} onChange={e => setFormRecipe(p => ({ ...p, shelfLife: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200" placeholder="例如：常溫 2 天" />
+                <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">🕒 保存期限</label>
+                <input type="text" value={formRecipe.shelfLife || ''} onChange={e => setFormRecipe(p => ({ ...p, shelfLife: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold focus:border-orange-200 transition-all" placeholder="例如：常溫 2 天" />
               </div>
               <div className="w-full">
-                <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">⏲️ 總時長</label>
-                <input type="text" value={formRecipe.totalDuration || ''} onChange={e => setFormRecipe(p => ({ ...p, totalDuration: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:border-orange-200" placeholder="例如：45 分鐘、3 小時" />
+                <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">⏲️ 總時長</label>
+                <input type="text" value={formRecipe.totalDuration || ''} onChange={e => setFormRecipe(p => ({ ...p, totalDuration: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold focus:border-orange-200 transition-all" placeholder="例如：45 分鐘、3 小時" />
               </div>
             </div>
 
@@ -2284,28 +2838,28 @@ const App: React.FC = () => {
                   <div className="space-y-6">
                     <div className={`transition-all duration-500 ease-in-out overflow-hidden ${(['餡料', '果醬', '抹醬/其他'].includes(formRecipe.category || '')) ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-[500px] opacity-100'}`}>
                       {formRecipe.category === '中式點心' ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                           <div className="relative">
-                            <label className="block text-[13px] font-black text-slate-500 uppercase mb-1.5 ml-1">⚖️ 皮重(g)</label>
+                            <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">⚖️ 分割後一個油皮重 (克)</label>
                             <input type="text" value={formRecipe.crustWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, crustWeight: e.target.value }))} placeholder="克數" className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold text-center" />
                           </div>
                           <div className="relative">
-                            <label className="block text-[13px] font-black text-slate-500 uppercase mb-1.5 ml-1">🧈 油酥重(g)</label>
+                            <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">🧈 分割後一個油酥重 (克)</label>
                             <input type="text" value={formRecipe.oilPasteWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, oilPasteWeight: e.target.value }))} placeholder="克數" className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold text-center" />
                           </div>
                           <div className="relative">
-                            <label className="block text-[13px] font-black text-slate-500 uppercase mb-1.5 ml-1">🌰 餡重(g)</label>
+                            <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">🌰 分割後一個餡料重 (克)</label>
                             <input type="text" value={formRecipe.fillingWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, fillingWeight: e.target.value }))} placeholder="克數" className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold text-center" />
                           </div>
                         </div>
                       ) : (
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                           <div className="relative">
-                            <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">⚖️ 麵團/糊 (g)</label>
+                            <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">⚖️ 分割後一個麵團/糊重 (克)</label>
                             <input type="text" value={formRecipe.doughWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, doughWeight: e.target.value }))} placeholder="克數" className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold text-center" />
                           </div>
                           <div className="relative">
-                            <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">🌰 內餡 (g)</label>
+                            <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">🌰 分割後一個內餡重 (克)</label>
                             <input type="text" value={formRecipe.fillingWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, fillingWeight: e.target.value }))} placeholder="克數" className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold text-center" />
                           </div>
                         </div>
@@ -2313,26 +2867,26 @@ const App: React.FC = () => {
                     </div>
 
                     <div className="relative">
-                      <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">🔢 製作份數</label>
+                      <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">🔢 製作份數</label>
                       <input type="number" value={formRecipe.quantity ?? ''} onChange={e => setFormRecipe(p => ({ ...p, quantity: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
                     </div>
                   </div>
 
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     <div className="relative">
-                      <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">老師分享日 📅</label>
+                      <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">老師分享日 📅</label>
                       <input type="date" value={formRecipe.sourceDate || ''} onChange={e => setFormRecipe(p => ({ ...p, sourceDate: e.target.value }))} className="w-full px-4 py-2.5 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
                     </div>
                     <div className="relative">
-                      <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">記錄日期 📝</label>
+                      <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">記錄日期 📝</label>
                       <input type="date" value={formRecipe.recordDate || ''} onChange={e => setFormRecipe(p => ({ ...p, recordDate: e.target.value }))} className="w-full px-4 py-2.5 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
                     </div>
                   </div>
 
                   <div className={`transition-all duration-500 ease-in-out overflow-hidden ${(['餡料', '果醬', '抹醬/其他'].includes(formRecipe.category || '')) ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-[200px] opacity-100'}`}>
                     <div className="w-full">
-                      <label className="block text-[13px] font-black text-slate-600 uppercase mb-1.5 ml-1">🍞 模具規格/烤盤</label>
+                      <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">🍞 模具規格/烤盤</label>
                       <input type="text" value={formRecipe.moldName || ''} onChange={e => setFormRecipe(p => ({ ...p, moldName: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" placeholder="模具規格" />
                     </div>
                   </div>
@@ -2442,20 +2996,28 @@ const App: React.FC = () => {
                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1 flex items-center gap-2">
                       <Tag size={12} /> 心得標籤 (分類標記)
                     </label>
-                    <div className="flex flex-wrap gap-2 mb-3">
+                    <div className="flex flex-wrap gap-3 mb-3">
                       {(formRecipe.tags || []).map((t, idx) => (
-                        <span key={idx} className="bg-orange-50 text-orange-600 px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1 group border border-orange-100">
-                          {t}
-                          <button onClick={() => setFormRecipe(prev => ({ ...prev, tags: prev.tags?.filter((_, i) => i !== idx) }))} className="hover:text-red-500 transition-colors">✕</button>
+                        <span key={idx} className="bg-orange-50 text-orange-600 px-4 py-1.5 rounded-full text-xs font-black flex items-center gap-2 group border border-orange-100 shadow-sm animate-in zoom-in-95">
+                          #{t}
+                          <button onClick={() => setFormRecipe(prev => ({ ...prev, tags: prev.tags?.filter((_, i) => i !== idx) }))} className="hover:text-red-500 transition-colors bg-white/50 rounded-full w-4 h-4 flex items-center justify-center">✕</button>
                         </span>
                       ))}
                     </div>
                     <input 
                       type="text" 
-                      value={(formRecipe.tags || []).join(', ')} 
-                      onChange={e => handleTagsInput(e.target.value)} 
-                      className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm focus:bg-white focus:border-orange-200 transition-all" 
-                      placeholder="逗號分隔，例如：呂昇達老師配方, 戚風系列, 待測試" 
+                      value={tagInput}
+                      onCompositionStart={() => setIsComposing(true)}
+                      onCompositionEnd={() => setIsComposing(false)}
+                      onChange={e => handleTagsInputChange(e.target.value)} 
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !isComposing) {
+                          e.preventDefault();
+                          addTag(tagInput);
+                        }
+                      }}
+                      className="w-full px-4 py-4 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold focus:bg-white focus:border-orange-200 transition-all placeholder:text-slate-300" 
+                      placeholder="輸入標籤後按 Enter 或逗號分隔..." 
                     />
                   </div>
                   <div className="w-full flex gap-4">
@@ -2642,11 +3204,11 @@ const App: React.FC = () => {
                 <div className="space-y-6">
                    {currentOrder.map((sec, idx) => {
                       const onMove = (dir: 'up' | 'down') => moveSection(idx, dir);
-                      if (sec === 'ingredients') return <IngredientList key={sec} items={formRecipe.ingredients || []} title="主麵團" fieldKey="ingredients" customTitleKey="mainSectionName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} />;
-                      if (sec === 'liquidStarterIngredients') return <IngredientList key={sec} items={formRecipe.liquidStarterIngredients || []} title="發酵種" fieldKey="liquidStarterIngredients" customTitleKey="liquidStarterName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} />;
-                      if (sec === 'fillingIngredients') return <IngredientList key={sec} items={formRecipe.fillingIngredients || []} title="內餡" fieldKey="fillingIngredients" customTitleKey="fillingSectionName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} />;
-                      if (sec === 'decorationIngredients') return <IngredientList key={sec} items={formRecipe.decorationIngredients || []} title="裝飾" fieldKey="decorationIngredients" customTitleKey="decorationSectionName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} />;
-                      if (sec === 'customSectionIngredients') return <IngredientList key={sec} items={formRecipe.customSectionIngredients || []} title="其他區塊" fieldKey="customSectionIngredients" customTitleKey="customSectionName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} />;
+                      if (sec === 'ingredients') return <IngredientList key={sec} items={formRecipe.ingredients || []} title="主麵團" fieldKey="ingredients" customTitleKey="mainSectionName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} lastUsedUnit={lastUsedUnit} setLastUsedUnit={setLastUsedUnit} />;
+                      if (sec === 'liquidStarterIngredients') return <IngredientList key={sec} items={formRecipe.liquidStarterIngredients || []} title="發酵種" fieldKey="liquidStarterIngredients" customTitleKey="liquidStarterName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} lastUsedUnit={lastUsedUnit} setLastUsedUnit={setLastUsedUnit} />;
+                      if (sec === 'fillingIngredients') return <IngredientList key={sec} items={formRecipe.fillingIngredients || []} title="內餡" fieldKey="fillingIngredients" customTitleKey="fillingSectionName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} lastUsedUnit={lastUsedUnit} setLastUsedUnit={setLastUsedUnit} />;
+                      if (sec === 'decorationIngredients') return <IngredientList key={sec} items={formRecipe.decorationIngredients || []} title="裝飾" fieldKey="decorationIngredients" customTitleKey="decorationSectionName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} lastUsedUnit={lastUsedUnit} setLastUsedUnit={setLastUsedUnit} />;
+                      if (sec === 'customSectionIngredients') return <IngredientList key={sec} items={formRecipe.customSectionIngredients || []} title="其他區塊" fieldKey="customSectionIngredients" customTitleKey="customSectionName" onMoveSection={onMove} sectionIndex={idx} totalSections={currentOrder.length} formRecipe={formRecipe} setFormRecipe={setFormRecipe} handleUpdateIngredient={handleUpdateIngredient} moveIngredient={moveIngredient} triggerConfirm={triggerConfirm} lastUsedUnit={lastUsedUnit} setLastUsedUnit={setLastUsedUnit} />;
                       return null;
                     })}
                 </div>
@@ -2725,12 +3287,12 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="p-6 bg-white rounded-[32px] border border-orange-50 shadow-sm space-y-4">
-                  <label className="text-xs font-black text-orange-600 uppercase tracking-widest">食譜簡介 (列表顯示)</label>
-                  <textarea value={formRecipe.description || ''} onChange={(e) => setFormRecipe(p => ({ ...p, description: e.target.value }))} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs min-h-[100px] focus:bg-white focus:ring-1 focus:ring-orange-200 transition-all" placeholder="簡單介紹這份配方的特色..." />
+                  <label className="text-xs font-black text-orange-600 uppercase tracking-widest ml-1">食譜簡介 (列表顯示)</label>
+                  <textarea value={formRecipe.description || ''} onChange={(e) => setFormRecipe(p => ({ ...p, description: e.target.value }))} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-base font-bold min-h-[120px] focus:bg-white focus:ring-1 focus:ring-orange-200 transition-all placeholder:text-slate-300" placeholder="簡單介紹這份配方的特色..." />
                 </div>
                 <div className="p-6 bg-white rounded-[32px] border border-orange-50 shadow-sm space-y-4">
-                  <label className="text-xs font-black text-orange-600 uppercase tracking-widest">📝 老師的小叮嚀</label>
-                  <textarea value={formRecipe.notes || ''} onChange={(e) => setFormRecipe(p => ({ ...p, notes: e.target.value }))} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs min-h-[150px] focus:bg-white focus:ring-1 focus:ring-orange-200 transition-all leading-relaxed" placeholder="紀錄製作時的心得、建議改進之處..." />
+                  <label className="text-xs font-black text-orange-600 uppercase tracking-widest ml-1">📝 老師的小叮嚀</label>
+                  <textarea value={formRecipe.notes || ''} onChange={(e) => setFormRecipe(p => ({ ...p, notes: e.target.value }))} className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-base font-bold min-h-[180px] focus:bg-white focus:ring-1 focus:ring-orange-200 transition-all leading-relaxed placeholder:text-slate-300" placeholder="紀錄製作時的心得、建議改進之處..." />
                 </div>
                 <div id="save-recipe-btn" className="pt-6">
                   <button 
@@ -2825,7 +3387,9 @@ const App: React.FC = () => {
                       return;
                     }
                     const newId = 'cat-' + Date.now();
-                    setCategories(prev => [...prev, { id: newId, name: newCatName.trim(), order: categories.length }]); 
+                    const updatedCats = [...categories, { id: newId, name: newCatName.trim(), order: categories.length }];
+                    setCategories(updatedCats); 
+                    syncCategoriesToCloud(updatedCats);
                     setNewCatName(''); 
                     showToast("分類新增成功！"); 
                   }} 
@@ -2878,7 +3442,9 @@ const App: React.FC = () => {
                             onClick={() => { 
                               const nc = [...categories]; 
                               [nc[idx], nc[idx-1]] = [nc[idx-1], nc[idx]]; 
-                              setCategories(nc.map((c,i)=>({...c,order:i}))); 
+                              const updatedCats = nc.map((c,i)=>({...c,order:i}));
+                              setCategories(updatedCats); 
+                              syncCategoriesToCloud(updatedCats);
                             }} 
                             disabled={idx === 0} 
                             className="p-1 px-2 text-[#E67E22] disabled:opacity-10 hover:bg-white rounded-md transition-all font-black text-lg"
@@ -2890,7 +3456,9 @@ const App: React.FC = () => {
                             onClick={() => { 
                               const nc = [...categories]; 
                               [nc[idx], nc[idx+1]] = [nc[idx+1], nc[idx]]; 
-                              setCategories(nc.map((c,i)=>({...c,order:i}))); 
+                              const updatedCats = nc.map((c,i)=>({...c,order:i}));
+                              setCategories(updatedCats); 
+                              syncCategoriesToCloud(updatedCats);
                             }} 
                             disabled={idx === categories.length-1} 
                             className="p-1 px-2 text-[#E67E22] disabled:opacity-10 hover:bg-white rounded-md transition-all font-black text-lg"
@@ -2904,7 +3472,9 @@ const App: React.FC = () => {
                             const hasRecipes = recipes.some(r => r.category === cat.name);
                             const confirmMsg = hasRecipes ? `「${cat.name}」分類下還有 ${recipeCount} 份食譜，確定要刪除嗎？` : null;
                             triggerConfirm(() => {
-                              setCategories(categories.filter(c => c.id !== cat.id));
+                              const updatedCats = categories.filter(c => c.id !== cat.id);
+                              setCategories(updatedCats);
+                              syncCategoriesToCloud(updatedCats);
                               showToast(`分類「${cat.name}」已刪除`);
                             }, confirmMsg);
                           }}
@@ -3074,49 +3644,85 @@ const App: React.FC = () => {
                 )}
 
                 <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm flex flex-wrap gap-y-6 items-center justify-around text-center print:rounded-2xl print:border-slate-200">
-                  {selectedRecipe.category === '中式點心' ? (
-                    <>
-                      <div className="flex-1 min-w-[80px] space-y-1.5"><div className="text-xs font-black text-slate-400 uppercase">⚖️ 皮重</div><div className="text-2xl font-black text-slate-700 tabular-nums print:text-lg">{selectedRecipe.crustWeight || 0}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div></div>
-                      <div className="w-px h-10 bg-orange-50 hidden sm:block print:bg-slate-100" />
-                      <div className="flex-1 min-w-[80px] space-y-1.5"><div className="text-xs font-black text-slate-400 uppercase">🧈 油酥</div><div className="text-2xl font-black text-slate-700 tabular-nums print:text-lg">{selectedRecipe.oilPasteWeight || 0}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div></div>
-                      <div className="w-px h-10 bg-orange-50 hidden sm:block print:bg-slate-100" />
-                      <div className="flex-1 min-w-[80px] space-y-1.5"><div className="text-xs font-black text-slate-400 uppercase">🍯 餡重</div><div className="text-2xl font-black text-slate-700 tabular-nums print:text-lg">{selectedRecipe.fillingWeight || 0}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div></div>
-                      <div className="w-px h-10 bg-orange-50 hidden sm:block print:bg-slate-100" />
-                      <div className="flex-1 min-w-[80px] space-y-1.5"><div className="text-xs font-black text-slate-400 uppercase">🔢 份數</div><div className="text-2xl font-black text-slate-700 tabular-nums print:text-lg">{selectedRecipe.quantity || 1}<span className="text-sm font-bold text-slate-400 ml-0.5">顆</span></div></div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="flex-1 min-w-[100px] space-y-1.5">
-                        <div className="text-xs font-black text-slate-400 uppercase">⚖️ 麵團/糊重量</div>
-                        <div className="text-2xl font-black text-slate-700 tabular-nums print:text-lg">
-                          {selectedRecipe.doughWeight || 0}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
-                        </div>
-                      </div>
+                  {(() => {
+                    const weightItems = [];
 
-                      {/* 關鍵修正：確保這裡只有在「有內餡」時才顯示，否則不留任何 0 或欄位 */}
-                      {selectedRecipe.fillingWeight && selectedRecipe.fillingWeight > 0 ? (
-                        <>
-                          <div className="w-px h-10 bg-orange-50 hidden sm:block print:bg-slate-100" />
-                          <div className="flex-1 min-w-[100px] space-y-1.5">
-                            <div className="text-xs font-black text-slate-400 uppercase">🍯 內餡重量</div>
-                            <div className="text-2xl font-black text-slate-700 tabular-nums print:text-lg">
+                    if (selectedRecipe.category === '中式點心') {
+                      // 中式點心模式的欄位
+                      if (selectedRecipe.crustWeight && Number(selectedRecipe.crustWeight) > 0) {
+                        weightItems.push(
+                          <div key="crust" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
+                            <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">⚖️ 分割後一個<br/>油皮重 (克)</div>
+                            <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums print:text-lg">{selectedRecipe.crustWeight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div>
+                          </div>
+                        );
+                      }
+                      if (selectedRecipe.oilPasteWeight && Number(selectedRecipe.oilPasteWeight) > 0) {
+                        weightItems.push(
+                          <div key="oilPaste" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
+                            <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🧈 分割後一個<br/>油酥重 (克)</div>
+                            <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums print:text-lg">{selectedRecipe.oilPasteWeight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div>
+                          </div>
+                        );
+                      }
+                      if (selectedRecipe.fillingWeight && Number(selectedRecipe.fillingWeight) > 0) {
+                        weightItems.push(
+                          <div key="filling_pastry" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
+                            <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🌰 分割後一個<br/>餡料重 (克)</div>
+                            <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums print:text-lg">{selectedRecipe.fillingWeight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div>
+                          </div>
+                        );
+                      }
+                      // 份數 (通常會有值)
+                      weightItems.push(
+                        <div key="quantity_pastry" className="flex-1 min-w-[80px] space-y-1.5">
+                          <div className="text-xs font-black text-slate-400 uppercase">🔢 份數</div>
+                          <div className="text-2xl font-black text-slate-700 tabular-nums print:text-lg">{selectedRecipe.quantity || 1}<span className="text-sm font-bold text-slate-400 ml-0.5">顆</span></div>
+                        </div>
+                      );
+                    } else {
+                      // 一般模式的欄位
+                      if (selectedRecipe.doughWeight && Number(selectedRecipe.doughWeight) > 0) {
+                        weightItems.push(
+                          <div key="dough" className="flex-1 min-w-[140px] sm:min-w-[170px] space-y-2">
+                            <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">⚖️ 分割後一個<br/>麵團/糊重 (克)</div>
+                            <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums print:text-lg">
+                              {selectedRecipe.doughWeight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
+                            </div>
+                          </div>
+                        );
+                      }
+                      if (selectedRecipe.fillingWeight && Number(selectedRecipe.fillingWeight) > 0) {
+                        weightItems.push(
+                          <div key="filling_gen" className="flex-1 min-w-[140px] sm:min-w-[170px] space-y-2">
+                            <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🌰 分割後一個<br/>內餡重 (克)</div>
+                            <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums print:text-lg">
                               {selectedRecipe.fillingWeight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
                             </div>
                           </div>
-                        </>
-                      ) : (
-                        /* 如果沒有內餡，就只放一個裝飾用的分隔線 */
-                        <div className="w-px h-10 bg-orange-50 hidden sm:block print:bg-slate-100" />
-                      )}
-
-                      <div className="flex-1 min-w-[100px] space-y-1.5">
-                        <div className="text-xs font-black text-slate-400 uppercase">🔢 製作份數</div>
-                        <div className="text-2xl font-black text-slate-700 tabular-nums print:text-lg">
-                          {selectedRecipe.quantity || 1}<span className="text-sm font-bold text-slate-400 ml-0.5">份</span>
+                        );
+                      }
+                      // 製作份數
+                      weightItems.push(
+                        <div key="quantity_gen" className="flex-1 min-w-[100px] space-y-1.5">
+                          <div className="text-xs font-black text-slate-400 uppercase">🔢 製作份數</div>
+                          <div className="text-2xl font-black text-slate-700 tabular-nums print:text-lg">
+                            {selectedRecipe.quantity || 1}<span className="text-sm font-bold text-slate-400 ml-0.5">份</span>
+                          </div>
                         </div>
-                      </div>
-                    </>
-                  )}
+                      );
+                    }
+
+                    // 渲染包含分隔線的結果
+                    return weightItems.map((item, idx) => (
+                      <React.Fragment key={idx}>
+                        {item}
+                        {idx < weightItems.length - 1 && (
+                          <div className="w-px h-10 bg-orange-50 hidden sm:block print:bg-slate-100" />
+                        )}
+                      </React.Fragment>
+                    ));
+                  })()}
                 </div>
                 {selectedRecipe.moldName && (<div className="bg-white px-6 py-4 rounded-[32px] border border-orange-50 shadow-sm flex items-center justify-center gap-3 print:rounded-2xl print:border-slate-200 print:py-2"><span className="text-xl">🍞</span><span className="text-xs font-black text-slate-400 uppercase">模具規格</span><div className="text-base font-black text-slate-700 print:text-sm">{selectedRecipe.moldName}</div></div>)}
               </div>
@@ -3359,7 +3965,7 @@ const App: React.FC = () => {
                   </div>
 
                   <div className="flex flex-wrap gap-4 relative z-[100] no-print">
-                    <button onClick={() => { setFormRecipe(selectedRecipe); setView(AppView.EDIT); }} className="flex-grow py-5 bg-white border border-orange-100 rounded-[32px] font-black text-orange-600 shadow-sm active:scale-95 transition-all hover:bg-orange-50 text-base">編輯配方</button>
+                    <button onClick={() => { setTagInput(''); setFormRecipe(selectedRecipe); setView(AppView.EDIT); }} className="flex-grow py-5 bg-white border border-orange-100 rounded-[32px] font-black text-orange-600 shadow-sm active:scale-95 transition-all hover:bg-orange-50 text-base">編輯配方</button>
                     <button 
                       onClick={() => {
                         if (!isVip) {
@@ -3390,6 +3996,14 @@ const App: React.FC = () => {
 
       {/* Modals */}
       <SubscriptionModal isOpen={isSubscriptionModalOpen} onClose={() => setIsSubscriptionModalOpen(false)} />
+      <AIPreviewModal 
+        isOpen={!!aiPreviewData} 
+        recipes={aiPreviewData || []} 
+        onClose={() => setAiPreviewData(null)}
+        onImport={applyParsedRecipe}
+        onMerge={handleMergeParsedRecipes}
+        onImportAll={handleImportAllParsedRecipes}
+      />
       
       {/* 臨時配方卡 Modal */}
       {isRecipeCardModalOpen && scalingRecipe && (
