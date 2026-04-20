@@ -118,7 +118,7 @@ import {
   ChevronRight, Trash2, Edit2, Edit3, Share2, Printer, Save, X, RotateCcw,
   Clock, Thermometer, Droplets, Tag, BookOpen, ExternalLink, Calendar,
   ChevronUp, ChevronDown, Camera, Image as ImageIcon, CheckCircle2, AlertCircle,
-  Cloud, CloudOff, Smartphone
+  Cloud, CloudOff, Smartphone, Crown, Menu, Mail
 } from 'lucide-react';
 
 // --- 1. 類型定義 (原 types.ts 內容) ---
@@ -859,49 +859,169 @@ const IngredientList: React.FC<{
   );
 };
 
+// --- 2. 輔助元件 (UI Components) ---
+
 const SubscriptionModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300">
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-slate-900/10 backdrop-blur-[2px] animate-in fade-in duration-300">
       <motion.div 
-        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        initial={{ scale: 0.98, opacity: 0, y: 5 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        className="bg-[#F5E6D3] w-full max-w-md rounded-[40px] overflow-hidden shadow-2xl border border-[#E8D5C0]"
+        className="bg-[#F5E6D3] w-full max-w-[340px] rounded-xl overflow-hidden shadow-[0_20px_50px_rgba(139,94,61,0.15)] border border-[#E8D5C0]/40 flex flex-col"
       >
-        <div className="p-8 text-center">
-          <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">
-            <span className="text-4xl">🌟</span>
+        <div className="p-6 text-center">
+          {/* 品牌名稱置中 */}
+          <div className="py-6 mb-4 flex flex-col items-center animate-in zoom-in-95 duration-500">
+            <h2 className="text-[#8B5A2B] font-black text-2xl tracking-tight">烘焙靈感箱</h2>
+            <div className="w-8 h-1 bg-[#D4AF37] rounded-full mt-2 opacity-60"></div>
           </div>
-          <h2 className="text-2xl font-black text-[#8B5E3C] mb-4">🌟 升級 Premium，開啟雲端備份與 AI 助手</h2>
-          <p className="text-[#A67C52] font-bold mb-8 leading-relaxed text-sm">
-            連線上雲端，隨時隨地同步您的烘焙筆記！<br />
-            解鎖 ✨ AI 快速解析筆記、無限雲端儲存、<br />
-            專業逆算工具與一鍵 PDF 導出。
+
+          <h2 className="text-base font-black text-[#8B5E3C] mb-2 leading-tight">升級 Premium 專業版</h2>
+          <p className="text-[#A67C52] font-bold mb-5 leading-relaxed text-[11px] px-4 opacity-90">
+            解鎖 ✨ AI 自動解析、雲端多端同步，<br />
+            開啟無限儲存空間與全方位配方管理。
           </p>
           
-          <div className="space-y-4">
+          <div className="space-y-1.5 px-2">
             <button 
               onClick={() => {
                 window.open('https://ais-dev-2v2log3rzdrogmvvnzxg3i-102707397029.asia-east1.run.app', '_blank');
               }}
-              className="w-full py-4 bg-[#8B5E3C] text-white rounded-full font-black shadow-lg hover:bg-[#724D31] transition-all active:scale-95"
+              className="w-full py-2.5 bg-[#8B5E3C] text-white rounded-xl font-black text-[13px] shadow-sm hover:bg-[#724D31] transition-all active:scale-95"
             >
-              立即升級 (NT$ 99/月)
+              獲取專業版 (NT$ 99/月)
+            </button>
+            <button 
+              onClick={() => {
+                window.location.href = `mailto:linda6623@gmail.com?subject=烘焙靈感箱支付開通確認&body=我的帳號是：${auth.currentUser?.email}%0D%0A我已完成支付，請協助開通 Premium 權限。`;
+              }}
+              className="w-full py-2 bg-orange-50 text-[#8B5E3C] rounded-xl font-black text-[11px] hover:bg-orange-100 transition-all active:scale-95 border border-orange-100/50"
+            >
+              我已付款，通知開通 🚀
             </button>
             <button 
               onClick={onClose}
-              className="w-full py-4 bg-white/50 text-[#8B5E3C] rounded-full font-black hover:bg-white/80 transition-all"
+              className="w-full py-2 text-[#A67C52]/50 rounded-xl font-bold text-[11px] hover:bg-orange-50/50 transition-all"
             >
               稍後再說
             </button>
           </div>
           
-          <p className="mt-6 text-[10px] text-[#A67C52]/60 font-bold uppercase tracking-widest">
-            支持獨立開發者，讓烘焙更簡單
+          <p className="mt-4 text-[8px] text-[#A67C52]/30 font-bold uppercase tracking-widest flex items-center justify-center gap-1.5">
+            <span className="w-4 h-[1px] bg-[#A67C52]/10"></span>
+            支持在地開發者
+            <span className="w-4 h-[1px] bg-[#A67C52]/10"></span>
           </p>
         </div>
       </motion.div>
     </div>
+  );
+};
+
+const Sidebar: React.FC<{ 
+  isOpen: boolean; 
+  onClose: () => void; 
+  user: User | null; 
+  onLogin: () => void; 
+  onLogout: () => void;
+  subscriptionStatus: string;
+  isAdmin: boolean;
+}> = ({ isOpen, onClose, user, onLogin, onLogout, subscriptionStatus, isAdmin }) => {
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          {/* Overlay */}
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 bg-black/20 backdrop-blur-[2px] z-[2000]"
+          />
+          {/* Drawer Content */}
+          <motion.div 
+            initial={{ x: '-100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '-100%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="fixed top-0 left-0 bottom-0 w-[280px] bg-[#FDF8F3] shadow-2xl z-[2001] flex flex-col"
+          >
+            {/* Header / Text Branding */}
+            <div className="p-10 pb-8 flex flex-col items-center">
+              <h2 className="text-[#8B5A2B] font-black text-2xl tracking-tight">烘焙靈感箱</h2>
+              <p className="text-[#A67C52] text-[10px] font-bold opacity-40 tracking-[0.2em] mt-2 uppercase">您的專屬烘焙保險箱</p>
+            </div>
+
+            {/* Menu Items */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              <div className="py-2">
+                <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest px-4 mb-2">帳號管理</p>
+                {user ? (
+                  <div className="bg-white/50 rounded-2xl p-4 border border-orange-50 mb-2">
+                    <div className="flex items-center gap-3">
+                      {user.photoURL ? (
+                        <img src={user.photoURL} alt="" className="w-10 h-10 rounded-full border border-orange-100" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-500">
+                          <UserIcon size={20} />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-black text-slate-700 truncate">{user.displayName || '烘焙愛好者'}</p>
+                        <p className="text-[10px] font-bold text-orange-500 uppercase">
+                          {isAdmin ? '✨ 超級管理員' : (subscriptionStatus === 'active' ? '💎 Premium 會員' : '🌱 一般用戶')}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <button 
+                    onClick={() => { onLogin(); onClose(); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-[#8B5E3C] font-black text-sm hover:bg-orange-50 rounded-2xl transition-all"
+                  >
+                    <LogIn size={20} />
+                    <span>Google 快速登入</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="py-2 border-t border-orange-100/30">
+                <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest px-4 mb-2">系統與支援</p>
+                <button 
+                  onClick={() => {
+                    window.location.href = "mailto:linda6623@gmail.com?subject=烘焙靈感箱使用者回饋";
+                    onClose();
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-[#8B5E3C] font-black text-sm hover:bg-orange-50 rounded-2xl transition-all"
+                >
+                  <Mail size={20} />
+                  <span>聯絡開發者</span>
+                </button>
+              </div>
+
+              {user && (
+                <div className="py-2 border-t border-orange-100/30">
+                  <button 
+                    onClick={() => { onLogout(); onClose(); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-red-400 font-bold text-sm hover:bg-red-50 rounded-2xl transition-all"
+                  >
+                    <LogOut size={20} />
+                    <span>登出帳號</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-orange-100/30 text-center">
+               <p className="text-[10px] text-slate-300 font-bold">Version 1.2.0 • 手作溫度</p>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   );
 };
 
@@ -922,10 +1042,12 @@ const App: React.FC = () => {
   const [storageUsage, setStorageUsage] = useState(0);
   const [isVip, setIsVip] = useState(false);
   const [subscriptionStatus, setSubscriptionStatus] = useState<'free' | 'active'>('free');
+  const [subTypeLabel, setSubTypeLabel] = useState('一般用戶');
   const [aiUsage, setAiUsage] = useState({ date: '', count: 0 });
   const [isCloudSyncEnabled, setIsCloudSyncEnabled] = useState(false);
   const [view, setView] = useState<AppView>(AppView.LIST);
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showUserStatus, setShowUserStatus] = useState(false);
 
   const isAdmin = useMemo(() => {
@@ -1080,14 +1202,23 @@ const App: React.FC = () => {
         isSyncingFromCloud.current = true;
         
         let subStatus: 'free' | 'active' = 'free';
-        if (isAdmin) {
-          subStatus = 'active';
-        } else if (data.subscriptionStatus === 'active' || data.is_vip) {
+        const now = Date.now();
+        const isTrialActive = data.trial_until && data.trial_until > now;
+        const isPermanentVip = data.is_permanent_vip === true;
+
+        if (isAdmin || data.subscriptionStatus === 'active' || data.is_vip || isTrialActive || isPermanentVip) {
           subStatus = 'active';
         }
 
         setSubscriptionStatus(subStatus);
         setIsVip(subStatus === 'active');
+        
+        let label = '一般用戶';
+        if (isAdmin) label = '超級管理員';
+        else if (isPermanentVip) label = '永久 VIP';
+        else if (isTrialActive) label = '試用中';
+        else if (subStatus === 'active') label = 'Premium 會員';
+        setSubTypeLabel(label);
         
         if (data.knowledge) setKnowledge(data.knowledge);
         if (data.completedSteps) setCompletedSteps(data.completedSteps);
@@ -1692,28 +1823,26 @@ const App: React.FC = () => {
     try {
       const resp = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `你是一個專業的烘焙助手。請解析以下筆記，識別出其中所有的食譜結構。
+        contents: `你是一個專業、極致細膩的烘焙食譜解析助手。請從筆記中識別出所有的材料區分。
         
-        【重要解析規則】：
-        1. 嚴格全方位整合：除非內容明顯是兩個完全不同的食譜，否則請將所有材料、步驟、發酵、烘烤資訊整合進同一個食譜對象中。
-        2. 分區對應邏輯：
-           - 「主麵團」、「麵糊」、「油皮」 -> ingredients。
-           - 「發酵種」、「老麵」、「液種」、「湯種」 -> liquidStarterIngredients。
-           - 「內餡」、「夾心」、「油酥」 -> fillingIngredients。
-           - 「表面裝飾」、「頂料」、「糖粉」 -> decorationIngredients。
-        3. 發酵與烘烤偵測 (智慧關鍵字容錯)：
-           - 發酵：偵測「一發/基發/二發/終發/中間發酵/室溫/冷藏發酵」。提取時間(分鐘/小時)與溫度。
-           - 烘烤：偵測「烘烤/烤箱/氣炸」。提取「上火」、「下火」及「時間」。
-           - 如果只有一個溫度，請同時填入上下火。
-        4. 排除空內容：如果某個食譜不包含任何材料，請直接忽略，不要匯出。
-        5. 不要因為空行就停止掃描，請掃描全文並合併。
+        【歸類指南】：
+        1. 「主麵團」、「主麵糊」、「麵團」、「基底」 -> ingredients
+        2. 「種麵」、「老麵」、「液種」、「湯種」、「中種」、「發酵種」 -> liquidStarterIngredients
+        3. 「內餡」、「夾心」、「油酥」、「餡料」、「包入材料」 -> fillingIngredients
+        4. 「裝飾」、「表面」、「頂飾」、「刷液」、「灑粉」 -> decorationIngredients
+        5. 其他 -> customSectionIngredients
+
+        【重要細節】：
+        - 即使筆記中沒有明確標題，如果材料出現在「內餡」動作之後，請試著歸入 fillingIngredients。
+        - 檢查全文，不要遺漏任何克數或百分比。
+        - 將發酵動作（一發、基發）與烘烤條件（上火、下火）精確提取為時間、溫度數字。
         
         筆記內容：
         ${smartPasteText}`,
         config: {
           responseMimeType: "application/json",
           responseSchema: AI_MULTI_RECIPE_SCHEMA,
-          systemInstruction: "你是一個專業、細心的烘焙解析專家。請精確識別筆記中的食譜分區。如果材料中包含麵粉、高筋、低筋等關鍵字，則 isFlour 為 true。對於發酵與烘烤，請靈活判斷口語化的時間與溫度。",
+          systemInstruction: "將筆記解析為結構化 JSON。確保 ingredients、liquidStarterIngredients、fillingIngredients 等分區被正確填寫。若材料清單被空行隔開，請判斷它們是否屬於同一食譜的不同部分。",
         }
       });
       
@@ -2099,82 +2228,26 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#FFFBF7] text-slate-900 pb-28 print:bg-white print:pb-0">
+      <Sidebar 
+        isOpen={isSidebarOpen} 
+        onClose={() => setIsSidebarOpen(false)} 
+        user={user} 
+        onLogin={handleLogin}
+        onLogout={handleLogout}
+        subscriptionStatus={subscriptionStatus}
+        isAdmin={isAdmin}
+      />
+      
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 print:max-w-none print:px-0 print:py-0">
         
-        {/* Auth Header */}
-        <div className="flex justify-end mb-4 no-print">
-          {isAuthReady && (
-            <div className="flex items-center gap-3 bg-white/80 backdrop-blur-md px-4 py-2 rounded-2xl border border-orange-50 shadow-sm">
-              {user ? (
-                <>
-                  <div className="flex items-center gap-2 relative cursor-pointer" onClick={() => setShowUserStatus(!showUserStatus)}>
-                    {user.photoURL ? (
-                      <img src={user.photoURL} alt={user.displayName || ''} className="w-8 h-8 rounded-full border border-orange-100" referrerPolicy="no-referrer" />
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-orange-500">
-                        <UserIcon size={16} />
-                      </div>
-                    )}
-                    <div className="hidden sm:block">
-                      <p className="text-[10px] font-black text-slate-400 uppercase leading-none">
-                        {isAdmin ? '超級管理員' : '個人雲端'}
-                      </p>
-                      <p className="text-xs font-bold text-slate-700">{user.displayName || '烘焙愛好者'}</p>
-                    </div>
-
-                    {showUserStatus && (
-                      <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-orange-50 p-4 z-[1100] animate-in fade-in slide-in-from-top-2">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">目前身分</p>
-                        <p className="text-sm font-black text-orange-600">
-                          {isAdmin ? '身分：超級管理員' : (subscriptionStatus === 'active' ? '身分：Premium 會員' : '身分：一般用戶')}
-                        </p>
-                        <div className="mt-3 pt-3 border-t border-slate-50 space-y-3">
-                          <p className="text-[10px] font-bold text-slate-400 leading-tight">
-                            {isAdmin ? '已解鎖所有專業功能且永久免費' : (subscriptionStatus === 'active' ? '已解鎖 AI 解析與無限雲端同步' : '升級 Premium 解鎖 AI 助手與雲端同步')}
-                          </p>
-                          
-                          {(subscriptionStatus === 'active' || isAdmin) && (
-                            <div className="flex items-center justify-between py-1">
-                              <span className="text-xs font-bold text-slate-600">雲端同步</span>
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (isAdmin) return; 
-                                  const newVal = !isCloudSyncEnabled;
-                                  setIsCloudSyncEnabled(newVal);
-                                  saveUserSettings({ is_cloud_sync_enabled: newVal });
-                                }}
-                                className={`w-10 h-5 rounded-full relative transition-all ${isCloudSyncEnabled ? 'bg-emerald-500' : 'bg-slate-200'} ${isAdmin ? 'opacity-50 cursor-not-allowed' : ''}`}
-                              >
-                                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${isCloudSyncEnabled ? 'left-6' : 'left-1'}`} />
-                              </button>
-                            </div>
-                          )}
-
-                          {subscriptionStatus !== 'active' && !isAdmin && (
-                            <button 
-                              onClick={() => setIsSubscriptionModalOpen(true)}
-                              className="w-full py-2 bg-orange-100 text-orange-600 rounded-xl text-[10px] font-black hover:bg-orange-200 transition-all font-sans"
-                            >
-                              🌟 升級 Premium 開啟 AI 與雲端
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-red-500 transition-colors" title="登出">
-                    <LogOut size={18} />
-                  </button>
-                </>
-              ) : (
-                <button onClick={handleLogin} className="flex items-center gap-2 text-orange-600 font-black text-sm hover:text-orange-700 transition-colors">
-                  <LogIn size={18} />
-                  <span>Google 登入</span>
-                </button>
-              )}
-            </div>
-          )}
+        {/* Auth Header (Sidebar Trigger) */}
+        <div className="flex justify-start mb-6 no-print">
+          <button 
+            onClick={() => setIsSidebarOpen(true)}
+            className="w-12 h-12 flex items-center justify-center bg-white rounded-2xl shadow-sm border border-orange-100 text-[#8B5E3C] hover:bg-orange-50 hover:shadow-md transition-all active:scale-95"
+          >
+            <Menu size={24} />
+          </button>
         </div>
 
         {/* LIST View Header */}
@@ -2187,13 +2260,14 @@ const App: React.FC = () => {
               </div>
             )}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h1 className="text-3xl font-black tracking-tight text-[#E67E22] flex items-center gap-2">
-                  <span className="bg-orange-100 p-2 rounded-2xl text-2xl shadow-sm">🥖</span>
-                  烘焙靈感箱
-                </h1>
-                    <div className="flex items-center gap-2 mt-1">
-                      <p className="text-orange-300 text-xs font-medium">記錄師傅的筆記與經典配方</p>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-orange-100 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl shadow-sm">🥖</div>
+                <div>
+                  <h1 className="text-3xl font-black tracking-tight text-[#E67E22] leading-tight">
+                    烘焙靈感箱
+                  </h1>
+                      <div className="flex items-center gap-2 mt-1">
+                        <p className="text-orange-300 text-xs font-medium">記錄師傅的筆記與經典配方</p>
                       {user && isCloudSyncEnabled ? (
                         <span className="flex items-center gap-1 text-[10px] font-black text-emerald-500 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100/50 shadow-sm">
                           <Cloud size={10} />
@@ -2209,21 +2283,22 @@ const App: React.FC = () => {
                         </button>
                       )}
                     </div>
-                
-                {/* 儲存空間進度條 */}
-                <div className="mt-4 max-w-[200px] no-print">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">儲存空間</span>
-                    <span className={`text-[11px] font-black ${storageUsage > 80 ? 'text-red-500' : 'text-orange-400'}`}>
-                      {Math.min(100, storageUsage).toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden border border-slate-50">
-                    <div 
-                      className={`h-full transition-all duration-500 ${storageUsage > 80 ? 'bg-red-500' : 'bg-orange-400'}`}
-                      style={{ width: `${Math.min(100, storageUsage)}%` }}
-                    />
-                  </div>
+                    
+                    {/* 儲存空間進度條 */}
+                    <div className="mt-4 max-w-[200px] no-print">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">儲存空間</span>
+                        <span className={`text-[11px] font-black ${storageUsage > 80 ? 'text-red-500' : 'text-orange-400'}`}>
+                          {Math.min(100, storageUsage).toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden border border-slate-50">
+                        <div 
+                          className={`h-full transition-all duration-500 ${storageUsage > 80 ? 'bg-red-500' : 'bg-orange-400'}`}
+                          style={{ width: `${Math.min(100, storageUsage)}%` }}
+                        />
+                      </div>
+                    </div>
                 </div>
               </div>
               <div className="flex items-center gap-3">
