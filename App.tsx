@@ -593,7 +593,7 @@ const DisplayIngredientSection: React.FC<{
           const rawAmt = ing.amount;
           const numericAmt = typeof rawAmt === 'number' ? rawAmt : parseFloat(rawAmt) || 0;
           const scaledAmt = numericAmt * scalingFactor;
-          const shouldHideUnit = typeof ing.amount === 'string' && (ing.amount === '適量' || ing.amount === '少許');
+          const isAdjustableAmt = ing.unit === '適量' || ing.unit === '少許';
           const isWeight = isWeightUnit(ing.unit || 'g');
           const percentage = (localBaseInfo.weight > 0 && isWeight) ? (numericAmt / localBaseInfo.weight * 100).toFixed(1).replace(/\.0$/, '') : '';
           const isBase = baseIngredientIndex === idx;
@@ -623,11 +623,11 @@ const DisplayIngredientSection: React.FC<{
                           onChange={(e) => onReverseScale(idx, parseFloat(e.target.value) || 0)}
                           className={`w-24 px-2 py-1 bg-white border-2 rounded-lg text-right font-black text-xl sm:text-lg outline-none transition-all ${isBase ? 'border-orange-400 text-orange-600' : 'border-orange-100 focus:border-orange-300 text-slate-900'}`}
                         />
-                        {!shouldHideUnit && <span className="ml-1 text-sm font-bold text-slate-400">{ing.unit}</span>}
+                        <span className="ml-1 text-sm font-bold text-slate-400">{ing.unit}</span>
                       </div>
                     ) : (
                       <span className="text-slate-900 font-black text-xl sm:text-lg leading-none">
-                        {(numericAmt * scalingFactor).toFixed(1).replace(/\.0$/, '')}{!shouldHideUnit && ing.unit}
+                        {isAdjustableAmt ? (ing.unit) : (<>{(numericAmt * scalingFactor).toFixed(1).replace(/\.0$/, '')}<span className="inline-block ml-0.5">{ing.unit}</span></>)}
                       </span>
                     )}
                   </div>
@@ -732,7 +732,7 @@ const IngredientList: React.FC<{
         </div>
         <button 
           type="button" 
-          onClick={() => setFormRecipe(prev => ({ ...prev, [fieldKey]: [...(prev[fieldKey] as Ingredient[] || []), { name: '', amount: '', unit: lastUsedUnit, isFlour: false }] }))} 
+          onClick={() => setFormRecipe(prev => ({ ...prev, [fieldKey]: [...(prev[fieldKey] as Ingredient[] || []), { name: '', amount: '', unit: 'g', isFlour: false }] }))} 
           className="shrink-0 text-[10px] font-bold bg-[#E67E22] text-white px-3 py-1.5 rounded-lg shadow-sm active:scale-95 transition-all whitespace-nowrap"
         >
           + 新增材料
@@ -752,6 +752,7 @@ const IngredientList: React.FC<{
         {items.map((ing, idx) => {
           const numericAmt = typeof ing.amount === 'number' ? ing.amount : parseFloat(ing.amount as string) || 0;
           const isWeight = isWeightUnit(ing.unit || 'g');
+          const isAdjustable = ing.unit === '適量' || ing.unit === '少許';
           const percentage = (localBase > 0 && isWeight) ? (numericAmt / localBase * 100).toFixed(1).replace(/\.0$/, '') : '';
 
           return (
@@ -780,13 +781,13 @@ const IngredientList: React.FC<{
               {/* 第二排：百分比 + 重量 + 單位 + 移除 (手機版併排) */}
               <div className="flex gap-2 items-center w-full sm:flex-[45] sm:basis-0 min-w-0">
                 {formRecipe.isBakingRecipe && (
-                  <div className="flex-[3] sm:flex-1 relative min-w-0 sm:min-w-[70px]">
+                  <div className={`flex-[3] sm:flex-1 relative min-w-0 sm:min-w-[70px] ${isAdjustable ? 'opacity-0 pointer-events-none' : ''}`}>
                     <input 
                       type="text" 
                       value={percentage} 
-                      disabled={!isWeight}
+                      disabled={!isWeight || isAdjustable}
                       onChange={(e) => {
-                        if (!isWeight) return;
+                        if (!isWeight || isAdjustable) return;
                         const pct = parseFloat(e.target.value) || 0;
                         const newAmt = (pct * localBase / 100).toFixed(1).replace(/\.0$/, '');
                         handleUpdateIngredient(fieldKey, idx, 'amount', newAmt);
@@ -794,15 +795,16 @@ const IngredientList: React.FC<{
                       className={`w-full h-12 sm:h-10 px-4 sm:px-1 rounded-xl border outline-none transition-all text-center text-base sm:text-xs font-bold ${!isWeight ? 'bg-slate-100 border-slate-100 text-slate-300' : 'border-slate-100 bg-white sm:bg-slate-50/50 text-orange-600 focus:ring-1 focus:ring-orange-200'}`} 
                       placeholder="%" 
                     />
-                    {isWeight && <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[9px] text-orange-300 font-bold pointer-events-none">%</span>}
+                    {isWeight && !isAdjustable && <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[9px] text-orange-300 font-bold pointer-events-none">%</span>}
                   </div>
                 )}
-                <div className="flex-[4] sm:flex-1 relative min-w-0 sm:min-w-[70px]">
+                <div className={`flex-[4] sm:flex-1 relative min-w-0 sm:min-w-[70px] ${isAdjustable ? 'opacity-0 pointer-events-none' : ''}`}>
                   <input 
                     type="text" 
-                    value={ing.amount ?? ''} 
+                    value={isAdjustable ? '' : (ing.amount ?? '')} 
+                    disabled={isAdjustable}
                     onChange={(e) => handleUpdateIngredient(fieldKey, idx, 'amount', e.target.value)} 
-                    className="w-full h-12 sm:h-10 px-4 sm:px-1 rounded-xl border border-slate-100 bg-white sm:bg-slate-50/50 text-base sm:text-xs text-center outline-none focus:ring-1 focus:ring-orange-200 transition-all" 
+                    className="w-full h-12 sm:h-10 px-4 sm:px-1 rounded-xl border border-slate-100 bg-white sm:bg-slate-50/50 text-base sm:text-xs text-center outline-none focus:ring-1 focus:ring-orange-200 transition-all font-bold" 
                     placeholder={isWeight ? "克數" : "數量"} 
                   />
                 </div>
@@ -813,12 +815,15 @@ const IngredientList: React.FC<{
                       const newUnit = e.target.value;
                       setLastUsedUnit(newUnit);
                       handleUpdateIngredient(fieldKey, idx, 'unit', newUnit);
-                      // If changing to non-weight unit, turn off isFlour
-                      if (!isWeightUnit(newUnit) && ing.isFlour) {
+                      // If changing to non-weight unit or adjustable, set relevant logic
+                      if ((!isWeightUnit(newUnit) || newUnit === '適量' || newUnit === '少許') && ing.isFlour) {
                         handleUpdateIngredient(fieldKey, idx, 'isFlour', false);
                       }
+                      if (newUnit === '適量' || newUnit === '少許') {
+                         handleUpdateIngredient(fieldKey, idx, 'amount', '');
+                      }
                     }} 
-                    className="w-full h-12 sm:h-10 px-1 rounded-xl border border-slate-100 bg-orange-50/50 text-base sm:text-xs outline-none focus:ring-1 focus:ring-orange-200 transition-all text-center appearance-none cursor-pointer font-bold text-slate-700"
+                    className="w-full h-12 sm:h-10 px-1 rounded-xl border border-slate-100 bg-orange-50/50 text-base sm:text-xs outline-none focus:ring-1 focus:ring-orange-200 transition-all text-center appearance-none cursor-pointer font-black text-[#8B5E3C]"
                   >
                     <option value="g">g</option>
                     <option value="kg">kg</option>
@@ -861,15 +866,23 @@ const IngredientList: React.FC<{
 
 // --- 2. 輔助元件 (UI Components) ---
 
-const SubscriptionModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
+const SubscriptionModal: React.FC<{ isOpen: boolean; onClose: () => void; message?: string }> = ({ isOpen, onClose, message }) => {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-slate-900/10 backdrop-blur-[2px] animate-in fade-in duration-300">
+    <div className="fixed inset-0 z-[5000] flex items-center justify-center p-6 bg-slate-900/10 backdrop-blur-[2px] animate-in fade-in duration-300">
       <motion.div 
         initial={{ scale: 0.98, opacity: 0, y: 5 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        className="bg-[#F5E6D3] w-full max-w-[340px] rounded-xl overflow-hidden shadow-[0_20px_50px_rgba(139,94,61,0.15)] border border-[#E8D5C0]/40 flex flex-col"
+        className="bg-[#F5E6D3] w-full max-w-[340px] rounded-xl shadow-[0_20px_50px_rgba(139,94,61,0.15)] border border-[#E8D5C0]/40 flex flex-col relative overflow-hidden"
       >
+        {/* 右上角關閉按鈕 */}
+        <button 
+          onClick={onClose}
+          className="absolute top-4 right-3.5 z-50 p-1.5 rounded-full bg-white/40 text-[#8B5E3C] hover:bg-white/60 transition-all active:scale-95 shadow-sm border border-white/20"
+        >
+          <X size={16} />
+        </button>
+
         <div className="p-6 text-center">
           {/* 品牌名稱置中 */}
           <div className="py-6 mb-4 flex flex-col items-center animate-in zoom-in-95 duration-500">
@@ -877,10 +890,14 @@ const SubscriptionModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
             <div className="w-8 h-1 bg-[#D4AF37] rounded-full mt-2 opacity-60"></div>
           </div>
 
-          <h2 className="text-base font-black text-[#8B5E3C] mb-2 leading-tight">升級 Premium 專業版</h2>
-          <p className="text-[#A67C52] font-bold mb-5 leading-relaxed text-[11px] px-4 opacity-90">
-            解鎖 ✨ AI 自動解析、雲端多端同步，<br />
-            開啟無限儲存空間與全方位配方管理。
+          <h2 className="text-base font-black text-[#8B5E3C] mb-2 leading-tight">升級進階專業版</h2>
+          <p className="text-[#A67C52] font-bold mb-5 leading-relaxed text-[11px] px-4 opacity-90 text-center">
+            {message || (
+              <>
+                解鎖 ✨ AI 自動解析、雲端多端同步，<br />
+                開啟無限儲存空間與全方位配方管理。
+              </>
+            )}
           </p>
           
           <div className="space-y-1.5 px-2">
@@ -919,6 +936,31 @@ const SubscriptionModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
   );
 };
 
+const InstructionsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[3000] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300">
+      <motion.div 
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="bg-[#FFFBF7] w-full max-w-[320px] rounded-2xl overflow-hidden shadow-2xl border border-orange-100 p-8 text-center"
+      >
+        <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-6">✨</div>
+        <h3 className="text-lg font-black text-[#8B5E3C] mb-4">使用小撇步</h3>
+        <p className="text-sm font-bold text-[#A67C52] leading-relaxed mb-8">
+          在筆記中包含<span className="text-[#8B5E3C]">「材料重量」</span>與<span className="text-[#8B5E3C]">「發酵/烘烤溫度」</span>，AI 解析出來的配方會更完美喔！
+        </p>
+        <button 
+          onClick={onClose}
+          className="w-full py-3 bg-[#8B5E3C] text-white rounded-xl font-black text-sm shadow-sm hover:bg-[#724D31] transition-all active:scale-95"
+        >
+          我知道了！
+        </button>
+      </motion.div>
+    </div>
+  );
+};
+
 const Sidebar: React.FC<{ 
   isOpen: boolean; 
   onClose: () => void; 
@@ -927,7 +969,15 @@ const Sidebar: React.FC<{
   onLogout: () => void;
   subscriptionStatus: string;
   isAdmin: boolean;
-}> = ({ isOpen, onClose, user, onLogin, onLogout, subscriptionStatus, isAdmin }) => {
+  recipeCount: number;
+  weeklyCount: number;
+  onUpgrade: () => void;
+  onShowInstructions: () => void;
+}> = ({ isOpen, onClose, user, onLogin, onLogout, subscriptionStatus, isAdmin, recipeCount, weeklyCount, onUpgrade, onShowInstructions }) => {
+  const isPremium = subscriptionStatus === 'active' || isAdmin;
+  const storageLimit = isPremium ? Infinity : 10;
+  const storagePercent = isPremium ? 0 : Math.min(100, (recipeCount / storageLimit) * 100);
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -946,77 +996,124 @@ const Sidebar: React.FC<{
             animate={{ x: 0 }}
             exit={{ x: '-100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed top-0 left-0 bottom-0 w-[280px] bg-[#FDF8F3] shadow-2xl z-[2001] flex flex-col"
+            className="fixed top-0 left-0 bottom-0 w-[280px] bg-[#FDF8F3] shadow-2xl z-[2001] flex flex-col font-sans"
           >
             {/* Header / Text Branding */}
-            <div className="p-10 pb-8 flex flex-col items-center">
-              <h2 className="text-[#8B5A2B] font-black text-2xl tracking-tight">烘焙靈感箱</h2>
-              <p className="text-[#A67C52] text-[10px] font-bold opacity-40 tracking-[0.2em] mt-2 uppercase">您的專屬烘焙保險箱</p>
+            <div className="p-8 pb-2 flex flex-col items-center">
+              <h2 className="text-[#8B5A2B] font-black text-xl tracking-tight">烘焙靈感箱</h2>
+            </div>
+
+            {/* Combined Info Block (Compact) */}
+            <div className="mx-6 p-4 bg-[#F2E8DB]/40 rounded-xl border border-[#E8DCCB]/50">
+              <div className="space-y-1.5 text-left">
+                {/* 第一行：方案狀態 */}
+                <div className="flex items-center gap-1.5 focus:outline-none">
+                  <span className="text-sm">{isPremium ? '👑' : '🌱'}</span>
+                  <span className="text-[11px] font-black text-[#8B5A2B]">
+                    方案：{isPremium ? '皇冠進階版' : '標準版'}
+                  </span>
+                </div>
+                
+                {/* 第二行：食譜總數 */}
+                <p className="text-[#8B5A2B] text-[10px] font-bold opacity-80">
+                  目前食譜總數：<span className={`font-black text-xs ${!isPremium && recipeCount >= storageLimit ? 'text-orange-600' : ''}`}>{recipeCount}</span>
+                </p>
+
+                {/* 進度條 (微調間距) */}
+                <div className="pt-1.5">
+                  <div className="w-full h-1 bg-white/40 rounded-full overflow-hidden border border-[#E8DCCB]/10">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${isPremium ? 100 : storagePercent}%` }}
+                      className={`h-full transition-all duration-1000 ${isPremium ? 'bg-orange-400/40' : (storagePercent >= 100 ? 'bg-orange-600' : (storagePercent > 80 ? 'bg-orange-500' : 'bg-orange-400/50'))}`}
+                    />
+                  </div>
+                  {!isPremium && (
+                    <div className="flex justify-between items-center mt-2">
+                      <p className="text-[9px] font-bold text-[#8B5A2B]/40">本週新增 {weeklyCount} 份</p>
+                      <button 
+                        onClick={onUpgrade}
+                        className="text-[9px] font-black text-orange-600/80 hover:underline underline-offset-2"
+                      >
+                        立即升級 🚀
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Menu Items */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
-              <div className="py-2">
-                <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest px-4 mb-2">帳號管理</p>
-                {user ? (
-                  <div className="bg-white/50 rounded-2xl p-4 border border-orange-50 mb-2">
-                    <div className="flex items-center gap-3">
-                      {user.photoURL ? (
-                        <img src={user.photoURL} alt="" className="w-10 h-10 rounded-full border border-orange-100" />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-500">
-                          <UserIcon size={20} />
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-black text-slate-700 truncate">{user.displayName || '烘焙愛好者'}</p>
-                        <p className="text-[10px] font-bold text-orange-500 uppercase">
-                          {isAdmin ? '✨ 超級管理員' : (subscriptionStatus === 'active' ? '💎 Premium 會員' : '🌱 一般用戶')}
-                        </p>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {/* Account Section */}
+              {user && (
+                <div className="bg-white/40 p-4 rounded-xl border border-orange-50/50">
+                  <div className="flex items-center gap-3">
+                    {user.photoURL ? (
+                      <img src={user.photoURL} alt="" className="w-9 h-9 rounded-full border border-orange-100/50" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-orange-50 flex items-center justify-center text-orange-300">
+                        <UserIcon size={18} />
                       </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-black text-slate-700 truncate">{user.displayName || '烘焙愛好者'}</p>
+                      <p className="text-[9px] font-bold text-slate-400 truncate opacity-60">{user.email}</p>
                     </div>
                   </div>
-                ) : (
-                  <button 
-                    onClick={() => { onLogin(); onClose(); }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-[#8B5E3C] font-black text-sm hover:bg-orange-50 rounded-2xl transition-all"
-                  >
-                    <LogIn size={20} />
-                    <span>Google 快速登入</span>
-                  </button>
-                )}
-              </div>
+                </div>
+              )}
 
-              <div className="py-2 border-t border-orange-100/30">
-                <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest px-4 mb-2">系統與支援</p>
+              {/* Nav Links */}
+              <div className="space-y-1">
+                <button 
+                  onClick={() => {
+                    onShowInstructions();
+                    onClose();
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-[#8B5E3C] font-black text-sm hover:bg-orange-50/50 rounded-xl transition-all group"
+                >
+                  <div className="w-5 h-5 flex items-center justify-center text-base">📖</div>
+                  <span>使用說明</span>
+                </button>
+                
                 <button 
                   onClick={() => {
                     window.location.href = "mailto:linda6623@gmail.com?subject=烘焙靈感箱使用者回饋";
                     onClose();
                   }}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-[#8B5E3C] font-black text-sm hover:bg-orange-50 rounded-2xl transition-all"
+                  className="w-full flex items-center gap-3 px-4 py-3 text-[#8B5E3C] font-black text-sm hover:bg-orange-50/50 rounded-xl transition-all group"
                 >
-                  <Mail size={20} />
+                  <Mail size={18} className="text-[#A67C52] group-hover:text-orange-500 transition-colors" />
                   <span>聯絡開發者</span>
                 </button>
               </div>
 
-              {user && (
-                <div className="py-2 border-t border-orange-100/30">
+              {/* Login/Logout at bottom of list */}
+              <div className="pt-4 border-t border-orange-100/20">
+                {!user ? (
+                  <button 
+                    onClick={() => { onLogin(); onClose(); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-[#8B5E3C] font-black text-sm hover:bg-orange-50 rounded-xl transition-all"
+                  >
+                    <LogIn size={18} />
+                    <span>Google 快速登入</span>
+                  </button>
+                ) : (
                   <button 
                     onClick={() => { onLogout(); onClose(); }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-red-400 font-bold text-sm hover:bg-red-50 rounded-2xl transition-all"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-red-400 font-bold text-sm hover:bg-red-50 rounded-xl transition-all"
                   >
-                    <LogOut size={20} />
+                    <LogOut size={18} />
                     <span>登出帳號</span>
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             {/* Footer */}
-            <div className="p-6 border-t border-orange-100/30 text-center">
-               <p className="text-[10px] text-slate-300 font-bold">Version 1.2.0 • 手作溫度</p>
+            <div className="p-6 border-t border-orange-100/10 text-center">
+               <p className="text-[9px] text-slate-300 font-bold tracking-widest uppercase">版本 1.2.5 • 手作的溫度</p>
             </div>
           </motion.div>
         </>
@@ -1047,12 +1144,30 @@ const App: React.FC = () => {
   const [isCloudSyncEnabled, setIsCloudSyncEnabled] = useState(false);
   const [view, setView] = useState<AppView>(AppView.LIST);
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+  const [subscriptionModalMessage, setSubscriptionModalMessage] = useState<string | undefined>(undefined);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showUserStatus, setShowUserStatus] = useState(false);
+  const [isInstructionsOpen, setIsInstructionsOpen] = useState(false);
+  const [suppressUpgradeModal, setSuppressUpgradeModal] = useState(false);
+
+  const recipeStats = useMemo(() => {
+    const total = recipes.length;
+    const now = Date.now();
+    const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
+    const weekly = recipes.filter(r => (now - r.createdAt) < oneWeekMs).length;
+    return { total, weekly };
+  }, [recipes]);
 
   const isAdmin = useMemo(() => {
     return user?.email === 'linda6623@gmail.com' || user?.email === 'linda6623@gamil.com';
   }, [user]);
+
+  const triggerUpgradePrompt = (force = false, message?: string) => {
+    if (isVip || isAdmin) return;
+    if (!force && suppressUpgradeModal) return;
+    setSubscriptionModalMessage(message);
+    setIsSubscriptionModalOpen(true);
+  };
 
   useEffect(() => {
     if (isAdmin) {
@@ -1121,16 +1236,14 @@ const App: React.FC = () => {
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const docs = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Recipe));
         
-        if (docs.length === 0) {
+        // Deduplicate docs by ID before setting state
+        const uniqueDocs = Array.from(new Map(docs.map(item => [item.id, item])).values());
+
+        if (uniqueDocs.length === 0) {
           console.log(`[Debug] 雲端回傳食譜數為 0，請檢查 UID: ${user.uid}`);
         }
 
-        // If VIP just logged in and cloud is empty
-        if (!hasSyncedCloud && docs.length === 0 && !isVip && !isAdmin) {
-          setIsSubscriptionModalOpen(true);
-        }
-
-        setRecipes(docs);
+        setRecipes(uniqueDocs);
         setIsRecipesLoading(false);
         if (!hasSyncedCloud) {
           showToast("☁️ 雲端食譜同步成功");
@@ -1146,7 +1259,10 @@ const App: React.FC = () => {
       // 3. Local Mode (Not Logged In)
       const localData = localStorage.getItem(STORAGE_KEY);
       if (localData) {
-        setRecipes(JSON.parse(localData));
+        const loaded: Recipe[] = JSON.parse(localData);
+        // Deduplicate local storage data
+        const uniqueLoaded = Array.from(new Map(loaded.map(item => [item.id, item])).values());
+        setRecipes(uniqueLoaded);
       } else {
         setRecipes([]);
       }
@@ -1563,14 +1679,9 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const calculateUsage = () => {
-      if (!user) {
-        setStorageUsage(0);
-        return;
-      }
       // Usage is based on number of recipes (limit 10 for non-VIP)
-      // We'll use a percentage value directly in storageUsage for simplicity
-      // or keep it as a count. Let's keep it as a percentage (0-100)
-      const limit = isVip ? 1000 : 10; // VIP has much higher limit
+      // For display purposes, we cap at 100% in UI but show real count in sidebar
+      const limit = isVip ? 1000 : 10; 
       const percentage = (recipes.length / limit) * 100;
       setStorageUsage(percentage);
     };
@@ -1805,7 +1916,7 @@ const App: React.FC = () => {
     
     // 訂閱檢查
     if (!user || subscriptionStatus !== 'active') {
-      setIsSubscriptionModalOpen(true);
+      triggerUpgradePrompt(true); // AI parsing is a hard trigger
       return;
     }
 
@@ -2054,6 +2165,10 @@ const App: React.FC = () => {
   };
 
   const handleCreateNew = () => {
+    if (!isVip && recipes.length >= 10) {
+      triggerUpgradePrompt(true, "免費版額度已滿 (10/10)，升級 Premium 即可解鎖無限儲存與雲端備份！");
+      return;
+    }
     setTagInput('');
     setFormRecipe({
       title: '', master: '', sourceName: '', sourceUrl: '', onlineCourse: '', moldName: '', doughWeight: '', crustWeight: '', oilPasteWeight: '', fillingWeight: '', quantity: 1, shelfLife: '', totalDuration: '',
@@ -2085,7 +2200,16 @@ const App: React.FC = () => {
       try {
         const data = JSON.parse(event.target?.result as string);
         if (data.recipes) {
-          const processed = data.recipes.map((r: any) => ({
+          const incomingRecipes = Array.isArray(data.recipes) ? data.recipes : [];
+          
+          // 實作『滿額禁存』邏輯 (Hard Limit)
+          if (!isVip && (recipes.length + incomingRecipes.length) > 10) {
+             triggerUpgradePrompt(true, `剩餘額度不足 (目前 ${recipes.length}/10)，請升級 Premium 以一次匯入更多食譜！`);
+             if (backupInputRef.current) backupInputRef.current.value = '';
+             return;
+          }
+
+          const processed = incomingRecipes.map((r: any) => ({
             ...r,
             id: String(r.id || 'rec-' + Math.random().toString(36).substr(2, 9)),
             createdAt: r.createdAt || Date.now(),
@@ -2124,7 +2248,7 @@ const App: React.FC = () => {
           }));
 
           if (user) {
-            // Write to Firestore
+            // Write to Firestore (Add new ones, don't delete existing)
             await Promise.all(processed.map(async (r: Recipe) => {
               try {
                 await setDoc(doc(db, 'recipes', r.id), r);
@@ -2132,11 +2256,13 @@ const App: React.FC = () => {
                 handleFirestoreError(error, OperationType.WRITE, `recipes/${r.id}`);
               }
             }));
-            // Clear local storage for recipes after cloud import
-            localStorage.removeItem(STORAGE_KEY);
           }
           
-          setRecipes(processed);
+          const processedIds = new Set(processed.map(r => r.id));
+          setRecipes(prev => {
+            const filteredPrev = prev.filter(r => !processedIds.has(r.id));
+            return [...processed, ...filteredPrev];
+          });
         }
         if (data.categories) {
           if (user) {
@@ -2228,6 +2354,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#FFFBF7] text-slate-900 pb-28 print:bg-white print:pb-0">
+      <InstructionsModal isOpen={isInstructionsOpen} onClose={() => setIsInstructionsOpen(false)} />
       <Sidebar 
         isOpen={isSidebarOpen} 
         onClose={() => setIsSidebarOpen(false)} 
@@ -2236,6 +2363,10 @@ const App: React.FC = () => {
         onLogout={handleLogout}
         subscriptionStatus={subscriptionStatus}
         isAdmin={isAdmin}
+        recipeCount={recipeStats.total}
+        weeklyCount={recipeStats.weekly}
+        onUpgrade={() => triggerUpgradePrompt(true)}
+        onShowInstructions={() => setIsInstructionsOpen(true)}
       />
       
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 print:max-w-none print:px-0 print:py-0">
@@ -2275,7 +2406,7 @@ const App: React.FC = () => {
                         </span>
                       ) : (
                         <button 
-                          onClick={() => setIsSubscriptionModalOpen(true)}
+                          onClick={() => triggerUpgradePrompt(true)}
                           className="flex items-center gap-1 text-[10px] font-black text-orange-500 bg-orange-50 px-2.5 py-1 rounded-full border border-orange-100 hover:bg-orange-100 transition-all"
                         >
                           <CloudOff size={10} />
@@ -2288,13 +2419,13 @@ const App: React.FC = () => {
                     <div className="mt-4 max-w-[200px] no-print">
                       <div className="flex justify-between items-center mb-1">
                         <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">儲存空間</span>
-                        <span className={`text-[11px] font-black ${storageUsage > 80 ? 'text-red-500' : 'text-orange-400'}`}>
+                        <span className={`text-[11px] font-black ${storageUsage >= 100 ? 'text-orange-600' : storageUsage > 80 ? 'text-orange-500' : 'text-orange-400'}`}>
                           {Math.min(100, storageUsage).toFixed(1)}%
                         </span>
                       </div>
                       <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden border border-slate-50">
                         <div 
-                          className={`h-full transition-all duration-500 ${storageUsage > 80 ? 'bg-red-500' : 'bg-orange-400'}`}
+                          className={`h-full transition-all duration-500 ${storageUsage >= 100 ? 'bg-orange-600' : storageUsage > 80 ? 'bg-orange-500' : 'bg-orange-400'}`}
                           style={{ width: `${Math.min(100, storageUsage)}%` }}
                         />
                       </div>
@@ -2306,7 +2437,17 @@ const App: React.FC = () => {
                     <span className="text-base">📤</span>
                     <span>匯出備份</span>
                  </button>
-                 <button onClick={() => backupInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-orange-100 rounded-xl shadow-sm text-xs font-bold text-orange-600 hover:bg-orange-50 transition-all active:scale-95">
+                 <button 
+                  disabled={!isVip && recipes.length >= 10}
+                  onClick={() => {
+                    if (!isVip && recipes.length >= 10) {
+                      triggerUpgradePrompt(true, "免費版額度已滿 (10/10)，升級 Premium 即可解鎖匯入功能！");
+                      return;
+                    }
+                    backupInputRef.current?.click();
+                  }} 
+                  className={`flex items-center gap-2 px-4 py-2.5 border border-orange-100 rounded-xl shadow-sm text-xs font-bold transition-all active:scale-95 ${!isVip && recipes.length >= 10 ? 'bg-slate-50 text-slate-300 opacity-60 cursor-not-allowed' : 'bg-white text-orange-600 hover:bg-orange-50'}`}
+                 >
                     <span className="text-base">📥</span>
                     <span>匯入備份</span>
                  </button>
@@ -2480,7 +2621,7 @@ const App: React.FC = () => {
                         type="button"
                         onClick={() => {
                           if (!isVip) {
-                            setIsSubscriptionModalOpen(true);
+                            triggerUpgradePrompt(true);
                             return;
                           }
                           setIsMoldPanelOpen(!isMoldPanelOpen);
@@ -2859,9 +3000,15 @@ const App: React.FC = () => {
                       className="w-full h-32 px-4 py-4 bg-slate-50 border border-orange-100 rounded-2xl text-xs outline-none focus:bg-white focus:ring-2 focus:ring-orange-100 transition-all leading-relaxed"
                     />
                     <button 
-                      onClick={handleSmartPaste}
+                      onClick={() => {
+                        if (!isVip && recipes.length >= 10) {
+                          triggerUpgradePrompt(true, "免費版額度已滿 (10/10)，升級 Premium 即可解鎖 AI 解析儲存功能！");
+                          return;
+                        }
+                        handleSmartPaste();
+                      }}
                       disabled={isAiParsing || !smartPasteText.trim()}
-                      className={`absolute bottom-4 right-4 px-6 py-2.5 rounded-xl font-black text-xs shadow-lg flex items-center gap-2 transition-all active:scale-95 ${isAiParsing || !smartPasteText.trim() ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-[#E67E22] text-white hover:bg-orange-600'}`}
+                      className={`absolute bottom-4 right-4 px-6 py-2.5 rounded-xl font-black text-xs shadow-lg flex items-center gap-2 transition-all active:scale-95 ${(isAiParsing || !smartPasteText.trim()) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : (!isVip && recipes.length >= 10 ? 'bg-[#E8D5C0] text-[#8B5E3C]' : 'bg-[#E67E22] text-white hover:bg-orange-600')}`}
                     >
                       {isAiParsing ? (
                         <>
@@ -3373,6 +3520,12 @@ const App: React.FC = () => {
                   <button 
                     onClick={async () => { 
                       if (!formRecipe.title) return; 
+
+                      // 實作『滿額禁存』邏輯 (Hard Limit)：針對 Create 情況攔截
+                      if (view === AppView.CREATE && !isVip && recipes.length >= 10) {
+                        triggerUpgradePrompt(true, "儲存失敗：免費版額度已滿 (10/10)。請升級 Premium 即可永久保存此配方！");
+                        return;
+                      }
                       
                       const recipeData = {
                         ...formRecipe,
@@ -3385,11 +3538,12 @@ const App: React.FC = () => {
                         const newId = 'rec-' + Date.now();
                         const newRecipe = { ...recipeData, id: newId, createdAt: Date.now(), uid: user?.uid, author_id: user?.uid } as Recipe;
                         
+                        if (!isVip && recipes.length >= 10) {
+                          triggerUpgradePrompt(true, "免費版額度已滿 (10/10)，升級 Premium 即可解鎖無限儲存與雲端備份！");
+                          return;
+                        }
+
                         if (user && isCloudSyncEnabled) {
-                          if (!isVip && recipes.length >= 10) {
-                            setIsSubscriptionModalOpen(true);
-                            return;
-                          }
                           try {
                             await setDoc(doc(db, 'recipes', newId), newRecipe);
                           } catch (error) {
@@ -4044,7 +4198,7 @@ const App: React.FC = () => {
                     <button 
                       onClick={() => {
                         if (!isVip) {
-                          setIsSubscriptionModalOpen(true);
+                          triggerUpgradePrompt(true);
                           return;
                         }
                         window.print();
@@ -4064,13 +4218,27 @@ const App: React.FC = () => {
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-orange-50 shadow-[0_-10px_30px_rgb(230,126,34,0.06)] px-4 sm:px-8 py-4 flex justify-around items-center z-[1000] rounded-t-[40px] animate-in slide-in-from-bottom-10 duration-500 print:hidden">
         <button onClick={() => setView(AppView.LIST)} className={`flex flex-col items-center gap-1 transition-all ${view === AppView.LIST ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}><span className="text-2xl">🏠</span><span className="text-[10px] font-black">首頁</span></button>
-        <button onClick={handleCreateNew} className={`flex flex-col items-center gap-1 transition-all ${view === AppView.CREATE || view === AppView.EDIT || view === AppView.MANAGE_CATEGORIES ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}><span className="text-2xl">📝</span><span className="text-[10px] font-black">食譜</span></button>
+        <button 
+          onClick={handleCreateNew} 
+          className={`flex flex-col items-center gap-1 transition-all ${view === AppView.CREATE || view === AppView.EDIT || view === AppView.MANAGE_CATEGORIES ? 'text-[#E67E22] scale-110' : (!isVip && recipes.length >= 10 ? 'text-slate-300' : 'text-orange-200 hover:text-orange-400')}`}
+        >
+          <span className="text-2xl">📝</span>
+          <span className="text-[10px] font-black">食譜</span>
+        </button>
         <button onClick={() => setView(AppView.SCALING)} className={`flex flex-col items-center gap-1 transition-all ${view === AppView.SCALING ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}><span className="text-2xl">⚖️</span><span className="text-[10px] font-black">換算</span></button>
         <button onClick={() => setView(AppView.COLLECTION)} className={`flex flex-col items-center gap-1 transition-all ${view === AppView.COLLECTION ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}><span className="text-2xl">📥</span><span className="text-[10px] font-black">收集</span></button>
       </nav>
 
       {/* Modals */}
-      <SubscriptionModal isOpen={isSubscriptionModalOpen} onClose={() => setIsSubscriptionModalOpen(false)} />
+      <SubscriptionModal 
+        isOpen={isSubscriptionModalOpen} 
+        message={subscriptionModalMessage}
+        onClose={() => {
+          setIsSubscriptionModalOpen(false);
+          setSuppressUpgradeModal(true);
+          setSubscriptionModalMessage(undefined);
+        }} 
+      />
       <AIPreviewModal 
         isOpen={!!aiPreviewData} 
         recipes={aiPreviewData || []} 
