@@ -948,7 +948,8 @@ const InstructionsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
         <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-6">✨</div>
         <h3 className="text-lg font-black text-[#8B5E3C] mb-4">使用小撇步</h3>
         <p className="text-sm font-bold text-[#A67C52] leading-relaxed mb-8">
-          在筆記中包含<span className="text-[#8B5E3C]">「材料重量」</span>與<span className="text-[#8B5E3C]">「發酵/烘烤溫度」</span>，AI 解析出來的配方會更完美喔！
+          在筆記中包含<span className="text-[#8B5E3C]">「材料重量」</span>與<span className="text-[#8B5E3C]">「發酵/烘烤溫度」</span>，AI 解析出來的配方會更有條理喔！<br /><br />
+          若有任何問題，歡迎點擊「聯絡作者」至 烘焙靈感箱 粉絲專頁與我聯繫！
         </p>
         <button 
           onClick={onClose}
@@ -996,7 +997,7 @@ const Sidebar: React.FC<{
             animate={{ x: 0 }}
             exit={{ x: '-100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed top-0 left-0 bottom-0 w-[280px] bg-[#FDF8F3] shadow-2xl z-[2001] flex flex-col font-sans"
+            className="fixed top-0 left-0 bottom-0 w-[280px] bg-[#FDF8F3] shadow-2xl z-[2001] flex flex-col font-sans overflow-y-auto overflow-x-hidden"
           >
             {/* Header / Text Branding */}
             <div className="p-8 pb-2 flex flex-col items-center">
@@ -1007,16 +1008,37 @@ const Sidebar: React.FC<{
             <div className="mx-6 p-4 bg-[#F2E8DB]/40 rounded-xl border border-[#E8DCCB]/50">
               <div className="space-y-1.5 text-left">
                 {/* 第一行：方案狀態 */}
-                <div className="flex items-center gap-1.5 focus:outline-none">
-                  <span className="text-sm">{isPremium ? '👑' : '🌱'}</span>
-                  <span className="text-[11px] font-black text-[#8B5A2B]">
-                    方案：{isPremium ? '皇冠進階版' : '標準版'}
-                  </span>
+                <div className="flex flex-col gap-3 focus:outline-none">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-lg">{isPremium ? '👑' : '🌱'}</span>
+                    <span className="text-base font-black text-[#8B5A2B]">
+                      方案：{isPremium ? '皇冠進階版' : '標準版'}
+                    </span>
+                  </div>
+                  {!isPremium && (
+                    <button 
+                      onClick={onUpgrade}
+                      className="w-full py-2.5 bg-orange-500 text-white rounded-xl text-sm font-black shadow-md shadow-orange-100 hover:bg-orange-600 transition-all active:scale-95 flex items-center justify-center gap-2"
+                    >
+                      <span>立刻升級 🚀</span>
+                    </button>
+                  )}
                 </div>
+
+                {!isPremium && (
+                  <div className="space-y-1.5 mt-2">
+                    <p className="text-[14px] font-black text-[#8B5E3C] tracking-wide">
+                      Premium 方案：<span className="text-[15px] font-black underline underline-offset-2">早鳥支持價 NT$ 50 / 月</span>
+                    </p>
+                    <p className="text-[13px] font-bold text-[#A67C52] opacity-95">
+                      解鎖 AI 自動解析、雲端備份與無限儲存
+                    </p>
+                  </div>
+                )}
                 
                 {/* 第二行：食譜總數 */}
-                <p className="text-[#8B5A2B] text-[10px] font-bold opacity-80">
-                  目前食譜總數：<span className={`font-black text-xs ${!isPremium && recipeCount >= storageLimit ? 'text-orange-600' : ''}`}>{recipeCount}</span>
+                <p className="text-[#8B5A2B] text-sm font-bold opacity-80 mt-3">
+                  目前食譜總數：<span className={`font-black text-base ${!isPremium && recipeCount >= storageLimit ? 'text-orange-600' : ''}`}>{recipeCount}</span>
                 </p>
 
                 {/* 進度條 (微調間距) */}
@@ -1028,23 +1050,12 @@ const Sidebar: React.FC<{
                       className={`h-full transition-all duration-1000 ${isPremium ? 'bg-orange-400/40' : (storagePercent >= 100 ? 'bg-orange-600' : (storagePercent > 80 ? 'bg-orange-500' : 'bg-orange-400/50'))}`}
                     />
                   </div>
-                  {!isPremium && (
-                    <div className="flex justify-between items-center mt-2">
-                      <p className="text-[9px] font-bold text-[#8B5A2B]/40">本週新增 {weeklyCount} 份</p>
-                      <button 
-                        onClick={onUpgrade}
-                        className="text-[9px] font-black text-orange-600/80 hover:underline underline-offset-2"
-                      >
-                        立即升級 🚀
-                      </button>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
 
             {/* Menu Items */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div className="p-6 space-y-4">
               {/* Account Section */}
               {user && (
                 <div className="bg-white/40 p-4 rounded-xl border border-orange-50/50">
@@ -1079,13 +1090,13 @@ const Sidebar: React.FC<{
                 
                 <button 
                   onClick={() => {
-                    window.location.href = "mailto:linda6623@gmail.com?subject=烘焙靈感箱使用者回饋";
+                    window.open("https://www.facebook.com/BakingInspirationBox", "_blank");
                     onClose();
                   }}
                   className="w-full flex items-center gap-3 px-4 py-3 text-[#8B5E3C] font-black text-sm hover:bg-orange-50/50 rounded-xl transition-all group"
                 >
-                  <Mail size={18} className="text-[#A67C52] group-hover:text-orange-500 transition-colors" />
-                  <span>聯絡開發者</span>
+                  <div className="w-5 h-5 flex items-center justify-center text-base shrink-0">📱</div>
+                  <span>聯絡作者</span>
                 </button>
               </div>
 
@@ -1162,8 +1173,12 @@ const App: React.FC = () => {
     return user?.email === 'linda6623@gmail.com' || user?.email === 'linda6623@gamil.com';
   }, [user]);
 
+  // 定義統一的進階判斷
+  const isPremiumUser = isVip || subscriptionStatus === 'active' || isAdmin;
+
   const triggerUpgradePrompt = (force = false, message?: string) => {
-    if (isVip || isAdmin) return;
+    // 優先檢查進階權限
+    if (isPremiumUser) return;
     if (!force && suppressUpgradeModal) return;
     setSubscriptionModalMessage(message);
     setIsSubscriptionModalOpen(true);
@@ -1172,6 +1187,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (isAdmin) {
       setIsVip(true);
+      setSubscriptionStatus('active');
       setIsCloudSyncEnabled(true);
     }
   }, [isAdmin]);
@@ -1209,6 +1225,13 @@ const App: React.FC = () => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       console.log("Auth state changed:", u ? `User logged in (UID: ${u.uid})` : "No user logged in");
       setUser(u);
+      
+      // 登入或切換帳號時，立即重置權限狀態，確保不使用舊快取
+      setIsVip(false);
+      setSubscriptionStatus('free');
+      setIsCloudSyncEnabled(false);
+      setSubTypeLabel('一般用戶');
+      
       setIsAuthReady(true);
       setIsCategoriesReady(false); // Reset readiness on auth change
       setIsSettingsReady(false);
@@ -1914,9 +1937,9 @@ const App: React.FC = () => {
   const handleSmartPaste = async () => {
     if (!smartPasteText.trim()) return;
     
-    // 訂閱檢查
-    if (!user || subscriptionStatus !== 'active') {
-      triggerUpgradePrompt(true); // AI parsing is a hard trigger
+    // 訂閱與身份檢查：Premium 或 Admin 可直接使用
+    if (!user || !isPremiumUser) {
+      triggerUpgradePrompt(true, "AI 解析為進階功能，升級 Premium 即可解鎖！");
       return;
     }
 
@@ -1925,7 +1948,8 @@ const App: React.FC = () => {
     const currentCount = aiUsage.date === today ? aiUsage.count : 0;
     const LIMIT = 20;
 
-    if (currentCount >= LIMIT && !isAdmin) {
+    // Premium 用戶完全跳過每日次數限制與儲存限制
+    if (!isPremiumUser && currentCount >= LIMIT) {
       showToast("今日 AI 額度已達上限，請明天再試，或改用手動輸入。");
       return;
     }
@@ -2165,7 +2189,7 @@ const App: React.FC = () => {
   };
 
   const handleCreateNew = () => {
-    if (!isVip && recipes.length >= 10) {
+    if (!isPremiumUser && recipes.length >= 10) {
       triggerUpgradePrompt(true, "免費版額度已滿 (10/10)，升級 Premium 即可解鎖無限儲存與雲端備份！");
       return;
     }
@@ -2400,16 +2424,16 @@ const App: React.FC = () => {
                       <div className="flex items-center gap-2 mt-1">
                         <p className="text-orange-300 text-xs font-medium">記錄師傅的筆記與經典配方</p>
                       {user && isCloudSyncEnabled ? (
-                        <span className="flex items-center gap-1 text-[10px] font-black text-emerald-500 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100/50 shadow-sm">
-                          <Cloud size={10} />
+                        <span className="flex items-center gap-1 text-sm font-black text-emerald-500 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100/50 shadow-sm">
+                          <Cloud size={14} />
                           <span>☁️ 已安全備份至雲端</span>
                         </span>
                       ) : (
                         <button 
                           onClick={() => triggerUpgradePrompt(true)}
-                          className="flex items-center gap-1 text-[10px] font-black text-orange-500 bg-orange-50 px-2.5 py-1 rounded-full border border-orange-100 hover:bg-orange-100 transition-all"
+                          className="flex items-center gap-1 text-sm font-black text-orange-500 bg-orange-50 px-3 py-1.5 rounded-full border border-orange-100 hover:bg-orange-100 transition-all"
                         >
-                          <CloudOff size={10} />
+                          <CloudOff size={14} />
                           <span>⚠️ 僅存在此裝置 (升級開啟雲端備份)</span>
                         </button>
                       )}
@@ -2438,15 +2462,15 @@ const App: React.FC = () => {
                     <span>匯出備份</span>
                  </button>
                  <button 
-                  disabled={!isVip && recipes.length >= 10}
+                  disabled={!isPremiumUser && recipes.length >= 10}
                   onClick={() => {
-                    if (!isVip && recipes.length >= 10) {
+                    if (!isPremiumUser && recipes.length >= 10) {
                       triggerUpgradePrompt(true, "免費版額度已滿 (10/10)，升級 Premium 即可解鎖匯入功能！");
                       return;
                     }
                     backupInputRef.current?.click();
                   }} 
-                  className={`flex items-center gap-2 px-4 py-2.5 border border-orange-100 rounded-xl shadow-sm text-xs font-bold transition-all active:scale-95 ${!isVip && recipes.length >= 10 ? 'bg-slate-50 text-slate-300 opacity-60 cursor-not-allowed' : 'bg-white text-orange-600 hover:bg-orange-50'}`}
+                  className={`flex items-center gap-2 px-4 py-2.5 border border-orange-100 rounded-xl shadow-sm text-xs font-bold transition-all active:scale-95 ${!isPremiumUser && recipes.length >= 10 ? 'bg-slate-50 text-slate-300 opacity-60 cursor-not-allowed' : 'bg-white text-orange-600 hover:bg-orange-50'}`}
                  >
                     <span className="text-base">📥</span>
                     <span>匯入備份</span>
@@ -3001,14 +3025,14 @@ const App: React.FC = () => {
                     />
                     <button 
                       onClick={() => {
-                        if (!isVip && recipes.length >= 10) {
+                        if (!isPremiumUser && recipes.length >= 10) {
                           triggerUpgradePrompt(true, "免費版額度已滿 (10/10)，升級 Premium 即可解鎖 AI 解析儲存功能！");
                           return;
                         }
                         handleSmartPaste();
                       }}
                       disabled={isAiParsing || !smartPasteText.trim()}
-                      className={`absolute bottom-4 right-4 px-6 py-2.5 rounded-xl font-black text-xs shadow-lg flex items-center gap-2 transition-all active:scale-95 ${(isAiParsing || !smartPasteText.trim()) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : (!isVip && recipes.length >= 10 ? 'bg-[#E8D5C0] text-[#8B5E3C]' : 'bg-[#E67E22] text-white hover:bg-orange-600')}`}
+                      className={`absolute bottom-4 right-4 px-6 py-2.5 rounded-xl font-black text-xs shadow-lg flex items-center gap-2 transition-all active:scale-95 ${(isAiParsing || !smartPasteText.trim()) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : (!isPremiumUser && recipes.length >= 10 ? 'bg-[#E8D5C0] text-[#8B5E3C]' : 'bg-[#E67E22] text-white hover:bg-orange-600')}`}
                     >
                       {isAiParsing ? (
                         <>
@@ -3521,8 +3545,8 @@ const App: React.FC = () => {
                     onClick={async () => { 
                       if (!formRecipe.title) return; 
 
-                      // 實作『滿額禁存』邏輯 (Hard Limit)：針對 Create 情況攔截
-                      if (view === AppView.CREATE && !isVip && recipes.length >= 10) {
+                      // 權限檢查：Premium 用戶跳過所有額度限制
+                      if (view === AppView.CREATE && !isPremiumUser && recipes.length >= 10) {
                         triggerUpgradePrompt(true, "儲存失敗：免費版額度已滿 (10/10)。請升級 Premium 即可永久保存此配方！");
                         return;
                       }
@@ -3538,7 +3562,7 @@ const App: React.FC = () => {
                         const newId = 'rec-' + Date.now();
                         const newRecipe = { ...recipeData, id: newId, createdAt: Date.now(), uid: user?.uid, author_id: user?.uid } as Recipe;
                         
-                        if (!isVip && recipes.length >= 10) {
+                        if (!isPremiumUser && recipes.length >= 10) {
                           triggerUpgradePrompt(true, "免費版額度已滿 (10/10)，升級 Premium 即可解鎖無限儲存與雲端備份！");
                           return;
                         }
@@ -4220,7 +4244,7 @@ const App: React.FC = () => {
         <button onClick={() => setView(AppView.LIST)} className={`flex flex-col items-center gap-1 transition-all ${view === AppView.LIST ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}><span className="text-2xl">🏠</span><span className="text-[10px] font-black">首頁</span></button>
         <button 
           onClick={handleCreateNew} 
-          className={`flex flex-col items-center gap-1 transition-all ${view === AppView.CREATE || view === AppView.EDIT || view === AppView.MANAGE_CATEGORIES ? 'text-[#E67E22] scale-110' : (!isVip && recipes.length >= 10 ? 'text-slate-300' : 'text-orange-200 hover:text-orange-400')}`}
+          className={`flex flex-col items-center gap-1 transition-all ${view === AppView.CREATE || view === AppView.EDIT || view === AppView.MANAGE_CATEGORIES ? 'text-[#E67E22] scale-110' : (!isPremiumUser && recipes.length >= 10 ? 'text-slate-300' : 'text-orange-200 hover:text-orange-400')}`}
         >
           <span className="text-2xl">📝</span>
           <span className="text-[10px] font-black">食譜</span>
