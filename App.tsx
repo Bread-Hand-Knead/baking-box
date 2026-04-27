@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef, Component } from 'react';
 import { 
   auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged, User,
@@ -7,24 +8,19 @@ import {
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 
 // Initialize Gemini AI with fallback support for different environment variable names
-const getApiKey = (forcePrompt = false) => {
-  let key = (import.meta as any).env?.VITE_GEMINI_API_KEY || 
-              (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : null);
+const getApiKey = () => {
+  // 優先順序：localStorage (除錯優先) -> Vite 環境變數
+  const key = localStorage.getItem('VITE_GEMINI_API_KEY') ||
+              (import.meta as any).env?.VITE_GEMINI_API_KEY || 
+              (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : null) ||
+              localStorage.getItem('gemini_api_key');
   
-  if (!key || key === 'YOUR_API_KEY') {
-    key = localStorage.getItem("gemini_api_key");
-  }
-
-  if (forcePrompt && (!key || key === 'YOUR_API_KEY')) {
-    const userInput = window.prompt("線上版本暫未設定自動開發金鑰 🔑\n\n請輸入你的 Gemini API Key 以啟用「AI 快速筆記助手」：");
-    if (userInput) {
-      localStorage.setItem("gemini_api_key", userInput.trim());
-      key = userInput.trim();
-    }
-  }
+  // [Auth] API Key 診斷：僅告知狀態，不暴露私鑰
+  const apiStatus = !!key ? 'Detected' : 'Missing';
+  console.log('[Auth] API Key status:', apiStatus);
 
   if (!key) {
-    console.warn("API Key is undefined");
+    console.error("Error: API Key is undefined (VITE_GEMINI_API_KEY not found)");
   }
   return key ? key.trim() : '';
 };
@@ -1679,14 +1675,13 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const calculateUsage = () => {
-      // Usage is based on number of recipes (limit 10 for non-VIP)
-      // For display purposes, we cap at 100% in UI but show real count in sidebar
-      const limit = isVip ? 1000 : 10; 
+      // 根據是否為進階用戶設定上限：免費版 10 份，Premium 1000 份
+      const limit = isPremiumUser ? 1000 : 10; 
       const percentage = (recipes.length / limit) * 100;
       setStorageUsage(percentage);
     };
     calculateUsage();
-  }, [recipes, isVip, user]);
+  }, [recipes, isPremiumUser, user]);
 
   const extractHashtags = (text: string): string[] => {
     if (!text) return [];
@@ -1913,12 +1908,14 @@ const App: React.FC = () => {
 
   const proceedWithAIParse = async () => {
     setIsAiParsing(true);
+    const apiKey = getApiKey();
+    console.log('[Auth] API Key status:', !!apiKey ? 'Detected' : 'Missing');
+
     let lastError: any = null;
-    const maxRetries = 2;
+    const maxRetries = 3;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const apiKey = getApiKey(true);
         if (!apiKey || apiKey === 'YOUR_API_KEY') {
           console.error("Error: API Key is undefined or invalid. AI Parsing aborted.");
           throw new Error("MISSING_API_KEY");
@@ -1926,11 +1923,11 @@ const App: React.FC = () => {
 
         const client = new GoogleGenerativeAI(apiKey);
         const model = client.getGenerativeModel({ 
-          model: "gemini-2.5-flash",
+          model: "models/gemini-2.0-flash",
           generationConfig: { responseMimeType: "application/json" }
         });
 
-        console.log('[AI] Using model path: models/gemini-1.5-flash');
+        console.log('[AI] Using model path: models/gemini-2.0-flash');
 
         const prompt = `你是一個專業細膩的烘焙食譜解析助手。
         請從下方的筆記內容中識別出所有的材料區塊名稱及其對應材料。
@@ -1951,9 +1948,9 @@ const App: React.FC = () => {
         4. 請確保輸出是一個可以用 JSON.parse() 直接解析的對象。
         `;
 
-        // 實作超時保護 (90s)
+        // 實作超時保護 (60s)
         const aiPromise = model.generateContent(prompt);
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("TIMEOUT")), 90000));
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("TIMEOUT")), 60000));
         
         console.log(`[AI] Parsing content (Attempt ${attempt})... waiting for response.`);
         const result = await Promise.race([aiPromise, timeoutPromise]) as any;
@@ -1982,7 +1979,15 @@ const App: React.FC = () => {
         lastError = err;
         const code = err?.message || "UNKNOWN_ERROR";
         
-        if (attempt < maxRetries && (code === "TIMEOUT" || code.includes("fetch") || err?.name === "AbortError" || code.includes("ECONNRESET"))) {
+        // 更積極的重試策略：包含超時、網路錯誤與 429 高負載
+        if (attempt < maxRetries && (
+          code === "TIMEOUT" || 
+          code.includes("fetch") || 
+          code.includes("429") || 
+          code.includes("RESOURCE_EXHAUSTED") ||
+          err?.name === "AbortError" || 
+          code.includes("ECONNRESET")
+        )) {
           console.warn(`[AI] Attempt ${attempt} failed (${code}), retrying...`);
           await new Promise(res => setTimeout(res, 2000));
           continue;
@@ -1992,18 +1997,25 @@ const App: React.FC = () => {
     }
 
     if (lastError) {
-      const code = lastError?.message || "UNKNOWN_ERROR";
-      console.error(`[AI] Parsing Failed: ${code}`, lastError);
+      const codeValue = lastError?.message || "UNKNOWN_ERROR";
+      console.error(`[AI] Parsing Failed: ${codeValue}`, lastError);
       
       const errorMap: Record<string, string> = {
-        "TIMEOUT": "連線逾時，請檢查網路後重試 (90s)",
+        "TIMEOUT": "遠端連線較慢，請確認網路狀態後重試",
         "MISSING_API_KEY": "未偵測到開發金鑰，請聯繫管理員",
         "EMPTY_API_RESPONSE": "AI 回傳內容為空，請重試",
         "Quota": "解析頻率過高，請稍候再試 (429)",
-        "AI_TIMEOUT": "連線不穩，請檢查網路後重新嘗試"
+        "AI_TIMEOUT": "遠端連線較慢，請確認網路狀態後重試",
+        "NOT_FOUND": "模型已更新至 2.0 版，若連線不穩請稍後重試",
+        "RESOURCE_EXHAUSTED": "模型目前負載較高，請稍候再試"
       };
       
-      showToast(errorMap[code] || `解析失敗: ${code}`);
+      let displayError = errorMap[codeValue] || `解析失敗: ${codeValue}`;
+      if (codeValue.includes('404') || codeValue.includes('429') || codeValue.includes('NOT_FOUND') || codeValue.includes('RESOURCE_EXHAUSTED')) {
+        displayError = "模型已更新至 2.0 版，若連線不穩請稍後重試";
+      }
+      
+      showToast(displayError);
     }
 
     setIsAiParsing(false);
@@ -2012,9 +2024,26 @@ const App: React.FC = () => {
   const handleSmartPaste = async () => {
     if (!smartPasteText.trim()) return;
     
-    // [System Refactor] 徹底解除所有限制，Absolute bypass triggered
-    console.log('[AI] Starting Parse Engine - No limits enforced');
-    return proceedWithAIParse();
+    // AI 解析次數限制判斷 (非 Premium 用戶每日上限 20 次)
+    if (!isPremiumUser) {
+      const today = getTodayString();
+      if (aiUsage.date === today && aiUsage.count >= 20) {
+        triggerUpgradePrompt(true, "每日 AI 解析次數已達上限 (20次)，升級 Premium 可解鎖無限次數！");
+        return;
+      }
+    }
+    
+    await proceedWithAIParse();
+    
+    // 解析成功後，若非 Premium 則更新次數
+    if (!isPremiumUser) {
+      const today = getTodayString();
+      const newUsage = aiUsage.date === today ? { ...aiUsage, count: aiUsage.count + 1 } : { date: today, count: 1 };
+      setAiUsage(newUsage);
+      if (user) {
+        saveUserSettings({ aiUsage: newUsage });
+      }
+    }
   };
 
   const applyParsedRecipe = (parsed: Partial<Recipe>) => {
@@ -2624,15 +2653,15 @@ const App: React.FC = () => {
                       <button 
                         type="button"
                         onClick={() => {
-                          if (!isVip) {
+                          if (!isPremiumUser) {
                             triggerUpgradePrompt(true);
                             return;
                           }
                           setIsMoldPanelOpen(!isMoldPanelOpen);
                         }}
-                        className={`w-full px-6 py-5 flex items-center justify-between ${isVip ? 'bg-orange-100/30 hover:bg-orange-100/50' : 'bg-[#F5E6D3]/50'} transition-colors text-left`}
+                        className={`w-full px-6 py-5 flex items-center justify-between ${isPremiumUser ? 'bg-orange-100/30 hover:bg-orange-100/50' : 'bg-[#F5E6D3]/50'} transition-colors text-left`}
                       >
-                        <span className={`text-lg font-black ${isVip ? 'text-orange-700' : 'text-[#8B5E3C]'}`}>3. 模具體積換算 (跨形狀互換工具) {!isVip && '(VIP)'}</span>
+                        <span className={`text-lg font-black ${isPremiumUser ? 'text-orange-700' : 'text-[#8B5E3C]'}`}>3. 模具體積換算 (跨形狀互換工具) {!isPremiumUser && '(VIP)'}</span>
                         <span className={`text-orange-400 transition-transform duration-300 ${isMoldPanelOpen ? 'rotate-180' : ''}`}>▼</span>
                       </button>
 
@@ -2870,7 +2899,7 @@ const App: React.FC = () => {
                     <div className="flex flex-col gap-1">
                       <h3 className="text-xl font-black text-slate-800">換算結果清單</h3>
                       <span className="text-xs font-bold text-orange-400">
-                        {isVip ? '💡 提示：直接修改材料重量可進行「逆算」' : '🌟 升級 VIP 即可使用專業逆算工具'}
+                        💡 提示：直接修改材料重量可進行「逆算」
                       </span>
                     </div>
                     <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-3">
@@ -2883,11 +2912,17 @@ const App: React.FC = () => {
                         <span>產生臨時配方卡</span>
                       </button>
                       <button 
-                        onClick={() => window.print()} 
+                        onClick={() => {
+                          if (!isPremiumUser) {
+                            triggerUpgradePrompt(true);
+                            return;
+                          }
+                          window.print();
+                        }} 
                         className="w-auto px-6 py-3 bg-orange-500 text-white rounded-2xl text-sm font-black shadow-lg hover:bg-orange-600 transition-all flex items-center gap-2 active:scale-95"
                       >
                         <span className="text-xl">🖨️</span>
-                        <span>列印 / 存為 PDF</span>
+                        <span>列印 / 存為 PDF {!isPremiumUser && '(VIP)'}</span>
                       </button>
                     </div>
                   </div>
@@ -2915,7 +2950,7 @@ const App: React.FC = () => {
                            isBaking={scalingRecipe.isBakingRecipe} 
                            showPercentage={true} 
                            scalingFactor={scalingFactor}
-                           onReverseScale={isVip ? (idx, newAmt) => handleReverseScale(secKey, idx, newAmt) : undefined}
+                           onReverseScale={isPremiumUser ? (idx, newAmt) => handleReverseScale(secKey, idx, newAmt) : undefined}
                            baseIngredientIndex={reverseScalingBase?.sectionKey === secKey ? reverseScalingBase.index : null}
                          />
                        );
@@ -2960,7 +2995,6 @@ const App: React.FC = () => {
                 <h2 className="text-2xl font-black text-[#E67E22]">{view === AppView.CREATE ? '建立新配方' : '編輯配方'}</h2>
                 <button onClick={() => setView(AppView.MANAGE_CATEGORIES)} className="p-2.5 bg-white border border-orange-100 rounded-xl shadow-sm text-sm font-bold text-orange-600 flex items-center gap-2 hover:bg-orange-50 transition-all active:scale-95">⚙️ 分類管理</button>
               </div>
-
               <div className="space-y-6 px-4 sm:px-0">
                 {/* 0. 圖片預留位 (優先顯示) */}
                 <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-4">
@@ -3528,6 +3562,12 @@ const App: React.FC = () => {
                       };
 
                       if (view === AppView.CREATE) {
+                        // 檢查食譜數量限制 (非 Premium 用戶上限 10 份)
+                        if (!isPremiumUser && recipes.length >= 10) {
+                          triggerUpgradePrompt(true, "您的食譜已達免費版上限 (10份)，升級 Premium 即可儲存更多美味配方！");
+                          return;
+                        }
+
                         const newId = 'rec-' + Date.now();
                         const newRecipe = { ...recipeData, id: newId, createdAt: Date.now(), uid: user?.uid, author_id: user?.uid } as Recipe;
                         
@@ -4185,16 +4225,16 @@ const App: React.FC = () => {
                     <button onClick={() => { setTagInput(''); setFormRecipe(selectedRecipe); setView(AppView.EDIT); }} className="flex-grow py-5 bg-white border border-orange-100 rounded-[32px] font-black text-orange-600 shadow-sm active:scale-95 transition-all hover:bg-orange-50 text-base">編輯配方</button>
                     <button 
                       onClick={() => {
-                        if (!isVip) {
+                        if (!isPremiumUser) {
                           triggerUpgradePrompt(true);
                           return;
                         }
                         window.print();
                       }} 
-                      className={`flex-grow py-5 ${isVip ? 'bg-orange-500 hover:bg-orange-600' : 'bg-[#E8D5C0] text-[#8B5E3C]'} text-white rounded-[32px] font-black shadow-lg active:scale-95 transition-all text-base flex items-center justify-center gap-2`}
+                      className={`flex-grow py-5 ${isPremiumUser ? 'bg-orange-500 hover:bg-orange-600' : 'bg-[#E8D5C0] text-[#8B5E3C]'} text-white rounded-[32px] font-black shadow-lg active:scale-95 transition-all text-base flex items-center justify-center gap-2`}
                     >
                       <span>🖨️</span>
-                      <span>列印 / 存為 PDF {!isVip && '(VIP)'}</span>
+                      <span>列印 / 存為 PDF {!isPremiumUser && '(VIP)'}</span>
                     </button>
                     <button onClick={() => triggerConfirm(handleDeleteRecipe, "確認刪除食譜？", "妳確定要移除這份食譜嗎？此操作將會永久刪除所有相關資料。")} className="flex-grow py-5 bg-red-50 text-red-500 rounded-[32px] font-black shadow-sm active:scale-95 transition-all hover:bg-red-100 text-base">刪除配方</button>
                   </div>
