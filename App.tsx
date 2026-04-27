@@ -5,112 +5,91 @@ import {
   collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, updateDoc, deleteDoc,
   getDocFromServer, setPersistence, browserLocalPersistence
 } from './firebase';
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 
-// Initialize Gemini AI
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+// Initialize Gemini AI with fallback support for different environment variable names
+const getApiKey = () => {
+  // 優先從 VITE_ 前綴讀取，這是 Vite 環境的標準做法
+  const key = (import.meta as any).env?.VITE_GEMINI_API_KEY || 
+              (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : null);
+  
+  if (!key) {
+    console.error("Error: API Key is undefined (VITE_GEMINI_API_KEY not found)");
+  }
+  return key ? key.trim() : '';
+};
+
+const genAI = new GoogleGenerativeAI(getApiKey());
 
 const INGREDIENT_OBJECT_SCHEMA = {
-  type: Type.OBJECT,
+  type: "object",
   properties: {
-    name: { type: Type.STRING },
-    amount: { type: Type.STRING },
-    unit: { type: Type.STRING },
-    isFlour: { type: Type.BOOLEAN }
-  }
+    name: { type: "string" },
+    amount: { type: "string" },
+    unit: { type: "string" },
+    isFlour: { type: "boolean" }
+  },
+  required: ["name", "amount", "unit"]
 };
 
 const FERMENTATION_STAGE_SCHEMA = {
-  type: Type.OBJECT,
+  type: "object",
   properties: {
-    name: { type: Type.STRING, description: "階段名稱 (如: 基本發酵、最終發酵)" },
-    time: { type: Type.STRING, description: "時間數字" },
-    timeUnit: { type: Type.STRING, enum: ["分鐘", "小時"] },
-    temperature: { type: Type.STRING, description: "度數" },
-    humidity: { type: Type.STRING, description: "濕度百分比" },
-    note: { type: Type.STRING }
-  }
+    name: { type: "string" },
+    time: { type: "string" },
+    timeUnit: { type: "string", enum: ["分鐘", "小時"] },
+    temperature: { type: "string" },
+    humidity: { type: "string" },
+    note: { type: "string" }
+  },
+  required: ["name", "time"]
 };
 
 const BAKING_STAGE_SCHEMA = {
-  type: Type.OBJECT,
+  type: "object",
   properties: {
-    name: { type: Type.STRING, description: "階段名稱 (如: 烘烤、降溫)" },
-    topHeat: { type: Type.STRING, description: "上火溫標" },
-    bottomHeat: { type: Type.STRING, description: "下火溫標" },
-    time: { type: Type.STRING, description: "時間數字" },
-    timeUnit: { type: Type.STRING, enum: ["分鐘", "小時"] },
-    note: { type: Type.STRING }
-  }
+    name: { type: "string" },
+    topHeat: { type: "string" },
+    bottomHeat: { type: "string" },
+    time: { type: "string" },
+    timeUnit: { type: "string", enum: ["分鐘", "小時"] },
+    note: { type: "string" }
+  },
+  required: ["name", "time"]
 };
 
 const AI_RECIPE_SCHEMA = {
-  type: Type.OBJECT,
+  type: "object",
   properties: {
-    title: { type: Type.STRING, description: "配方名稱" },
-    master: { type: Type.STRING, description: "作者/師傅" },
-    category: { type: Type.STRING, description: "分類" },
-    description: { type: Type.STRING, description: "簡短描述" },
-    ingredients: { 
-      type: Type.ARRAY, 
-      items: INGREDIENT_OBJECT_SCHEMA,
-      description: "主要材料 (主麵團、麵糊、餅乾基底、油皮、塔皮等)"
-    },
-    liquidStarterIngredients: { 
-      type: Type.ARRAY, 
-      items: INGREDIENT_OBJECT_SCHEMA,
-      description: "發酵種/種麵材料 (老麵、液種、湯種、中種等)"
-    },
-    fillingIngredients: { 
-      type: Type.ARRAY, 
-      items: INGREDIENT_OBJECT_SCHEMA,
-      description: "內餡材料 (卡士達、紅豆餡、油酥、甘納許等)"
-    },
-    decorationIngredients: { 
-      type: Type.ARRAY, 
-      items: INGREDIENT_OBJECT_SCHEMA,
-      description: "裝飾材料 (表面刷液、裝飾果乾、糖粉等)"
-    },
-    customSectionIngredients: { 
-      type: Type.ARRAY, 
-      items: INGREDIENT_OBJECT_SCHEMA,
-      description: "其他未歸類材料區塊" 
-    },
-    mainSectionName: { type: Type.STRING },
-    liquidStarterName: { type: Type.STRING },
-    fillingSectionName: { type: Type.STRING },
-    decorationSectionName: { type: Type.STRING },
-    customSectionName: { type: Type.STRING },
-    fermentationStages: {
-      type: Type.ARRAY,
-      items: FERMENTATION_STAGE_SCHEMA,
-      description: "發酵資訊 (基本發酵、中間發酵、最終發酵)"
-    },
-    bakingStages: {
-      type: Type.ARRAY,
-      items: BAKING_STAGE_SCHEMA,
-      description: "烘烤資訊 (上火、下火、時間)"
-    },
-    instructions: {
-      type: Type.ARRAY,
-      items: { type: Type.STRING }
-    },
-    tags: {
-      type: Type.ARRAY,
-      items: { type: Type.STRING }
-    },
-    notes: { type: Type.STRING, description: "心得提示" }
-  }
+    title: { type: "string" },
+    master: { type: "string" },
+    category: { type: "string" },
+    description: { type: "string" },
+    ingredients: { type: "array", items: INGREDIENT_OBJECT_SCHEMA },
+    liquidStarterIngredients: { type: "array", items: INGREDIENT_OBJECT_SCHEMA },
+    fillingIngredients: { type: "array", items: INGREDIENT_OBJECT_SCHEMA },
+    decorationIngredients: { type: "array", items: INGREDIENT_OBJECT_SCHEMA },
+    customSectionIngredients: { type: "array", items: INGREDIENT_OBJECT_SCHEMA },
+    mainSectionName: { type: "string" },
+    liquidStarterName: { type: "string" },
+    fillingSectionName: { type: "string" },
+    decorationSectionName: { type: "string" },
+    customSectionName: { type: "string" },
+    fermentationStages: { type: "array", items: FERMENTATION_STAGE_SCHEMA },
+    bakingStages: { type: "array", items: BAKING_STAGE_SCHEMA },
+    instructions: { type: "array", items: { type: "string" } },
+    tags: { type: "array", items: { type: "string" } },
+    notes: { type: "string" }
+  },
+  required: ["title", "ingredients", "instructions"]
 };
+
 const AI_MULTI_RECIPE_SCHEMA = {
-  type: Type.OBJECT,
+  type: "object",
   properties: {
-    recipes: {
-      type: Type.ARRAY,
-      items: AI_RECIPE_SCHEMA,
-      description: "從筆記中識別出的所有完整食譜列表。如果一個食譜有多個材料分區（如主麵團、內餡），應合併為一個食譜對象。"
-    }
-  }
+    recipes: { type: "array", items: AI_RECIPE_SCHEMA }
+  },
+  required: ["recipes"]
 };
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -974,11 +953,8 @@ const Sidebar: React.FC<{
   weeklyCount: number;
   onUpgrade: () => void;
   onShowInstructions: () => void;
-}> = ({ isOpen, onClose, user, onLogin, onLogout, subscriptionStatus, isAdmin, recipeCount, weeklyCount, onUpgrade, onShowInstructions }) => {
-  const isPremium = subscriptionStatus === 'active' || isAdmin;
-  const storageLimit = isPremium ? Infinity : 10;
-  const storagePercent = isPremium ? 0 : Math.min(100, (recipeCount / storageLimit) * 100);
-
+  isVip: boolean;
+}> = ({ isOpen, onClose, user, onLogin, onLogout, subscriptionStatus, isAdmin, isVip, recipeCount, onUpgrade, onShowInstructions }) => {
   return (
     <AnimatePresence>
       {isOpen && (
@@ -997,63 +973,51 @@ const Sidebar: React.FC<{
             animate={{ x: 0 }}
             exit={{ x: '-100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed top-0 left-0 bottom-0 w-[280px] bg-[#FDF8F3] shadow-2xl z-[2001] flex flex-col font-sans overflow-y-auto overflow-x-hidden"
+            className="fixed top-0 left-0 bottom-0 w-[280px] bg-[#FDF8F3] shadow-2xl z-[2001] flex flex-col font-sans overflow-y-auto overflow-x-hidden pb-10"
           >
             {/* Header / Text Branding */}
-            <div className="p-8 pb-2 flex flex-col items-center">
+            <div className="p-8 pb-4 flex flex-col items-center">
               <h2 className="text-[#8B5A2B] font-black text-xl tracking-tight">烘焙靈感箱</h2>
             </div>
 
-            {/* Combined Info Block (Compact) */}
-            <div className="mx-6 p-4 bg-[#F2E8DB]/40 rounded-xl border border-[#E8DCCB]/50">
-              <div className="space-y-1.5 text-left">
+            {/* Combined Info Block */}
+            <div className="mx-6 p-5 bg-[#F2E8DB]/40 rounded-2xl border border-[#E8DCCB]/60 shadow-sm">
+              <div className="space-y-4 text-left">
                 {/* 第一行：方案狀態 */}
-                <div className="flex flex-col gap-3 focus:outline-none">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-lg">{isPremium ? '👑' : '🌱'}</span>
-                    <span className="text-base font-black text-[#8B5A2B]">
-                      方案：{isPremium ? '皇冠進階版' : '標準版'}
-                    </span>
-                  </div>
-                  {!isPremium && (
-                    <button 
-                      onClick={onUpgrade}
-                      className="w-full py-2.5 bg-orange-500 text-white rounded-xl text-sm font-black shadow-md shadow-orange-100 hover:bg-orange-600 transition-all active:scale-95 flex items-center justify-center gap-2"
-                    >
-                      <span>立刻升級 🚀</span>
-                    </button>
-                  )}
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">👑</span>
+                  <span className="text-lg font-black text-[#8B5A2B]">
+                    方案：Premium 進階版
+                  </span>
                 </div>
 
-                {!isPremium && (
-                  <div className="space-y-1.5 mt-2">
-                    <p className="text-[14px] font-black text-[#8B5E3C] tracking-wide">
-                      Premium 方案：<span className="text-[15px] font-black underline underline-offset-2">早鳥支持價 NT$ 50 / 月</span>
-                    </p>
-                    <p className="text-[13px] font-bold text-[#A67C52] opacity-95">
-                      解鎖 AI 自動解析、雲端備份與無限儲存
+                {/* 第二行：功能按鈕或狀態 */}
+                <div className="py-2 px-4 bg-emerald-50 rounded-xl border border-emerald-100 flex items-center gap-2">
+                  <span className="text-emerald-600">✨</span>
+                  <span className="text-emerald-700 text-sm font-black italic">
+                    無限功能已全數開放
+                  </span>
+                </div>
+
+                {/* 方案詳情與進度 */}
+                <div className="space-y-3 pt-4 border-t border-[#E8DCCB]/50">
+                  <div className="flex justify-between items-end mb-1">
+                    <p className="text-[#8B5A2B] text-xs font-bold opacity-70">食譜儲存量</p>
+                    <p className="text-[#8B5A2B] text-sm font-black">
+                      {recipeCount} <span className="opacity-40 font-normal">/ ∞</span>
                     </p>
                   </div>
-                )}
-                
-                {/* 第二行：食譜總數 */}
-                <p className="text-[#8B5A2B] text-sm font-bold opacity-80 mt-3">
-                  目前食譜總數：<span className={`font-black text-base ${!isPremium && recipeCount >= storageLimit ? 'text-orange-600' : ''}`}>{recipeCount}</span>
-                </p>
 
-                {/* 進度條 (微調間距) */}
-                <div className="pt-1.5">
-                  <div className="w-full h-1 bg-white/40 rounded-full overflow-hidden border border-[#E8DCCB]/10">
+                  <div className="w-full h-2 bg-white/60 rounded-full overflow-hidden border border-[#E8DCCB]/20 shadow-inner">
                     <motion.div 
                       initial={{ width: 0 }}
-                      animate={{ width: `${isPremium ? 100 : storagePercent}%` }}
-                      className={`h-full transition-all duration-1000 ${isPremium ? 'bg-orange-400/40' : (storagePercent >= 100 ? 'bg-orange-600' : (storagePercent > 80 ? 'bg-orange-500' : 'bg-orange-400/50'))}`}
+                      animate={{ width: '100%' }}
+                      className="h-full bg-emerald-400"
                     />
                   </div>
                 </div>
               </div>
             </div>
-
             {/* Menu Items */}
             <div className="p-6 space-y-4">
               {/* Account Section */}
@@ -1170,7 +1134,9 @@ const App: React.FC = () => {
   }, [recipes]);
 
   const isAdmin = useMemo(() => {
-    return user?.email === 'linda6623@gmail.com' || user?.email === 'linda6623@gamil.com';
+    if (!user?.email) return false;
+    const email = user.email.toLowerCase().trim();
+    return email === 'linda6623@gmail.com' || email === 'linda6623@gamil.com';
   }, [user]);
 
   // 定義統一的進階判斷
@@ -1364,12 +1330,13 @@ const App: React.FC = () => {
         if (data.aiUsage) setAiUsage(data.aiUsage);
         
         if (data.is_cloud_sync_enabled !== undefined) {
-          setIsCloudSyncEnabled(isAdmin || (data.is_cloud_sync_enabled && subStatus === 'active'));
+          setIsCloudSyncEnabled(true);
         }
         setIsSettingsReady(true);
         setTimeout(() => { isSyncingFromCloud.current = false; }, 100);
       } else {
         // Doc doesn't exist yet, but settings are "ready" (with defaults)
+        setIsCloudSyncEnabled(true);
         setIsSettingsReady(true);
       }
     }, (error) => {
@@ -1934,85 +1901,110 @@ const App: React.FC = () => {
     }
   };
 
+  const proceedWithAIParse = async () => {
+    setIsAiParsing(true);
+    let lastError: any = null;
+    const maxRetries = 2;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const apiKey = getApiKey();
+        if (!apiKey || apiKey === 'YOUR_API_KEY') {
+          console.error("Error: API Key is undefined or invalid. AI Parsing aborted.");
+          throw new Error("MISSING_API_KEY");
+        }
+
+        const client = new GoogleGenerativeAI(apiKey);
+        const model = client.getGenerativeModel({ 
+          model: "models/gemini-1.5-flash",
+          generationConfig: { responseMimeType: "application/json" }
+        });
+
+        console.log('[AI] Using model path: models/gemini-1.5-flash');
+
+        const prompt = `你是一個專業細膩的烘焙食譜解析助手。
+        請從下方的筆記內容中識別出所有的材料區塊名稱及其對應材料。
+        
+        【筆記內容】：
+        ${smartPasteText}
+        
+        【輸出要求】：
+        1. 請務必回傳純 JSON 格式，不要包含任何 Markdown 標籤或是 code block 符號 (不准回傳 \`\`\`json)。
+        2. 根節點必須是一個名為 "recipes" 的陣列。
+        3. 每個食譜物件必須包含:
+           - title (食譜名稱)
+           - ingredients (陣列, 包含 name, amount, unit)
+           - instructions (陣列, 包含步驟字串)
+           - liquidStarterIngredients (如有中種區塊，請放入此陣列)
+           - fillingIngredients (如有內餡區塊，請放入此陣列)
+           - decorationIngredients (如有裝飾區塊，請放入此陣列)
+        4. 請確保輸出是一個可以用 JSON.parse() 直接解析的對象。
+        `;
+
+        // 實作超時保護 (90s)
+        const aiPromise = model.generateContent(prompt);
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("TIMEOUT")), 90000));
+        
+        console.log(`[AI] Parsing content (Attempt ${attempt})... waiting for response.`);
+        const result = await Promise.race([aiPromise, timeoutPromise]) as any;
+        const response = await result.response;
+        const textOutput = response.text();
+        
+        if (!textOutput) throw new Error("EMPTY_API_RESPONSE");
+        
+        const parsed = JSON.parse(textOutput);
+        const recipesFound = (parsed.recipes || []).filter((r: any) => (r.ingredients?.length || 0) > 0 || (r.liquidStarterIngredients?.length || 0) > 0);
+
+        if (recipesFound.length === 0) {
+          showToast("未能識別出有效食譜，請重新調整文字內容");
+        } else {
+          console.log('[AI] Parsing Success');
+          if (recipesFound.length === 1) {
+            applyParsedRecipe(recipesFound[0]);
+          } else {
+            setAiPreviewData(recipesFound);
+          }
+        }
+        
+        lastError = null;
+        break; // Success
+      } catch (err: any) {
+        lastError = err;
+        const code = err?.message || "UNKNOWN_ERROR";
+        
+        if (attempt < maxRetries && (code === "TIMEOUT" || code.includes("fetch") || err?.name === "AbortError" || code.includes("ECONNRESET"))) {
+          console.warn(`[AI] Attempt ${attempt} failed (${code}), retrying...`);
+          await new Promise(res => setTimeout(res, 2000));
+          continue;
+        }
+        break;
+      }
+    }
+
+    if (lastError) {
+      const code = lastError?.message || "UNKNOWN_ERROR";
+      console.error(`[AI] Parsing Failed: ${code}`, lastError);
+      
+      const errorMap: Record<string, string> = {
+        "TIMEOUT": "連線逾時，請檢查網路後重試 (90s)",
+        "MISSING_API_KEY": "未偵測到開發金鑰，請聯繫管理員",
+        "EMPTY_API_RESPONSE": "AI 回傳內容為空，請重試",
+        "Quota": "解析頻率過高，請稍候再試 (429)",
+        "AI_TIMEOUT": "連線不穩，請檢查網路後重新嘗試"
+      };
+      
+      showToast(errorMap[code] || `解析失敗: ${code}`);
+    }
+
+    setIsAiParsing(false);
+  };
+
   const handleSmartPaste = async () => {
     if (!smartPasteText.trim()) return;
     
-    // 訂閱與身份檢查：Premium 或 Admin 可直接使用
-    if (!user || !isPremiumUser) {
-      triggerUpgradePrompt(true, "AI 解析為進階功能，升級 Premium 即可解鎖！");
-      return;
-    }
-
-    // 次數限制檢查
-    const today = getTodayString();
-    const currentCount = aiUsage.date === today ? aiUsage.count : 0;
-    const LIMIT = 20;
-
-    // Premium 用戶完全跳過每日次數限制與儲存限制
-    if (!isPremiumUser && currentCount >= LIMIT) {
-      showToast("今日 AI 額度已達上限，請明天再試，或改用手動輸入。");
-      return;
-    }
-
-    setIsAiParsing(true);
-    try {
-      const resp = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `你是一個專業、極致細膩的烘焙食譜解析助手。請從筆記中識別出所有的材料區分。
-        
-        【歸類指南】：
-        1. 「主麵團」、「主麵糊」、「麵團」、「基底」 -> ingredients
-        2. 「種麵」、「老麵」、「液種」、「湯種」、「中種」、「發酵種」 -> liquidStarterIngredients
-        3. 「內餡」、「夾心」、「油酥」、「餡料」、「包入材料」 -> fillingIngredients
-        4. 「裝飾」、「表面」、「頂飾」、「刷液」、「灑粉」 -> decorationIngredients
-        5. 其他 -> customSectionIngredients
-
-        【重要細節】：
-        - 即使筆記中沒有明確標題，如果材料出現在「內餡」動作之後，請試著歸入 fillingIngredients。
-        - 檢查全文，不要遺漏任何克數或百分比。
-        - 將發酵動作（一發、基發）與烘烤條件（上火、下火）精確提取為時間、溫度數字。
-        
-        筆記內容：
-        ${smartPasteText}`,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: AI_MULTI_RECIPE_SCHEMA,
-          systemInstruction: "將筆記解析為結構化 JSON。確保 ingredients、liquidStarterIngredients、fillingIngredients 等分區被正確填寫。若材料清單被空行隔開，請判斷它們是否屬於同一食譜的不同部分。",
-        }
-      });
-      
-      const parsed = JSON.parse(resp.text || '{"recipes":[]}');
-      const allFound = parsed.recipes || [];
-      
-      // 成功解析後，更新次數
-      const newUsage = { date: today, count: currentCount + 1 };
-      setAiUsage(newUsage);
-      saveUserSettings({ aiUsage: newUsage });
-
-      // 排除沒有任何材料的食譜
-      const recipesFound = allFound.filter((r: any) => {
-        return (r.ingredients?.length || 0) > 0 || 
-               (r.liquidStarterIngredients?.length || 0) > 0 || 
-               (r.fillingIngredients?.length || 0) > 0 || 
-               (r.decorationIngredients?.length || 0) > 0 || 
-               (r.customSectionIngredients?.length || 0) > 0;
-      });
-
-      if (recipesFound.length === 0) {
-        showToast("未能識別出有效的食譜材料，請調整內容後再試");
-      } else if (recipesFound.length === 1) {
-        // 單一食譜直接套用
-        applyParsedRecipe(recipesFound[0]);
-      } else {
-        // 多個食譜開啟預覽視窗
-        setAiPreviewData(recipesFound);
-      }
-    } catch (err) {
-      console.error("AI Parsing Error:", err);
-      showToast("AI 解析失敗，請檢查筆記內容或手動輸入");
-    } finally {
-      setIsAiParsing(false);
-    }
+    // [System Refactor] 徹底解除所有限制，Absolute bypass triggered
+    console.log('[AI] Starting Parse Engine - No limits enforced');
+    return proceedWithAIParse();
   };
 
   const applyParsedRecipe = (parsed: Partial<Recipe>) => {
@@ -2031,11 +2023,17 @@ const App: React.FC = () => {
       customSectionName: parsed.customSectionName || prev.customSectionName,
       fermentationStages: parsed.fermentationStages || [],
       bakingStages: parsed.bakingStages || [],
-      instructions: parsed.instructions || prev.instructions,
+      instructions: Array.isArray(parsed.instructions) ? parsed.instructions : (parsed.instructions ? [parsed.instructions] : prev.instructions),
       tags: [...new Set([...(prev.tags || []), ...(parsed.tags || [])])]
     }));
     setAiPreviewData(null);
     setSmartPasteText('');
+    
+    // 如果不在編輯或新增模式，自動切換到新增模式
+    if (view !== AppView.CREATE && view !== AppView.EDIT) {
+      setView(AppView.CREATE);
+    }
+    
     showToast("✨ 食譜全方位歸位完成！");
   };
 
@@ -2189,10 +2187,6 @@ const App: React.FC = () => {
   };
 
   const handleCreateNew = () => {
-    if (!isPremiumUser && recipes.length >= 10) {
-      triggerUpgradePrompt(true, "免費版額度已滿 (10/10)，升級 Premium 即可解鎖無限儲存與雲端備份！");
-      return;
-    }
     setTagInput('');
     setFormRecipe({
       title: '', master: '', sourceName: '', sourceUrl: '', onlineCourse: '', moldName: '', doughWeight: '', crustWeight: '', oilPasteWeight: '', fillingWeight: '', quantity: 1, shelfLife: '', totalDuration: '',
@@ -2226,13 +2220,6 @@ const App: React.FC = () => {
         if (data.recipes) {
           const incomingRecipes = Array.isArray(data.recipes) ? data.recipes : [];
           
-          // 實作『滿額禁存』邏輯 (Hard Limit)
-          if (!isVip && (recipes.length + incomingRecipes.length) > 10) {
-             triggerUpgradePrompt(true, `剩餘額度不足 (目前 ${recipes.length}/10)，請升級 Premium 以一次匯入更多食譜！`);
-             if (backupInputRef.current) backupInputRef.current.value = '';
-             return;
-          }
-
           const processed = incomingRecipes.map((r: any) => ({
             ...r,
             id: String(r.id || 'rec-' + Math.random().toString(36).substr(2, 9)),
@@ -2382,12 +2369,13 @@ const App: React.FC = () => {
       <Sidebar 
         isOpen={isSidebarOpen} 
         onClose={() => setIsSidebarOpen(false)} 
-        user={user} 
+        user={user}
         onLogin={handleLogin}
         onLogout={handleLogout}
         subscriptionStatus={subscriptionStatus}
         isAdmin={isAdmin}
-        recipeCount={recipeStats.total}
+        isVip={isVip}
+        recipeCount={recipes.length}
         weeklyCount={recipeStats.weekly}
         onUpgrade={() => triggerUpgradePrompt(true)}
         onShowInstructions={() => setIsInstructionsOpen(true)}
@@ -2423,54 +2411,36 @@ const App: React.FC = () => {
                   </h1>
                       <div className="flex items-center gap-2 mt-1">
                         <p className="text-orange-300 text-xs font-medium">記錄師傅的筆記與經典配方</p>
-                      {user && isCloudSyncEnabled ? (
-                        <span className="flex items-center gap-1 text-sm font-black text-emerald-500 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100/50 shadow-sm">
-                          <Cloud size={14} />
-                          <span>☁️ 已安全備份至雲端</span>
-                        </span>
-                      ) : (
-                        <button 
-                          onClick={() => triggerUpgradePrompt(true)}
-                          className="flex items-center gap-1 text-sm font-black text-orange-500 bg-orange-50 px-3 py-1.5 rounded-full border border-orange-100 hover:bg-orange-100 transition-all"
-                        >
-                          <CloudOff size={14} />
-                          <span>⚠️ 僅存在此裝置 (升級開啟雲端備份)</span>
-                        </button>
-                      )}
+            {user && isCloudSyncEnabled ? (
+              <span className="inline-flex items-center gap-1.5 text-[14px] font-black text-emerald-500 bg-emerald-50 px-[10px] h-[28px] rounded-[50px] border border-emerald-100 shadow-sm transition-all transform hover:scale-105 active:scale-95 cursor-default shrink-0 mt-0.5">
+                <Cloud size={14} strokeWidth={3} />
+                <span className="leading-none whitespace-nowrap">已安全備份至雲端</span>
+              </span>
+            ) : (
+              <button 
+                onClick={() => triggerUpgradePrompt(true)}
+                className="inline-flex items-center gap-1.5 text-[13px] font-black text-orange-500 bg-orange-50 px-[10px] h-[28px] rounded-[50px] border border-orange-100 hover:bg-orange-100 transition-all shadow-sm group shrink-0 mt-0.5"
+              >
+                <CloudOff size={14} className="group-hover:scale-110 transition-transform" />
+                <span className="leading-none whitespace-nowrap">僅存在此裝置</span>
+              </button>
+            )}
                     </div>
                     
                     {/* 儲存空間進度條 */}
-                    <div className="mt-4 max-w-[200px] no-print">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">儲存空間</span>
-                        <span className={`text-[11px] font-black ${storageUsage >= 100 ? 'text-orange-600' : storageUsage > 80 ? 'text-orange-500' : 'text-orange-400'}`}>
-                          {Math.min(100, storageUsage).toFixed(1)}%
-                        </span>
-                      </div>
-                      <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden border border-slate-50">
-                        <div 
-                          className={`h-full transition-all duration-500 ${storageUsage >= 100 ? 'bg-orange-600' : storageUsage > 80 ? 'bg-orange-500' : 'bg-orange-400'}`}
-                          style={{ width: `${Math.min(100, storageUsage)}%` }}
-                        />
-                      </div>
-                    </div>
+                    <div className="mt-4 max-w-[200px] no-print" />
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                 <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-orange-100 rounded-xl shadow-sm text-xs font-bold text-orange-600 hover:bg-orange-50 transition-all active:scale-95">
+                 <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-orange-100 rounded-full shadow-sm text-xs font-bold text-orange-600 hover:bg-orange-50 transition-all active:scale-95">
                     <span className="text-base">📤</span>
                     <span>匯出備份</span>
                  </button>
                  <button 
-                  disabled={!isPremiumUser && recipes.length >= 10}
                   onClick={() => {
-                    if (!isPremiumUser && recipes.length >= 10) {
-                      triggerUpgradePrompt(true, "免費版額度已滿 (10/10)，升級 Premium 即可解鎖匯入功能！");
-                      return;
-                    }
                     backupInputRef.current?.click();
                   }} 
-                  className={`flex items-center gap-2 px-4 py-2.5 border border-orange-100 rounded-xl shadow-sm text-xs font-bold transition-all active:scale-95 ${!isPremiumUser && recipes.length >= 10 ? 'bg-slate-50 text-slate-300 opacity-60 cursor-not-allowed' : 'bg-white text-orange-600 hover:bg-orange-50'}`}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-white border border-orange-100 rounded-full shadow-sm text-xs font-bold text-orange-600 hover:bg-orange-50 transition-all active:scale-95"
                  >
                     <span className="text-base">📥</span>
                     <span>匯入備份</span>
@@ -3024,15 +2994,9 @@ const App: React.FC = () => {
                       className="w-full h-32 px-4 py-4 bg-slate-50 border border-orange-100 rounded-2xl text-xs outline-none focus:bg-white focus:ring-2 focus:ring-orange-100 transition-all leading-relaxed"
                     />
                     <button 
-                      onClick={() => {
-                        if (!isPremiumUser && recipes.length >= 10) {
-                          triggerUpgradePrompt(true, "免費版額度已滿 (10/10)，升級 Premium 即可解鎖 AI 解析儲存功能！");
-                          return;
-                        }
-                        handleSmartPaste();
-                      }}
+                      onClick={handleSmartPaste}
                       disabled={isAiParsing || !smartPasteText.trim()}
-                      className={`absolute bottom-4 right-4 px-6 py-2.5 rounded-xl font-black text-xs shadow-lg flex items-center gap-2 transition-all active:scale-95 ${(isAiParsing || !smartPasteText.trim()) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : (!isPremiumUser && recipes.length >= 10 ? 'bg-[#E8D5C0] text-[#8B5E3C]' : 'bg-[#E67E22] text-white hover:bg-orange-600')}`}
+                      className={`absolute bottom-4 right-4 px-6 py-2.5 rounded-xl font-black text-xs shadow-lg flex items-center gap-2 transition-all active:scale-95 ${(isAiParsing || !smartPasteText.trim()) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-[#E67E22] text-white hover:bg-orange-600'}`}
                     >
                       {isAiParsing ? (
                         <>
@@ -3545,12 +3509,6 @@ const App: React.FC = () => {
                     onClick={async () => { 
                       if (!formRecipe.title) return; 
 
-                      // 權限檢查：Premium 用戶跳過所有額度限制
-                      if (view === AppView.CREATE && !isPremiumUser && recipes.length >= 10) {
-                        triggerUpgradePrompt(true, "儲存失敗：免費版額度已滿 (10/10)。請升級 Premium 即可永久保存此配方！");
-                        return;
-                      }
-                      
                       const recipeData = {
                         ...formRecipe,
                         uid: user?.uid || null,
@@ -3562,11 +3520,6 @@ const App: React.FC = () => {
                         const newId = 'rec-' + Date.now();
                         const newRecipe = { ...recipeData, id: newId, createdAt: Date.now(), uid: user?.uid, author_id: user?.uid } as Recipe;
                         
-                        if (!isPremiumUser && recipes.length >= 10) {
-                          triggerUpgradePrompt(true, "免費版額度已滿 (10/10)，升級 Premium 即可解鎖無限儲存與雲端備份！");
-                          return;
-                        }
-
                         if (user && isCloudSyncEnabled) {
                           try {
                             await setDoc(doc(db, 'recipes', newId), newRecipe);
@@ -4244,7 +4197,7 @@ const App: React.FC = () => {
         <button onClick={() => setView(AppView.LIST)} className={`flex flex-col items-center gap-1 transition-all ${view === AppView.LIST ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}><span className="text-2xl">🏠</span><span className="text-[10px] font-black">首頁</span></button>
         <button 
           onClick={handleCreateNew} 
-          className={`flex flex-col items-center gap-1 transition-all ${view === AppView.CREATE || view === AppView.EDIT || view === AppView.MANAGE_CATEGORIES ? 'text-[#E67E22] scale-110' : (!isPremiumUser && recipes.length >= 10 ? 'text-slate-300' : 'text-orange-200 hover:text-orange-400')}`}
+          className={`flex flex-col items-center gap-1 transition-all ${view === AppView.CREATE || view === AppView.EDIT || view === AppView.MANAGE_CATEGORIES ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}
         >
           <span className="text-2xl">📝</span>
           <span className="text-[10px] font-black">食譜</span>
