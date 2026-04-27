@@ -1926,7 +1926,7 @@ const App: React.FC = () => {
 
         const client = new GoogleGenerativeAI(apiKey);
         const model = client.getGenerativeModel({ 
-          model: "models/gemini-1.5-flash",
+          model: "gemini-2.5-flash",
           generationConfig: { responseMimeType: "application/json" }
         });
 
