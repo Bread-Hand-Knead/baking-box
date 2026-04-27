@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, Component } from 'react';
 import { 
-  auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged, User,
+  auth, db, googleProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged, User,
   collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, updateDoc, deleteDoc,
   getDocFromServer, setPersistence, browserLocalPersistence
 } from './firebase';
@@ -1427,13 +1427,26 @@ const App: React.FC = () => {
 
   const handleLogin = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
-      showToast("登入成功！");
+      showToast("即將跳轉登入畫面...");
+      await signInWithRedirect(auth, googleProvider);
     } catch (error) {
       console.error("Login Error:", error);
       showToast("登入失敗");
     }
   };
+
+  useEffect(() => {
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result) {
+          showToast("登入成功！");
+        }
+      })
+      .catch((error) => {
+        console.error("Redirect Login Error:", error);
+        showToast("登入失敗");
+      });
+  }, []);
 
   const handleLogout = async () => {
     try {
