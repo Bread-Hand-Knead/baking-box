@@ -5,16 +5,26 @@ import {
   getDocFromServer, setPersistence, browserLocalPersistence
 } from './firebase';
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
-import { parseRecipeFromText } from './services/aiRecipeParser';
 
 // Initialize Gemini AI with fallback support for different environment variable names
-const getApiKey = () => {
-  // 優先從 VITE_ 前綴讀取，這是 Vite 環境的標準做法
-  const key = (import.meta as any).env?.VITE_GEMINI_API_KEY || 
+const getApiKey = (forcePrompt = false) => {
+  let key = (import.meta as any).env?.VITE_GEMINI_API_KEY || 
               (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : null);
   
+  if (!key || key === 'YOUR_API_KEY') {
+    key = localStorage.getItem("gemini_api_key");
+  }
+
+  if (forcePrompt && (!key || key === 'YOUR_API_KEY')) {
+    const userInput = window.prompt("線上版本暫未設定自動開發金鑰 🔑\n\n請輸入你的 Gemini API Key 以啟用「AI 快速筆記助手」：");
+    if (userInput) {
+      localStorage.setItem("gemini_api_key", userInput.trim());
+      key = userInput.trim();
+    }
+  }
+
   if (!key) {
-    console.error("Error: API Key is undefined (VITE_GEMINI_API_KEY not found)");
+    console.warn("API Key is undefined");
   }
   return key ? key.trim() : '';
 };
@@ -1125,28 +1135,6 @@ const App: React.FC = () => {
   const [isInstructionsOpen, setIsInstructionsOpen] = useState(false);
   const [suppressUpgradeModal, setSuppressUpgradeModal] = useState(false);
 
-  const [aiInputText, setAiInputText] = useState('');
-  const [isParsing, setIsParsing] = useState(false);
-
-  const handleAiParse = async () => {
-    if (!aiInputText) return;
-    setIsParsing(true);
-    try {
-      const parsedData = await parseRecipeFromText(aiInputText);
-      setFormRecipe(prev => ({
-        ...prev,
-        ...parsedData,
-      }));
-      setAiInputText('');
-      showToast('🎉 解析成功！已經幫你填入到下方表單囉！');
-    } catch (error) {
-      alert('AI 解析失敗，請確定你有提供正確的 API Key 且連線正常。');
-      console.error(error);
-    } finally {
-      setIsParsing(false);
-    }
-  };
-
   const recipeStats = useMemo(() => {
     const total = recipes.length;
     const now = Date.now();
@@ -1943,7 +1931,7 @@ const App: React.FC = () => {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const apiKey = getApiKey();
+        const apiKey = getApiKey(true);
         if (!apiKey || apiKey === 'YOUR_API_KEY') {
           console.error("Error: API Key is undefined or invalid. AI Parsing aborted.");
           throw new Error("MISSING_API_KEY");
@@ -2984,28 +2972,6 @@ const App: React.FC = () => {
               <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-black text-[#E67E22]">{view === AppView.CREATE ? '建立新配方' : '編輯配方'}</h2>
                 <button onClick={() => setView(AppView.MANAGE_CATEGORIES)} className="p-2.5 bg-white border border-orange-100 rounded-xl shadow-sm text-sm font-bold text-orange-600 flex items-center gap-2 hover:bg-orange-50 transition-all active:scale-95">⚙️ 分類管理</button>
-              </div>
-
-              {/* AI Parser UI */}
-              <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 p-6 rounded-[32px] border border-orange-200 shadow-sm space-y-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-xl">✨</span>
-                  <h3 className="text-sm font-black text-orange-700 uppercase tracking-widest">AI 智慧解析</h3>
-                </div>
-                <textarea 
-                  value={aiInputText} 
-                  onChange={e => setAiInputText(e.target.value)} 
-                  placeholder="貼上任何未排版的食譜文字，讓 AI 幫你自動整理好食材與步驟！" 
-                  className="w-full px-4 py-3 rounded-2xl bg-white border border-orange-200 outline-none text-sm focus:border-orange-400 min-h-[100px] resize-y"
-                />
-                <button 
-                  onClick={handleAiParse} 
-                  disabled={!aiInputText || isParsing}
-                  className="w-full py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-2xl font-black text-sm shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 flex items-center justify-center gap-2"
-                >
-                  {isParsing ? '解析中...' : '使用 AI 自動解析填入'}
-                  {isParsing && <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full ml-2"></span>}
-                </button>
               </div>
 
               <div className="space-y-6 px-4 sm:px-0">
