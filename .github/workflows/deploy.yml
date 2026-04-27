@@ -1,47 +1,55 @@
-name: Deploy to GitHub Pages
+name: Deploy Vite JS App to GitHub Pages
 
 on:
+  # 每次 push 到 main 分支時自動觸發
   push:
     branches: ["main"]
+  # 允許手動從 Actions 標籤觸發
   workflow_dispatch:
 
+# 設定 GITHUB_TOKEN 的權限以允許部署到 GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
+# 確保只有一個部署任務在執行
 concurrency:
   group: "pages"
   cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: "npm"
-      - name: Install dependencies
-        run: npm ci
-      - name: Build project
-        run: npm run build
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: "./dist"
-
+  # 建置與部署工作
   deploy:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    needs: build
     runs-on: ubuntu-latest
-    name: Deploy
     steps:
-      - name: Deploy to GitHub Pages
+      - name: 取得原始碼
+        uses: actions/checkout@v4
+
+      - name: 設定 Node.js 參數
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 安裝依賴套件
+        run: npm ci
+
+      - name: 建置 Vite 專案
+        run: npm run build
+
+      - name: 設定 GitHub Pages
+        uses: actions/configure-pages@v4
+
+      - name: 上傳建置成果
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Vite 預設會輸出到 dist 資料夾
+          path: './dist'
+
+      - name: 部署至 GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
