@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef, Component } from 'react';
+import { QRCodeCanvas } from 'qrcode.react';
 import { 
   auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged, User,
   collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, updateDoc, deleteDoc,
@@ -103,10 +104,11 @@ import {
   ChevronRight, Trash2, Edit2, Edit3, Share2, Printer, Save, X, RotateCcw,
   Clock, Thermometer, Droplets, Tag, BookOpen, ExternalLink, Calendar,
   ChevronUp, ChevronDown, Camera, Image as ImageIcon, CheckCircle2, AlertCircle,
-  Cloud, CloudOff, Smartphone, Crown, Menu, Mail
+  Cloud, CloudOff, Smartphone, Crown, Menu, Mail, CreditCard
 } from 'lucide-react';
 
 // --- 1. 類型定義 (原 types.ts 內容) ---
+const COPYRIGHT_TEXT = "© 2026 Linda's Recipe Box. All rights reserved.";
 export enum AppView { LIST, CREATE, EDIT, DETAIL, SCALING, COLLECTION, MANAGE_CATEGORIES }
 
 export interface Ingredient { name: string; amount: string | number; unit: string; isFlour: boolean; percentage?: number | string; }
@@ -127,7 +129,7 @@ export interface Recipe {
   fermentationStages?: FermentationStage[]; bakingStages?: BakingStage[];
   notes?: string; tags?: string[]; moldName?: string;
   doughWeight?: number | string; crustWeight?: number | string; oilPasteWeight?: number | string; fillingWeight?: number | string;
-  quantity?: number; shelfLife?: string; totalDuration?: string; createdAt: number; executionLogs?: ExecutionLog[];
+  quantity?: number; shelfLife?: string; totalDuration?: string; createdAt: number; updatedAt?: number; executionLogs?: ExecutionLog[];
   uid?: string;
   author_id?: string;
   bakingPercentage?: number | string;
@@ -478,6 +480,7 @@ const MOLD_PRESETS = [
 ];
 
 const getTodayString = () => new Date().toISOString().split('T')[0];
+const getThisMonthString = () => new Date().toISOString().substring(0, 7);
 
 const formatTimeWithUnit = (time: string, unit?: string) => {
   if (!time) return '--';
@@ -548,15 +551,15 @@ const DisplayIngredientSection: React.FC<{
   }, [ingredients]);
 
   return (
-    <div className="mb-10 bg-white rounded-[40px] border-2 border-orange-50 p-8 shadow-sm overflow-hidden print:rounded-2xl print:border-slate-200 print:p-6 max-w-3xl mx-auto">
-      <div className="mb-8 flex flex-col gap-3">
+    <div className="mb-10 bg-white rounded-[40px] border-2 border-orange-50 p-8 shadow-sm overflow-hidden print:rounded-2xl print:border-slate-200 print:p-2 print:mb-0 print:w-[calc(50%-0.5rem)] max-w-3xl mx-auto">
+      <div className="mb-8 flex flex-col gap-3 print:mb-2">
         <div className="flex items-center">
-          <span className="px-6 py-2 bg-[#E67E22] text-white text-base font-black rounded-2xl shadow-sm uppercase tracking-widest">
+          <span className="px-6 py-2 bg-[#E67E22] text-white text-base font-black rounded-2xl shadow-sm uppercase tracking-widest print:px-3 print:py-1 print:text-sm">
             {title}
           </span>
         </div>
         {isBaking && showPercentage && (
-          <div className="ml-1 flex items-center gap-2">
+          <div className="ml-1 flex items-center gap-2 print:hidden">
             <span className="text-xs font-black text-slate-500 uppercase tracking-widest">基準:</span>
             <span className="text-sm font-bold text-slate-600 lowercase italic">
               (以 {localBaseInfo.name} 為 100%)
@@ -564,13 +567,14 @@ const DisplayIngredientSection: React.FC<{
           </div>
         )}
       </div>
-      <div className="space-y-0">
-        {/* 表頭 (僅桌面版) */}
-        <div className="hidden sm:flex items-center px-6 py-4 border-b border-orange-100/50 text-xs font-black text-slate-500 uppercase tracking-widest bg-orange-50/30 rounded-t-2xl">
+      <div className="space-y-0 print:grid-1">
+        {/* 表頭 (僅桌面版，PDF中隱藏以省空間) */}
+        <div className="hidden sm:flex items-center px-6 py-4 border-b border-orange-100/50 text-xs font-black text-slate-500 uppercase tracking-widest bg-orange-50/30 rounded-t-2xl print:hidden">
           <div className="flex-1 min-w-0">材料名稱</div>
-          <div className="flex shrink-0 items-center">
-            <div className="w-28 text-right pr-4">重量 (G)</div>
-            {isBaking && showPercentage && <div className="w-28 text-right pr-4">百分比 (%)</div>}
+          <div className="flex shrink-0 items-center justify-end">
+            {/* 重量欄位：w-44 (176px)，pr-10 (40px)，實際居中範圍 136px */}
+            <div className="w-44 text-center pr-10">重量 (G)</div>
+            {isBaking && showPercentage && <div className="w-32 text-center pr-4">百分比 (%)</div>}
           </div>
         </div>
 
@@ -584,49 +588,62 @@ const DisplayIngredientSection: React.FC<{
           const isBase = baseIngredientIndex === idx;
 
           return (
-            <div key={`scaling-ing-${idx}`} className={`flex flex-col sm:flex-row sm:items-center py-6 sm:py-6 border-b border-orange-50/50 last:border-0 px-2 sm:px-6 hover:bg-orange-50/20 transition-colors rounded-2xl gap-3 sm:gap-0 mb-4 sm:mb-0 ${isBase ? 'bg-orange-50/50 border-orange-200' : ''}`}>
-              {/* 第一行：材料名稱 (手機版 100%，電腦版彈性寬度) */}
-              <div className="flex items-center gap-4 flex-1 min-w-0 w-full px-2 sm:px-0">
-                <span className={`shrink-0 w-3 h-3 rounded-full ${ing.isFlour ? 'bg-orange-500 shadow-[0_0_8px_rgba(230,126,34,0.4)]' : 'bg-slate-200'}`} />
-                <span className="text-slate-800 font-black text-lg sm:text-[1.1rem] leading-tight truncate flex items-center gap-2">
+            <div key={`scaling-ing-${idx}`} className={`flex flex-col md:flex-row md:items-center py-4 md:py-3 border-b border-orange-50/50 last:border-0 px-2 md:px-6 hover:bg-orange-50/20 transition-colors rounded-2xl gap-3 md:gap-0 mb-3 md:mb-0 print:mb-0 print:py-0.5 print:border-slate-100 print:rounded-none print:hover:bg-transparent print:flex-row print:items-center ${isBase ? 'bg-orange-50/50 border-orange-200 print:bg-transparent print:border-slate-100' : ''}`}>
+              {/* 第一行：材料名稱 */}
+              <div className="flex items-start gap-4 flex-1 min-w-0 w-full px-1 md:px-0 pt-1 print:gap-1 print:flex-1 print:pt-0">
+                <span className={`shrink-0 w-3 h-3 rounded-full mt-2 print:w-1.5 print:h-1.5 print:mt-1 ${ing.isFlour ? 'bg-orange-500 shadow-[0_0_8px_rgba(230,126,34,0.4)] print:bg-slate-400' : 'bg-slate-200'}`} />
+                <span className="text-slate-800 font-black text-lg md:text-[1.1rem] leading-snug whitespace-pre-wrap break-words print:text-[12px] print:font-bold">
                   {ing.name}
-                  {isBase && <span className="text-orange-500 text-sm" title="基準材料">⚖️</span>}
+                  {isBase && <span className="inline-flex items-center ml-2 text-orange-500 text-sm print:hidden" title="基準材料">⚖️</span>}
                 </span>
               </div>
 
               {/* 第二行 (手機版) / 數據列 (電腦版) */}
-              <div className="flex shrink-0 items-center justify-between sm:justify-end w-full sm:w-auto px-2 sm:px-0">
-                {/* 重量 - 手機版靠左，電腦版固定寬度並靠右 */}
-                <div className="w-auto sm:w-28 flex justify-start sm:justify-end items-center shrink-0 pr-4">
-                  <div className="flex items-baseline gap-1 text-left sm:text-right w-full justify-end">
-                    {onReverseScale && isWeight ? (
-                      <div className="relative flex items-center">
-                        <input 
-                          type="number" 
-                          step="0.1"
-                          value={scaledAmt.toFixed(1).replace(/\.0$/, '')} 
-                          onChange={(e) => onReverseScale(idx, parseFloat(e.target.value) || 0)}
-                          className={`w-24 px-2 py-1 bg-white border-2 rounded-lg text-right font-black text-xl sm:text-lg outline-none transition-all ${isBase ? 'border-orange-400 text-orange-600' : 'border-orange-100 focus:border-orange-300 text-slate-900'}`}
-                        />
-                        <span className="ml-1 text-sm font-bold text-slate-400">{ing.unit}</span>
+              <div className="flex shrink-0 items-center justify-between md:justify-end w-full md:w-auto pl-7 md:pl-0 px-2 md:px-0 print-data-group gap-3 md:gap-0">
+                {/* 重量欄位：寬度與標題嚴格對齊 */}
+                <div className="flex-1 md:flex-none md:w-44 flex justify-start md:justify-center items-center shrink-0 md:pr-10 print:pr-0 print-weight-cell">
+                  <div className="flex items-baseline justify-start md:justify-center w-full">
+                    <div className="flex items-baseline gap-1 min-w-[120px] md:min-w-0 justify-end md:justify-center">
+                      {onReverseScale && isWeight ? (
+                        <div className="relative flex items-center print:hidden">
+                          {/* 輸入框固定寬度 w-24 (96px)，數值居中 */}
+                          <div className="relative flex items-center">
+                            <input 
+                              type="number" 
+                              step="0.1"
+                              value={scaledAmt.toFixed(1).replace(/\.0$/, '')} 
+                              onChange={(e) => onReverseScale(idx, parseFloat(e.target.value) || 0)}
+                              className={`w-24 px-2 py-1.5 bg-white border-2 rounded-lg text-center font-black text-xl md:text-lg outline-none transition-all tabular-nums ${isBase ? 'border-orange-400 text-orange-600' : 'border-orange-100 focus:border-orange-300 text-slate-900'}`}
+                            />
+                            <span className="ml-2 text-sm font-bold text-slate-400 w-5 inline-block text-left">{ing.unit}</span>
+                          </div>
+                        </div>
+                      ) : null}
+                      
+                      {/* 列印時或非反向換算時顯示文本 */}
+                      <div className={`flex items-baseline justify-end md:justify-center relative ${onReverseScale && isWeight ? 'hidden md:flex print:flex' : 'flex'}`}>
+                        <div className="flex items-baseline md:justify-center min-w-[80px] md:min-w-0">
+                          <span className="text-slate-900 font-black text-2xl md:text-lg leading-none print:text-base print:font-bold tabular-nums">
+                            {isAdjustableAmt ? (ing.unit) : (numericAmt * scalingFactor).toFixed(1).replace(/\.0$/, '')}
+                          </span>
+                          {!isAdjustableAmt && (
+                            <span className="text-sm font-bold text-slate-400 ml-2 w-5 inline-block text-left print:text-[10px] print:font-normal print:ml-1">{ing.unit}</span>
+                          )}
+                        </div>
                       </div>
-                    ) : (
-                      <span className="text-slate-900 font-black text-xl sm:text-lg leading-none">
-                        {isAdjustableAmt ? (ing.unit) : (<>{(numericAmt * scalingFactor).toFixed(1).replace(/\.0$/, '')}<span className="inline-block ml-0.5">{ing.unit}</span></>)}
-                      </span>
-                    )}
+                    </div>
                   </div>
                 </div>
 
-                {/* 百分比 - 手機版靠右，電腦版固定寬度並靠右 */}
+                {/* 百分比欄位 */}
                 {isBaking && showPercentage && (
-                  <div className="w-auto sm:w-28 flex justify-end items-center shrink-0 pr-4">
+                  <div className="flex-1 md:flex-none md:w-32 flex justify-end md:justify-center items-center shrink-0 print:pr-0 print-percent-cell">
                     {percentage ? (
-                      <span className="text-xs sm:text-base font-black px-4 py-1.5 rounded-xl bg-orange-50 text-orange-600 shadow-sm inline-block min-w-[56px] sm:min-w-[70px] text-right border border-orange-100/50">
-                        {percentage}%
+                      <span className="text-sm md:text-base font-black px-4 py-2 rounded-xl bg-orange-50 text-orange-600 shadow-sm inline-block min-w-[80px] md:min-w-[90px] text-right md:text-center border border-orange-100/50 tabular-nums print:bg-transparent print:border-none print:px-0 print:py-0 print:text-[11px] print:text-slate-400 print:font-normal">
+                        ({percentage}%)
                       </span>
                     ) : (
-                      <div className="w-[56px] sm:w-[70px]" />
+                      <div className="w-[80px] md:w-[90px] print:hidden" />
                     )}
                   </div>
                 )}
@@ -635,15 +652,15 @@ const DisplayIngredientSection: React.FC<{
           );
         })}
       </div>
-      <div className="mt-6 pt-6 border-t border-orange-100/50 flex justify-between items-center px-2 sm:px-6">
-        <span className="text-xs font-black text-slate-400 uppercase tracking-widest">區塊總重 (僅計重量單位):</span>
-        <span className="text-xl font-black tabular-nums text-slate-700">
+      <div className="mt-2 pt-2 border-t border-orange-100/50 flex justify-between items-center px-2 sm:px-6 print:px-0">
+        <span className="text-xs font-black text-slate-400 uppercase tracking-widest print:text-[10px]">區塊總重:</span>
+        <span className="text-xl font-black tabular-nums text-slate-700 print:text-sm">
           {(ingredients.reduce((acc, ing) => {
             if (!isWeightUnit(ing.unit || 'g')) return acc;
             const amt = typeof ing.amount === 'number' ? ing.amount : parseFloat(ing.amount as string) || 0;
             return acc + amt;
           }, 0) * scalingFactor).toFixed(1).replace(/\.0$/, '')}
-          <span className="text-sm font-bold text-slate-400 ml-1">g</span>
+          <span className="text-sm font-bold text-slate-400 ml-1 print:text-[10px]">g</span>
         </span>
       </div>
     </div>
@@ -754,12 +771,21 @@ const IngredientList: React.FC<{
                     粉
                   </button>
                 )}
-                <input 
-                  type="text" 
+                <textarea 
                   value={ing.name ?? ''} 
-                  onChange={(e) => handleUpdateIngredient(fieldKey, idx, 'name', e.target.value)} 
-                  className="flex-1 w-0 h-12 sm:h-10 px-4 sm:px-3 rounded-xl border border-slate-100 bg-white sm:bg-slate-50/50 text-base sm:text-xs outline-none focus:ring-1 focus:ring-orange-200 transition-all" 
-                  placeholder="材料名稱" 
+                  rows={1}
+                  onChange={(e) => {
+                    handleUpdateIngredient(fieldKey, idx, 'name', e.target.value);
+                    // Auto-resize
+                    e.target.style.height = 'auto';
+                    e.target.style.height = e.target.scrollHeight + 'px';
+                  }} 
+                  onFocus={(e) => {
+                    e.target.style.height = 'auto';
+                    e.target.style.height = e.target.scrollHeight + 'px';
+                  }}
+                  className="flex-1 w-0 min-h-[48px] sm:min-h-[40px] py-3 sm:py-2.5 px-4 sm:px-3 rounded-xl border border-slate-100 bg-white sm:bg-slate-50/50 text-base sm:text-xs outline-none focus:ring-1 focus:ring-orange-200 transition-all whitespace-pre-wrap resize-none overflow-hidden" 
+                  placeholder="材料名稱 (可換行)" 
                 />
               </div>
 
@@ -854,66 +880,128 @@ const IngredientList: React.FC<{
 const SubscriptionModal: React.FC<{ isOpen: boolean; onClose: () => void; message?: string }> = ({ isOpen, onClose, message }) => {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-[5000] flex items-center justify-center p-6 bg-slate-900/10 backdrop-blur-[2px] animate-in fade-in duration-300">
+    <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4 sm:p-6 bg-slate-900/40 backdrop-blur-[8px] animate-in fade-in duration-300">
       <motion.div 
-        initial={{ scale: 0.98, opacity: 0, y: 5 }}
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        className="bg-[#F5E6D3] w-full max-w-[340px] rounded-xl shadow-[0_20px_50px_rgba(139,94,61,0.15)] border border-[#E8D5C0]/40 flex flex-col relative overflow-hidden"
+        style={{ width: 'max(400px, 50%)', maxHeight: '85vh' }}
+        className="bg-[#FDF8F3] rounded-[32px] shadow-[0_40px_100px_rgba(139,94,61,0.3)] border border-[#E8DCCB] flex flex-col relative overflow-y-auto modern-scrollbar"
       >
-        {/* 右上角關閉按鈕 */}
+        {/* 背景裝飾 */}
+        <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-orange-100/50 to-transparent pointer-events-none" />
+        
+        {/* 關閉按鈕 */}
         <button 
           onClick={onClose}
-          className="absolute top-4 right-3.5 z-50 p-1.5 rounded-full bg-white/40 text-[#8B5E3C] hover:bg-white/60 transition-all active:scale-95 shadow-sm border border-white/20"
+          className="absolute top-6 right-6 z-50 p-2 rounded-full bg-white/80 text-[#8B5E3C] hover:bg-white hover:rotate-90 transition-all active:scale-90 shadow-md border border-orange-100"
         >
-          <X size={16} />
+          <X size={20} />
         </button>
 
-        <div className="p-6 text-center">
-          {/* 品牌名稱置中 */}
-          <div className="py-6 mb-4 flex flex-col items-center animate-in zoom-in-95 duration-500">
-            <h2 className="text-[#8B5A2B] font-black text-2xl tracking-tight">烘焙靈感箱</h2>
-            <div className="w-8 h-1 bg-[#D4AF37] rounded-full mt-2 opacity-60"></div>
+        <div className="p-6 sm:p-8 flex flex-col items-center">
+          {/* Logo / Header */}
+          <div className="pt-2 mb-6 flex flex-col items-center">
+            <h2 className="text-[#8B5A2B] font-black text-2xl tracking-tighter">烘焙靈感箱</h2>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest bg-orange-50 px-2.5 py-0.5 rounded-full border border-orange-100">Premium Plans</span>
+            </div>
           </div>
 
-          <h2 className="text-base font-black text-[#8B5E3C] mb-2 leading-tight">升級進階專業版</h2>
-          <p className="text-[#A67C52] font-bold mb-5 leading-relaxed text-[11px] px-4 opacity-90 text-center">
-            {message || (
-              <>
-                解鎖 ✨ AI 自動解析、雲端多端同步，<br />
-                開啟無限儲存空間與全方位配方管理。
-              </>
-            )}
-          </p>
-          
-          <div className="space-y-1.5 px-2">
+          {message && (
+            <div className="w-full max-w-[450px] mb-6 p-4 bg-orange-50/80 rounded-2xl border border-orange-100 text-center">
+              <p className="text-[#8B5E3C] text-xs font-black leading-relaxed">{message}</p>
+            </div>
+          )}
+
+          {/* 方案對照 */}
+          <div className="w-full px-2 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 w-full max-w-[650px] mx-auto py-2">
+              {/* Free Plan */}
+              <div className="bg-white/60 rounded-3xl p-6 border border-slate-100 flex flex-col h-full min-h-[180px]">
+                <div className="mb-4">
+                  <h3 className="text-slate-500 font-black text-xl mb-1 leading-tight">Standard <br /> <span className="whitespace-nowrap">免費版</span></h3>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-slate-800 font-black text-3xl">$0</span>
+                    <span className="text-slate-400 text-sm font-bold">/ 月</span>
+                  </div>
+                </div>
+                <ul className="space-y-3 mb-6 flex-1">
+                  <li className="flex items-center gap-2.5 text-sm font-bold text-slate-500">
+                    <span className="text-orange-400">✓</span> 限制 10 份食譜
+                  </li>
+                  <li className="flex items-center gap-2.5 text-sm font-bold text-slate-500">
+                    <span className="text-orange-400">✓</span> 每月 10 次 AI 解析
+                  </li>
+                </ul>
+              </div>
+
+              {/* Premium Plan */}
+              <div className="bg-orange-500 rounded-3xl p-6 shadow-xl shadow-orange-200 border-2 border-orange-400 flex flex-col transform hover:scale-[1.01] transition-transform h-full min-h-[180px]">
+                <div className="mb-4">
+                  <div className="flex justify-between items-start">
+                    <h3 className="text-white font-black text-xl mb-1 leading-tight">Premium</h3>
+                    <span className="bg-white/20 text-white text-[10px] px-1.5 py-0.5 rounded-lg font-black italic">PRO</span>
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-white font-black text-3xl">$99</span>
+                    <span className="text-orange-100 text-sm font-bold">/ 月</span>
+                  </div>
+                </div>
+                <ul className="space-y-3 mb-6 flex-1">
+                  <li className="flex items-center gap-2.5 text-sm font-black text-white">
+                    <span>✨</span> 無限食譜儲存 (∞)
+                  </li>
+                  <li className="flex items-center gap-2.5 text-sm font-black text-white">
+                    <span>✨</span> 無限 AI 智能力解析
+                  </li>
+                  <li className="flex items-center gap-2.5 text-sm font-black text-white">
+                    <span>✨</span> 專業雙欄 PDF 導出
+                  </li>
+                  <li className="flex items-center gap-2.5 text-sm font-black text-white">
+                    <span>✨</span> 規格自動識別功能
+                  </li>
+                  <li className="flex items-center gap-2.5 text-sm font-black text-white">
+                    <span>✨</span> QR Code 數位導航
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* 按鈕區域 */}
+          <div className="w-full max-w-[360px] flex flex-col items-center space-y-2 pb-4">
             <button 
               onClick={() => {
                 window.open('https://ais-dev-2v2log3rzdrogmvvnzxg3i-102707397029.asia-east1.run.app', '_blank');
               }}
-              className="w-full py-2.5 bg-[#8B5E3C] text-white rounded-xl font-black text-[13px] shadow-sm hover:bg-[#724D31] transition-all active:scale-95"
+              className="w-full py-3 bg-[#8B5E3C] text-white rounded-[18px] font-black text-base shadow-[0_10px_30px_rgba(139,94,61,0.2)] hover:bg-[#724D31] transition-all active:scale-95 flex items-center justify-center gap-3"
             >
-              獲取專業版 (NT$ 99/月)
+              <span>立即升級 Premium</span>
+              <div className="w-5 h-5 bg-white/20 rounded-full flex items-center justify-center text-xs">🚀</div>
             </button>
+            
             <button 
               onClick={() => {
                 window.location.href = `mailto:linda6623@gmail.com?subject=烘焙靈感箱支付開通確認&body=我的帳號是：${auth.currentUser?.email}%0D%0A我已完成支付，請協助開通 Premium 權限。`;
               }}
-              className="w-full py-2 bg-orange-50 text-[#8B5E3C] rounded-xl font-black text-[11px] hover:bg-orange-100 transition-all active:scale-95 border border-orange-100/50"
+              className="w-full py-2 bg-white text-[#8B5E3C] rounded-[18px] font-black text-[11px] hover:bg-orange-50 transition-all active:scale-95 border-2 border-orange-100/50 flex items-center justify-center gap-2"
             >
-              我已付款，通知開通 🚀
+              <span>我已付款，通知作者開通</span>
+              <div className="w-3.5 h-3.5 bg-orange-100 rounded-full flex items-center justify-center text-[9px]">📩</div>
             </button>
+
             <button 
               onClick={onClose}
-              className="w-full py-2 text-[#A67C52]/50 rounded-xl font-bold text-[11px] hover:bg-orange-50/50 transition-all"
+              className="w-full pt-2 text-slate-400 font-bold text-[11px] hover:text-slate-600 transition-all text-center"
             >
-              稍後再說
+              暫時不需要，繼續使用免費版
             </button>
           </div>
-          
-          <p className="mt-4 text-[8px] text-[#A67C52]/30 font-bold uppercase tracking-widest flex items-center justify-center gap-1.5">
-            <span className="w-4 h-[1px] bg-[#A67C52]/10"></span>
-            支持在地開發者
-            <span className="w-4 h-[1px] bg-[#A67C52]/10"></span>
+        </div>
+
+        <div className="py-3 bg-[#F2E8DB]/40 border-t border-[#E8DCCB]/30 text-center">
+          <p className="text-[9px] text-[#A67C52]/60 font-black tracking-[0.2em] uppercase">
+            Designed for professional bakers
           </p>
         </div>
       </motion.div>
@@ -960,7 +1048,10 @@ const Sidebar: React.FC<{
   onUpgrade: () => void;
   onShowInstructions: () => void;
   isVip: boolean;
-}> = ({ isOpen, onClose, user, onLogin, onLogout, subscriptionStatus, isAdmin, isVip, recipeCount, onUpgrade, onShowInstructions }) => {
+  aiUsage: { count: number };
+}> = ({ isOpen, onClose, user, onLogin, onLogout, subscriptionStatus, isAdmin, isVip, recipeCount, onUpgrade, onShowInstructions, aiUsage }) => {
+  const isPremiumUser = isVip || isAdmin || subscriptionStatus === 'active';
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -979,48 +1070,116 @@ const Sidebar: React.FC<{
             animate={{ x: 0 }}
             exit={{ x: '-100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed top-0 left-0 bottom-0 w-[280px] bg-[#FDF8F3] shadow-2xl z-[2001] flex flex-col font-sans overflow-y-auto overflow-x-hidden pb-10"
+            className="fixed top-0 left-0 bottom-0 w-[350px] max-w-[90vw] bg-[#FDF8F3] shadow-2xl z-[2001] flex flex-col font-sans overflow-y-auto overflow-x-hidden pb-10"
           >
-            {/* Header / Text Branding */}
+            {/* Header / Logo Branding */}
             <div className="p-8 pb-4 flex flex-col items-center">
-              <h2 className="text-[#8B5A2B] font-black text-xl tracking-tight">烘焙靈感箱</h2>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-3xl">🍞</span>
+                <h1 className="text-[#8B5E3C] font-black text-2xl tracking-tighter">Linda's</h1>
+              </div>
+              <h2 className="text-[#A67C52] font-black text-xs tracking-[0.3em] uppercase opacity-70">Recipe Box</h2>
             </div>
 
             {/* Combined Info Block */}
-            <div className="mx-6 p-5 bg-[#F2E8DB]/40 rounded-2xl border border-[#E8DCCB]/60 shadow-sm">
-              <div className="space-y-4 text-left">
+            <div className="mx-6 p-6 bg-[#F2E8DB]/40 rounded-2xl border border-[#E8DCCB]/60 shadow-sm">
+              <div className="space-y-5 text-left">
                 {/* 第一行：方案狀態 */}
-                <div className="flex items-center gap-2">
-                  <span className="text-xl">👑</span>
-                  <span className="text-lg font-black text-[#8B5A2B]">
-                    方案：Premium 進階版
+                <div className="flex items-center gap-3">
+                  {isPremiumUser && <span className="text-xl">👑</span>}
+                  <span className="text-lg font-black text-[#8B5A2B] tracking-[0.08em] leading-tight flex flex-wrap items-center">
+                    <span>方案：</span>
+                    {isPremiumUser ? 
+                      <span>Premium 進階版</span> : 
+                      <span className="flex items-center">Standard <span className="whitespace-nowrap ml-1">免費版</span></span>
+                    }
                   </span>
                 </div>
 
                 {/* 第二行：功能按鈕或狀態 */}
-                <div className="py-2 px-4 bg-emerald-50 rounded-xl border border-emerald-100 flex items-center gap-2">
-                  <span className="text-emerald-600">✨</span>
-                  <span className="text-emerald-700 text-sm font-black italic">
-                    無限功能已全數開放
+                <div 
+                  onClick={!isPremiumUser ? onUpgrade : undefined}
+                  className={`py-2 px-12 rounded-xl border-2 flex items-center justify-center gap-2 transition-all ${
+                  isPremiumUser 
+                    ? 'bg-emerald-100/50 border-emerald-400/30 shadow-[0_6px_16px_rgba(52,211,153,0.25)]' 
+                    : 'bg-orange-100/40 border-orange-400/30 shadow-sm cursor-pointer hover:bg-orange-100'
+                }`}>
+                  <span className={`transform scale-75 ${isPremiumUser ? 'text-emerald-500' : 'text-orange-500'}`}>
+                    {isPremiumUser ? '✨' : '🔥'}
+                  </span>
+                  <span className={`${isPremiumUser ? 'text-emerald-700' : 'text-orange-700'} text-[11px] sm:text-[12px] font-black italic tracking-wider whitespace-nowrap`}>
+                    {isPremiumUser ? '無限功能已全數開放' : '升級解鎖無限靈感'}
                   </span>
                 </div>
 
                 {/* 方案詳情與進度 */}
-                <div className="space-y-3 pt-4 border-t border-[#E8DCCB]/50">
-                  <div className="flex justify-between items-end mb-1">
+                <div className="space-y-3 pt-5 border-t border-[#E8DCCB]/50">
+                  <div className="flex justify-between items-baseline mb-1">
                     <p className="text-[#8B5A2B] text-xs font-bold opacity-70">食譜儲存量</p>
-                    <p className="text-[#8B5A2B] text-sm font-black">
-                      {recipeCount} <span className="opacity-40 font-normal">/ ∞</span>
-                    </p>
+                    <div className="text-[#8B5A2B] text-sm font-black flex items-center gap-1">
+                      <span>{recipeCount}</span>
+                      <span className="opacity-40 font-normal">/</span>
+                      {isPremiumUser ? (
+                        <span className="font-extrabold text-[#8B5A2B] text-lg leading-none print-symbol-small">∞</span>
+                      ) : (
+                        <span className="opacity-40 font-normal">10</span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="w-full h-2 bg-white/60 rounded-full overflow-hidden border border-[#E8DCCB]/20 shadow-inner">
                     <motion.div 
                       initial={{ width: 0 }}
-                      animate={{ width: '100%' }}
-                      className="h-full bg-emerald-400"
+                      animate={{ width: `${Math.min((recipeCount / (isPremiumUser ? 1000 : 10)) * 100, 100)}%` }}
+                      className={`h-full ${isPremiumUser ? 'bg-emerald-400' : (recipeCount >= 10 ? 'bg-red-400' : 'bg-orange-400')}`}
                     />
                   </div>
+
+                  {/* AI Usage Tracker */}
+                  <div className="pt-2">
+                    <div className="flex justify-between items-baseline mb-1">
+                      <p className="text-[#8B5A2B] text-xs font-bold opacity-70">AI 解析使用量 (本月)</p>
+                      <div className="text-[#8B5A2B] text-sm font-black flex items-center gap-1">
+                        <span>{aiUsage.count}</span>
+                        <span className="opacity-40 font-normal">/</span>
+                        {isPremiumUser ? (
+                          <span className="font-extrabold text-[#8B5A2B] text-lg leading-none print-symbol-small">∞</span>
+                        ) : (
+                          <span className="opacity-40 font-normal">10</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="w-full h-2 bg-white/60 rounded-full overflow-hidden border border-[#E8DCCB]/20 shadow-inner">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${Math.min((aiUsage.count / (isPremiumUser ? 1000 : 10)) * 100, 100)}%` }}
+                        className={`h-full ${isPremiumUser ? 'bg-emerald-400' : (aiUsage.count >= 10 ? 'bg-red-400' : 'bg-orange-400')}`}
+                      />
+                    </div>
+                  </div>
+                  
+                  {!isPremiumUser && (
+                    <div className="space-y-4">
+                      <button 
+                        onClick={onUpgrade}
+                        className="w-full mt-2 py-2.5 bg-orange-500 text-white rounded-xl text-xs font-black shadow-md hover:bg-orange-600 transition-all active:scale-95"
+                      >
+                        🚀 立即升級 Premium
+                      </button>
+                      <div className="flex flex-col items-center gap-1.5 py-1">
+                        <div className="flex items-center gap-2 text-slate-400 opacity-60">
+                          <CreditCard size={14} />
+                          <div className="w-10 h-6 bg-slate-100 rounded border border-slate-200 flex items-center justify-center">
+                            <span className="text-[8px] font-black tracking-tighter">LinePay</span>
+                          </div>
+                          <div className="w-10 h-6 bg-slate-100 rounded border border-slate-200 flex items-center justify-center">
+                            <span className="text-[8px] font-black tracking-tighter">VISA</span>
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-slate-400 opacity-50 font-medium">支援多種安全支付方式</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1028,19 +1187,20 @@ const Sidebar: React.FC<{
             <div className="p-6 space-y-4">
               {/* Account Section */}
               {user && (
-                <div className="bg-white/40 p-4 rounded-xl border border-orange-50/50">
+                <div className="bg-orange-50/50 p-4 rounded-[24px] border border-orange-100/50 shadow-sm mb-2">
                   <div className="flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] font-black text-orange-400 uppercase tracking-wider mb-0.5">當前帳戶</p>
+                      <p className="text-xs font-black text-slate-700 truncate">{user.displayName || '烘焙愛好者'}</p>
+                      <p className="text-[15px] font-bold text-slate-500 truncate mt-0.5">{user.email}</p>
+                    </div>
                     {user.photoURL ? (
-                      <img src={user.photoURL} alt="" className="w-9 h-9 rounded-full border border-orange-100/50" />
+                      <img src={user.photoURL} alt="" className="w-12 h-12 rounded-full border-2 border-white shadow-sm object-cover shrink-0" />
                     ) : (
-                      <div className="w-9 h-9 rounded-full bg-orange-50 flex items-center justify-center text-orange-300">
-                        <UserIcon size={18} />
+                      <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-orange-300 border border-orange-50 shrink-0">
+                        <UserIcon size={24} />
                       </div>
                     )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-black text-slate-700 truncate">{user.displayName || '烘焙愛好者'}</p>
-                      <p className="text-[9px] font-bold text-slate-400 truncate opacity-60">{user.email}</p>
-                    </div>
                   </div>
                 </div>
               )}
@@ -1056,6 +1216,17 @@ const Sidebar: React.FC<{
                 >
                   <div className="w-5 h-5 flex items-center justify-center text-base">📖</div>
                   <span>使用說明</span>
+                </button>
+
+                <button 
+                  onClick={() => {
+                    onUpgrade();
+                    onClose();
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-orange-600 font-black text-sm hover:bg-orange-50/50 rounded-xl transition-all group"
+                >
+                  <div className="w-5 h-5 flex items-center justify-center text-base">💎</div>
+                  <span>訂閱說明與方案</span>
                 </button>
                 
                 <button 
@@ -1093,8 +1264,9 @@ const Sidebar: React.FC<{
             </div>
 
             {/* Footer */}
-            <div className="p-6 border-t border-orange-100/10 text-center">
+            <div className="p-6 border-t border-orange-100/10 text-center space-y-2">
                <p className="text-[9px] text-slate-300 font-bold tracking-widest uppercase">版本 1.2.5 • 手作的溫度</p>
+               <p className="text-[11px] text-slate-400 opacity-60 font-medium">{COPYRIGHT_TEXT}</p>
             </div>
           </motion.div>
         </>
@@ -1184,6 +1356,8 @@ const App: React.FC = () => {
   }, [searchQuery]);
 
   const [activeCategory, setActiveCategory] = useState<string>('全部');
+  const [sortBy, setSortBy] = useState<'createdAt' | 'updatedAt' | 'category' | 'title'>('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [isAiParsing, setIsAiParsing] = useState(false);
   const [smartPasteText, setSmartPasteText] = useState('');
 
@@ -1461,7 +1635,7 @@ const App: React.FC = () => {
         showToast("正在遷移本地食譜至雲端...");
         
         for (const recipe of localRecipes) {
-          const newRecipe = { 
+          let newRecipe = { 
             ...recipe, 
             uid: user.uid, 
             author_id: user.uid, 
@@ -1469,8 +1643,20 @@ const App: React.FC = () => {
           };
           try {
             await setDoc(doc(db, 'recipes', recipe.id), newRecipe);
-          } catch (error) {
-            handleFirestoreError(error, OperationType.CREATE, `recipes/${recipe.id}`);
+          } catch (error: any) {
+            const errorMsg = error?.message || String(error);
+            if (error.code === 'permission-denied' || errorMsg.includes('permissions')) {
+              // Collision with someone else's ID - generate new unique ID
+              const newId = 'rec-' + Date.now() + Math.random().toString(36).substring(2, 7);
+              newRecipe = { ...newRecipe, id: newId };
+              try {
+                await setDoc(doc(db, 'recipes', newId), newRecipe);
+              } catch (e2) {
+                console.error("Cloud migration backup storage failed", e2);
+              }
+            } else {
+              console.error("Cloud migration failed for recipe", recipe.id, error);
+            }
           }
         }
 
@@ -1516,7 +1702,7 @@ const App: React.FC = () => {
   const [scalingRecipeId, setScalingRecipeId] = useState<string>('');
   const [targetQuantity, setTargetQuantity] = useState<number>(1);
   const [reverseScalingBase, setReverseScalingBase] = useState<{ sectionKey: string; index: number } | null>(null);
-  const [isRecipeCardModalOpen, setIsRecipeCardModalOpen] = useState(false);
+  // const [isRecipeCardModalOpen, setIsRecipeCardModalOpen] = useState(false); // 已移除
   const [isMoldPanelOpen, setIsMoldPanelOpen] = useState(false);
   
   // Mold scaling states - split into two independent objects
@@ -1741,8 +1927,22 @@ const App: React.FC = () => {
         activeCategory === '⏳ 待嘗試' ? r.isTried :
         r.category === activeCategory;
       return matchSearch && matchCategory;
-    }).sort((a, b) => b.createdAt - a.createdAt);
-  }, [recipes, debouncedSearchQuery, activeCategory]);
+    }).sort((a, b) => {
+      let comparison = 0;
+      if (sortBy === 'createdAt') {
+        comparison = (a.createdAt || 0) - (b.createdAt || 0);
+      } else if (sortBy === 'updatedAt') {
+        const timeA = a.updatedAt || a.createdAt || 0;
+        const timeB = b.updatedAt || b.createdAt || 0;
+        comparison = timeA - timeB;
+      } else if (sortBy === 'category') {
+        comparison = (a.category || '').localeCompare(b.category || '');
+      } else if (sortBy === 'title') {
+        comparison = (a.title || '').localeCompare(b.title || '');
+      }
+      return sortOrder === 'desc' ? -comparison : comparison;
+    });
+  }, [recipes, debouncedSearchQuery, activeCategory, sortBy, sortOrder]);
 
   const scalingRecipe = useMemo(() => recipes.find(r => r.id === scalingRecipeId), [recipes, scalingRecipeId]);
   
@@ -1923,29 +2123,44 @@ const App: React.FC = () => {
 
         const client = new GoogleGenerativeAI(apiKey);
         const model = client.getGenerativeModel({ 
-          model: "models/gemini-2.0-flash",
+          model: "models/gemini-2.5-flash",
           generationConfig: { responseMimeType: "application/json" }
         });
 
-        console.log('[AI] Using model path: models/gemini-2.0-flash');
+        console.log('[AI] Using model path: models/gemini-2.5-flash');
 
-        const prompt = `你是一個專業細膩的烘焙食譜解析助手。
-        請從下方的筆記內容中識別出所有的材料區塊名稱及其對應材料。
+        const prompt = `你是一個專業且極具適應力的烘焙食譜解析助手。
+        請從下方的【筆記內容】中識別並提取烘焙食譜資訊。
+        
+        【重要指引】：
+        1. 內容可能包含大量的表情符號、小叮嚀、閒聊或不規則的換行，請無視這些噪音，專注於提取食譜的核心結構（標題、材料、步驟）。
+        2. 只要內容中偵測到「數字 + 單位（如 g, ml, 份, tsp, tbsp）」的組合，通常表示這是有效的食譜材料，請務必盡力解析。
+        3. 烘焙食譜常包含多個區塊（例如：中種、主麵糰、內餡、抹面、裝飾），請務必將這些區塊資料分別提取到對應的欄位中。
+        4. 請務必識別出以下特殊資訊：
+           - 食譜簡介 (description)：筆記開頭通常有一段感性描述、食譜來源背景或作者的真心推薦。
+           - 小叮嚀 (notes)：筆記中關於「💡 小技巧」、「注意」、「Tips」或是作者額外補充的技術細節。
+           - 規格重量：若筆記中有提到「麵糰/皮/主體」的每顆克數，請放入 doughWeight；若提到「內餡/餡」的每顆克數，請放入 fillingWeight。僅提取數字部分。
+        5. 請確保輸出是一個可以用 JSON.parse() 直接解析的純 JSON 對象。
         
         【筆記內容】：
         ${smartPasteText}
         
         【輸出要求】：
-        1. 請務必回傳純 JSON 格式，不要包含任何 Markdown 標籤或是 code block 符號 (不准回傳 \`\`\`json)。
+        1. 請務必回傳純 JSON 格式，不要包含任何 Markdown 標籤或是 code block 符號。
         2. 根節點必須是一個名為 "recipes" 的陣列。
         3. 每個食譜物件必須包含:
            - title (食譜名稱)
+           - description (食譜感性簡介，若無則留空)
+           - notes (小叮嚀或技術細節，若無則留空)
+           - doughWeight (麵糰或皮的重量數字，若無則留空)
+           - fillingWeight (內餡重量數字，若無則留空)
            - ingredients (陣列, 包含 name, amount, unit)
            - instructions (陣列, 包含步驟字串)
            - liquidStarterIngredients (如有中種區塊，請放入此陣列)
            - fillingIngredients (如有內餡區塊，請放入此陣列)
            - decorationIngredients (如有裝飾區塊，請放入此陣列)
-        4. 請確保輸出是一個可以用 JSON.parse() 直接解析的對象。
+           - customSectionIngredients (如有其他自定義區塊，請放入此陣列)
+        4. 即使格式混亂，也請嘗試將內容對應到最接近的欄位。
         `;
 
         // 實作超時保護 (60s)
@@ -1959,11 +2174,26 @@ const App: React.FC = () => {
         
         if (!textOutput) throw new Error("EMPTY_API_RESPONSE");
         
-        const parsed = JSON.parse(textOutput);
-        const recipesFound = (parsed.recipes || []).filter((r: any) => (r.ingredients?.length || 0) > 0 || (r.liquidStarterIngredients?.length || 0) > 0);
+        let parsed;
+        try {
+          parsed = JSON.parse(textOutput);
+        } catch (parseErr) {
+          console.error('[AI] JSON Parse failed. Raw response:', textOutput);
+          throw new Error("JSON_PARSE_ERROR");
+        }
+
+        const recipesFound = (parsed.recipes || []).filter((r: any) => 
+          (r.ingredients?.length || 0) > 0 || 
+          (r.liquidStarterIngredients?.length || 0) > 0 ||
+          (r.fillingIngredients?.length || 0) > 0 ||
+          (r.decorationIngredients?.length || 0) > 0 ||
+          (r.customSectionIngredients?.length || 0) > 0
+        );
 
         if (recipesFound.length === 0) {
-          showToast("未能識別出有效食譜，請重新調整文字內容");
+          console.warn('[AI] No recipes identified. Results:', parsed);
+          console.log('[AI] Raw Output for debugging:', textOutput);
+          showToast("未能識別出有效食譜，請確認內容是否包含材料量 (如 100g)");
         } else {
           console.log('[AI] Parsing Success');
           if (recipesFound.length === 1) {
@@ -2004,9 +2234,10 @@ const App: React.FC = () => {
         "TIMEOUT": "遠端連線較慢，請確認網路狀態後重試",
         "MISSING_API_KEY": "未偵測到開發金鑰，請聯繫管理員",
         "EMPTY_API_RESPONSE": "AI 回傳內容為空，請重試",
+        "JSON_PARSE_ERROR": "AI 回傳格式有誤，請再試一次或檢視 Console",
         "Quota": "解析頻率過高，請稍候再試 (429)",
         "AI_TIMEOUT": "遠端連線較慢，請確認網路狀態後重試",
-        "NOT_FOUND": "模型已更新至 2.0 版，若連線不穩請稍後重試",
+        "NOT_FOUND": "服務連線不穩，請確認網路與金鑰狀態",
         "RESOURCE_EXHAUSTED": "模型目前負載較高，請稍候再試"
       };
       
@@ -2024,11 +2255,11 @@ const App: React.FC = () => {
   const handleSmartPaste = async () => {
     if (!smartPasteText.trim()) return;
     
-    // AI 解析次數限制判斷 (非 Premium 用戶每日上限 20 次)
+    // AI 解析次數限制判斷 (非 Premium 用戶每月上限 10 次)
     if (!isPremiumUser) {
-      const today = getTodayString();
-      if (aiUsage.date === today && aiUsage.count >= 20) {
-        triggerUpgradePrompt(true, "每日 AI 解析次數已達上限 (20次)，升級 Premium 可解鎖無限次數！");
+      const thisMonth = getThisMonthString();
+      if (aiUsage.date === thisMonth && aiUsage.count >= 10) {
+        triggerUpgradePrompt(true, "每月 AI 解析次數已達上限 (10次)，升級 Premium 可解鎖無限次數！");
         return;
       }
     }
@@ -2037,8 +2268,8 @@ const App: React.FC = () => {
     
     // 解析成功後，若非 Premium 則更新次數
     if (!isPremiumUser) {
-      const today = getTodayString();
-      const newUsage = aiUsage.date === today ? { ...aiUsage, count: aiUsage.count + 1 } : { date: today, count: 1 };
+      const thisMonth = getThisMonthString();
+      const newUsage = aiUsage.date === thisMonth ? { ...aiUsage, count: aiUsage.count + 1 } : { date: thisMonth, count: 1 };
       setAiUsage(newUsage);
       if (user) {
         saveUserSettings({ aiUsage: newUsage });
@@ -2050,6 +2281,10 @@ const App: React.FC = () => {
     setFormRecipe(prev => ({
       ...prev,
       ...parsed,
+      description: parsed.description || prev.description,
+      notes: parsed.notes || prev.notes,
+      doughWeight: parsed.doughWeight || prev.doughWeight,
+      fillingWeight: parsed.fillingWeight || prev.fillingWeight,
       ingredients: parsed.ingredients?.length ? parsed.ingredients : prev.ingredients,
       liquidStarterIngredients: parsed.liquidStarterIngredients || [],
       fillingIngredients: parsed.fillingIngredients || [],
@@ -2297,21 +2532,38 @@ const App: React.FC = () => {
             author_id: user?.uid || null
           }));
 
+          let finalImportedSet: Recipe[] = [...processed];
           if (user) {
             // Write to Firestore (Add new ones, don't delete existing)
-            await Promise.all(processed.map(async (r: Recipe) => {
+            finalImportedSet = await Promise.all(processed.map(async (recipe: Recipe) => {
+              let r = { ...recipe };
               try {
                 await setDoc(doc(db, 'recipes', r.id), r);
-              } catch (error) {
-                handleFirestoreError(error, OperationType.WRITE, `recipes/${r.id}`);
+                return r;
+              } catch (error: any) {
+                // If permission-denied, ID might be taken by someone else - try a new one
+                const errorMsg = error?.message || String(error);
+                if (error.code === 'permission-denied' || errorMsg.includes('permissions')) {
+                  const newId = 'rec-' + Date.now() + Math.random().toString(36).substring(2, 7);
+                  r = { ...r, id: newId };
+                  try {
+                    await setDoc(doc(db, 'recipes', newId), r);
+                    return r;
+                  } catch (e2) {
+                    handleFirestoreError(e2, OperationType.WRITE, `recipes/${newId}`);
+                  }
+                } else {
+                  handleFirestoreError(error, OperationType.WRITE, `recipes/${r.id}`);
+                }
+                return r;
               }
             }));
           }
           
-          const processedIds = new Set(processed.map(r => r.id));
+          const processedIds = new Set(finalImportedSet.map(r => r.id));
           setRecipes(prev => {
             const filteredPrev = prev.filter(r => !processedIds.has(r.id));
-            return [...processed, ...filteredPrev];
+            return [...finalImportedSet, ...filteredPrev];
           });
         }
         if (data.categories) {
@@ -2349,7 +2601,7 @@ const App: React.FC = () => {
     reader.readAsText(file);
   };
 
-  const handleAddLog = () => {
+  const handleAddLog = async () => {
     if (!selectedRecipe || !newLog.feedback) return;
     const log: ExecutionLog = {
       id: 'log-' + Date.now(),
@@ -2358,10 +2610,22 @@ const App: React.FC = () => {
       feedback: newLog.feedback || '',
       photoUrl: newLog.photoUrl
     };
-    const updatedRecipe = {
+    const updatedRecipe: Recipe = {
       ...selectedRecipe,
-      executionLogs: [log, ...(selectedRecipe.executionLogs || [])]
+      executionLogs: [log, ...(selectedRecipe.executionLogs || [])],
+      updatedAt: Date.now()
     };
+
+    if (user && isCloudSyncEnabled) {
+      try {
+        await setDoc(doc(db, 'recipes', updatedRecipe.id), updatedRecipe);
+      } catch (error) {
+        console.error("Error updating recipe log:", error);
+        showToast("雲端同步失敗");
+        return;
+      }
+    }
+
     setRecipes(prev => prev.map(r => r.id === selectedRecipe.id ? updatedRecipe : r));
     setSelectedRecipe(updatedRecipe);
     setNewLog({ date: getTodayString(), rating: 5, feedback: '', photoUrl: '' });
@@ -2403,7 +2667,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#FFFBF7] text-slate-900 pb-28 print:bg-white print:pb-0">
+    <div className="min-h-screen bg-[#FFFBF7] text-slate-900 pb-28 print:bg-white print:pb-0 print:min-h-0">
       <InstructionsModal isOpen={isInstructionsOpen} onClose={() => setIsInstructionsOpen(false)} />
       <Sidebar 
         isOpen={isSidebarOpen} 
@@ -2418,18 +2682,30 @@ const App: React.FC = () => {
         weeklyCount={recipeStats.weekly}
         onUpgrade={() => triggerUpgradePrompt(true)}
         onShowInstructions={() => setIsInstructionsOpen(true)}
+        aiUsage={aiUsage}
       />
       
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 print:max-w-none print:px-0 print:py-0">
         
         {/* Auth Header (Sidebar Trigger) */}
-        <div className="flex justify-start mb-6 no-print">
+        <div className="flex flex-col gap-4 mb-6 no-print">
           <button 
             onClick={() => setIsSidebarOpen(true)}
             className="w-12 h-12 flex items-center justify-center bg-white rounded-2xl shadow-sm border border-orange-100 text-[#8B5E3C] hover:bg-orange-50 hover:shadow-md transition-all active:scale-95"
+            title="開啟功能選單"
           >
             <Menu size={24} />
           </button>
+          
+          {view === AppView.DETAIL && (
+            <button 
+              onClick={() => setView(AppView.LIST)} 
+              className="w-12 h-12 flex items-center justify-center bg-white rounded-2xl shadow-sm border border-orange-100 text-orange-400 hover:bg-orange-50 hover:text-orange-600 hover:shadow-md transition-all active:scale-95"
+              title="回列表頁"
+            >
+              <div className="text-xl font-bold">←</div>
+            </button>
+          )}
         </div>
 
         {/* LIST View Header */}
@@ -2556,10 +2832,34 @@ const App: React.FC = () => {
                 </div>
               )}
 
-              <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                {['⏳ 待嘗試', '全部', ...categories.map(c => c.name)].map(cat => (
-                  <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${activeCategory === cat ? 'bg-[#E67E22] text-white shadow-md' : 'bg-white text-orange-400 border border-orange-100 hover:border-orange-300'}`}>{cat}</button>
-                ))}
+              <div className="flex flex-col sm:flex-row gap-3 pt-2 border-t border-orange-100/30">
+                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar flex-1">
+                  <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest whitespace-nowrap">分類篩選</span>
+                  {['⏳ 待嘗試', '全部', ...categories.map(c => c.name)].map(cat => (
+                    <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${activeCategory === cat ? 'bg-[#E67E22] text-white shadow-md' : 'bg-white text-orange-400 border border-orange-100 hover:border-orange-300'}`}>{cat}</button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">排序</span>
+                    <select 
+                      value={sortBy} 
+                      onChange={(e) => setSortBy(e.target.value as any)}
+                      className="bg-white border border-orange-100 rounded-lg px-2 py-1 text-xs font-bold text-orange-600 outline-none focus:border-orange-300"
+                    >
+                      <option value="createdAt">建立日期</option>
+                      <option value="updatedAt">最後修改</option>
+                      <option value="category">分類</option>
+                      <option value="title">標題</option>
+                    </select>
+                  </div>
+                  <button 
+                    onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                    className="p-1 px-2 bg-white border border-orange-100 rounded-lg text-[10px] font-black text-orange-400 hover:bg-orange-50"
+                  >
+                    {sortOrder === 'desc' ? '遞減 ↓' : '遞增 ↑'}
+                  </button>
+                </div>
               </div>
             </div>
           </header>
@@ -2813,7 +3113,7 @@ const App: React.FC = () => {
                             <div key="crust_scale" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
                               <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">⚖️ 分割後一個<br/>油皮重 (克)</div>
                               <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">
-                                {((Number(scalingRecipe.crustWeight) || 0) * scalingFactor).toFixed(1).replace(/\.0$/, '')}
+                                {Number(scalingRecipe.crustWeight).toFixed(1).replace(/\.0$/, '')}
                                 <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
                               </div>
                             </div>
@@ -2824,7 +3124,7 @@ const App: React.FC = () => {
                             <div key="oilPaste_scale" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
                               <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🧈 分割後一個<br/>油酥重 (克)</div>
                               <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">
-                                {((Number(scalingRecipe.oilPasteWeight) || 0) * scalingFactor).toFixed(1).replace(/\.0$/, '')}
+                                {Number(scalingRecipe.oilPasteWeight).toFixed(1).replace(/\.0$/, '')}
                                 <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
                               </div>
                             </div>
@@ -2835,7 +3135,7 @@ const App: React.FC = () => {
                             <div key="filling_pastry_scale" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
                               <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🌰 分割後一個<br/>餡料重 (克)</div>
                               <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">
-                                {((Number(scalingRecipe.fillingWeight) || 0) * scalingFactor).toFixed(1).replace(/\.0$/, '')}
+                                {Number(scalingRecipe.fillingWeight).toFixed(1).replace(/\.0$/, '')}
                                 <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
                               </div>
                             </div>
@@ -2856,7 +3156,7 @@ const App: React.FC = () => {
                             <div key="dough_scale" className="flex-1 min-w-[140px] sm:min-w-[170px] space-y-2">
                               <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">⚖️ 分割後一個<br/>麵團/糊重 (克)</div>
                               <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">
-                                {((Number(scalingRecipe.doughWeight) || 0) * scalingFactor).toFixed(1).replace(/\.0$/, '')}
+                                {Number(scalingRecipe.doughWeight).toFixed(1).replace(/\.0$/, '')}
                                 <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
                               </div>
                             </div>
@@ -2867,7 +3167,7 @@ const App: React.FC = () => {
                             <div key="filling_gen_scale" className="flex-1 min-w-[140px] sm:min-w-[170px] space-y-2">
                               <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🌰 分割後一個<br/>內餡重 (克)</div>
                               <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">
-                                {((Number(scalingRecipe.fillingWeight) || 0) * scalingFactor).toFixed(1).replace(/\.0$/, '')}
+                                {Number(scalingRecipe.fillingWeight).toFixed(1).replace(/\.0$/, '')}
                                 <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
                               </div>
                             </div>
@@ -2904,13 +3204,6 @@ const App: React.FC = () => {
                     </div>
                     <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-3">
                       <span className="text-sm sm:text-sm font-black text-orange-500 bg-orange-50 px-6 py-2.5 rounded-full border border-orange-100 shadow-sm">目前總倍率: {scalingFactor.toFixed(2)}x</span>
-                      <button 
-                        onClick={() => setIsRecipeCardModalOpen(true)} 
-                        className="w-auto px-6 py-3 bg-green-600 text-white rounded-2xl text-sm font-black shadow-lg hover:bg-green-700 transition-all flex items-center gap-2 active:scale-95"
-                      >
-                        <span className="text-xl">📋</span>
-                        <span>產生臨時配方卡</span>
-                      </button>
                       <button 
                         onClick={() => {
                           if (!isPremiumUser) {
@@ -3063,7 +3356,22 @@ const App: React.FC = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     <div className="relative">
                       <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">📖 配方名稱</label>
-                      <input type="text" value={formRecipe.title || ''} onChange={e => setFormRecipe(p => ({ ...p, title: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold focus:border-orange-200 transition-all" placeholder="輸入食譜標題" />
+                      <textarea 
+                        value={formRecipe.title || ''} 
+                        onChange={(e) => {
+                          setFormRecipe(p => ({ ...p, title: e.target.value }));
+                          // Auto-resize
+                          e.target.style.height = 'auto';
+                          e.target.style.height = e.target.scrollHeight + 'px';
+                        }} 
+                        onFocus={(e) => {
+                          e.target.style.height = 'auto';
+                          e.target.style.height = e.target.scrollHeight + 'px';
+                        }}
+                        rows={1}
+                        className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold focus:border-orange-200 transition-all resize-none overflow-hidden" 
+                        placeholder="輸入食譜標題 (支援換行)" 
+                      />
                     </div>
                     <div className="relative">
                       <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">👨‍🍳 師傅 / 來源</label>
@@ -3620,7 +3928,7 @@ const App: React.FC = () => {
                   window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
                 }
               }}
-              className="fixed bottom-28 right-6 w-14 h-14 bg-[#E67E22] text-white rounded-full shadow-[0_8px_30px_rgb(230,126,34,0.4)] flex items-center justify-center z-[1001] animate-in fade-in slide-in-from-bottom-4 transition-all active:scale-90 hover:bg-orange-600 group overflow-hidden"
+              className="fixed bottom-28 right-6 w-14 h-14 bg-[#E67E22] text-white rounded-full shadow-[0_8px_30px_rgb(230,126,34,0.4)] flex items-center justify-center z-[1001] animate-in fade-in slide-in-from-bottom-4 transition-all active:scale-90 hover:bg-orange-600 group overflow-hidden print:hidden"
               title={isAtBottom ? "回到頂端" : "直達底部"}
             >
               <div className={`transition-transform duration-500 ease-in-out ${isAtBottom ? 'rotate-180' : 'rotate-0'}`}>
@@ -3756,73 +4064,211 @@ const App: React.FC = () => {
 
           {view === AppView.DETAIL && selectedRecipe && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 print-area">
-              {/* 圖片區塊：增加返回按鈕的對比度 */}
-              <div className="relative aspect-video rounded-[32px] sm:rounded-[48px] overflow-hidden shadow-xl border-4 border-white print:rounded-2xl print:shadow-none print:border-none">
-                <img src={selectedRecipe.imageUrl || 'https://picsum.photos/800/450?random=' + selectedRecipe.id} className="w-full h-full object-cover" alt={selectedRecipe.title} />
-                <button 
-                  onClick={() => setView(AppView.LIST)} 
-                  className="absolute top-4 left-4 w-10 h-10 bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white text-lg transition-all hover:bg-black/50 no-print shadow-lg"
-                >
-                  ←
-                </button>
-              </div>
-
-              {/* 標題資訊區塊：從圖片分離，改為白底黑字 */}
-              <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-orange-50 shadow-sm -mt-10 sm:-mt-14 relative z-10 print:mt-0 print:shadow-none print:border-none print:p-0">
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="px-3 py-1 bg-orange-50 text-orange-600 rounded-full text-xs font-black uppercase tracking-widest border border-orange-100 print:bg-white print:text-slate-500 print:border-slate-200">
+              {/* 頂部併排對稱排版：左文字右圖片 */}
+              <div className="flex flex-col sm:flex-row gap-6 sm:gap-10 items-stretch no-print">
+                {/* 左側：配方標題與標籤 */}
+                <div className="flex-1 flex flex-col justify-center space-y-4 py-4 sm:py-0">
+                  <div className="flex flex-wrap gap-2">
+                    <span className="px-3 py-1 bg-orange-50 text-orange-600 rounded-full text-[10px] font-extrabold uppercase tracking-widest border border-orange-100 shadow-sm">
                       {selectedRecipe.category}
                     </span>
                     {selectedRecipe.isTried && (
-                      <span className="px-3 py-1 bg-orange-100 text-orange-600 text-xs font-black rounded-full uppercase tracking-widest border border-orange-200">
+                      <span className="px-3 py-1 bg-orange-100 text-orange-600 text-[10px] font-extrabold rounded-full uppercase tracking-widest border border-orange-200 shadow-sm">
                         待嘗試
-                      </span>
-                    )}
-                    {selectedRecipe.shelfLife && (
-                      <span className="px-3 py-1 bg-orange-50 text-orange-600 rounded-full text-xs font-black border border-orange-100 flex items-center gap-1.5 shadow-sm print:bg-white print:text-slate-500 print:border-slate-200">
-                        <span className="shrink-0">🕒</span>
-                        <span className="break-words">{selectedRecipe.shelfLife}</span>
-                      </span>
-                    )}
-                    {selectedRecipe.totalDuration && (
-                      <span className="px-3 py-1 bg-orange-50 text-[#E67E22] rounded-full text-xs font-black border border-orange-100 flex items-center gap-1.5 shadow-sm print:bg-white print:text-slate-500 print:border-slate-200">
-                        <span className="shrink-0">⏱️</span>
-                        <span className="break-words">{formatTimeWithUnit(selectedRecipe.totalDuration)}</span>
                       </span>
                     )}
                   </div>
                   
-                  <h2 className="text-3xl sm:text-4xl font-black text-slate-800 leading-tight print:text-3xl">
+                  <h2 className="text-3xl sm:text-5xl font-black text-slate-800 leading-tight whitespace-pre-wrap">
                     {selectedRecipe.title}
                   </h2>
 
-                  {selectedRecipe.tags && selectedRecipe.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {selectedRecipe.tags.map((tag, idx) => (
-                        <span key={idx} className="px-2 py-0.5 bg-slate-50 text-slate-500 rounded-lg text-[10px] font-bold border border-slate-200 print:bg-slate-50 print:text-slate-500 print:border-slate-200">
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
+                  {selectedRecipe.description && (
+                    <p className="text-base text-slate-500 font-medium leading-relaxed italic border-l-4 border-orange-100 pl-4 py-1">
+                      {selectedRecipe.description}
+                    </p>
                   )}
 
-                  <div className="pt-4 border-t border-slate-50 space-y-2 print:text-slate-600">
-                    <p className="text-base font-bold text-slate-600 flex items-center gap-1.5 print:text-sm">
-                      師傅：{selectedRecipe.master} ｜ 分類：{selectedRecipe.category}
-                    </p>
-                    {(selectedRecipe.sourceDate || selectedRecipe.recordDate) && (
-                      <div className="text-xs font-bold text-slate-400 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-0 print:text-xs print:text-slate-400">
-                        {selectedRecipe.sourceDate && <span>分享日：{selectedRecipe.sourceDate}</span>}
-                        {selectedRecipe.sourceDate && selectedRecipe.recordDate && <span className="mx-2 opacity-50 hidden sm:inline">｜</span>}
-                        {selectedRecipe.recordDate && <span>紀錄日：{selectedRecipe.recordDate}</span>}
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    {selectedRecipe.tags && selectedRecipe.tags.map((tag, idx) => (
+                      <span key={idx} className="px-2 py-0.5 bg-slate-50 text-slate-400 rounded-lg text-[10px] font-bold border border-slate-100">
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="pt-4 flex flex-col gap-2">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center text-orange-400 border border-orange-100">
+                        <UserIcon size={14} />
+                      </div>
+                      <p className="text-sm font-black text-slate-600">
+                        師傅：{selectedRecipe.master}
+                      </p>
+                    </div>
+                    {(selectedRecipe.shelfLife || selectedRecipe.totalDuration) && (
+                      <div className="flex flex-wrap gap-4 pt-1">
+                        {selectedRecipe.shelfLife && (
+                          <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
+                            <span>🕒 保鮮：{selectedRecipe.shelfLife}</span>
+                          </div>
+                        )}
+                        {selectedRecipe.totalDuration && (
+                          <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
+                            <span>⏱️ 總時：{formatTimeWithUnit(selectedRecipe.totalDuration)}</span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
                 </div>
+
+                {/* 右側：配方圖片 */}
+                <div className="flex-1 min-h-[300px] sm:min-h-0">
+                  <div className="relative h-full w-full aspect-video sm:aspect-square rounded-[32px] sm:rounded-[48px] overflow-hidden shadow-2xl border-4 border-white/50 group">
+                    <img src={selectedRecipe.imageUrl || 'https://picsum.photos/800/800?random=' + selectedRecipe.id} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={selectedRecipe.title} />
+                  </div>
+                </div>
               </div>
 
+              {/* PDF 專用區塊 (螢幕上顯示為 no-print，但在列印時會顯示這個原本的佈局) */}
+              <div className="hidden print:block space-y-4">
+                <div className="relative aspect-video rounded-2xl overflow-hidden print-float-img">
+                  <img src={selectedRecipe.imageUrl || 'https://picsum.photos/800/450?random=' + selectedRecipe.id} className="w-full h-full object-cover" alt={selectedRecipe.title} />
+                </div>
+                <div className="space-y-2">
+                  <h2 className="text-2xl font-black text-slate-800 leading-tight mb-2 whitespace-pre-wrap">{selectedRecipe.title}</h2>
+                  <div className="flex flex-wrap gap-x-6 gap-y-2 text-base font-bold text-slate-500 print:text-[16px] print:text-slate-700 print:gap-x-12">
+                    <span className="print:font-black">分類：{selectedRecipe.category}</span>
+                    <span className="print:font-black">師傅：{selectedRecipe.master}</span>
+                    {selectedRecipe.shelfLife && <span className="print:font-black">保鮮：{selectedRecipe.shelfLife}</span>}
+                    {selectedRecipe.totalDuration && <span className="print:font-black">總時：{formatTimeWithUnit(selectedRecipe.totalDuration)}</span>}
+                  </div>
+                </div>
+              </div>
+
+              {/* 規格卡片區塊：在觀看模式最上方顯示 (在 PDF 中隱藏) */}
+              {(selectedRecipe.doughWeight || selectedRecipe.fillingWeight || selectedRecipe.crustWeight || selectedRecipe.oilPasteWeight || selectedRecipe.moldName) && (
+                <div className="space-y-4 print:hidden">
+                  <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm flex flex-wrap gap-y-6 items-center justify-around text-center">
+                    {(() => {
+                      const weightItems = [];
+
+                      if (selectedRecipe.category === '中式點心') {
+                        // 中式點心模式的欄位
+                        if (selectedRecipe.crustWeight && Number(selectedRecipe.crustWeight) > 0) {
+                          weightItems.push(
+                            <div key="crust" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
+                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">⚖️ 分割後一個<br/>油皮重 (克)</div>
+                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">{selectedRecipe.crustWeight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div>
+                            </div>
+                          );
+                        }
+                        if (selectedRecipe.oilPasteWeight && Number(selectedRecipe.oilPasteWeight) > 0) {
+                          weightItems.push(
+                            <div key="oilPaste" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
+                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🧈 分割後一個<br/>油酥重 (克)</div>
+                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">{selectedRecipe.oilPasteWeight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div>
+                            </div>
+                          );
+                        }
+                        if (selectedRecipe.fillingWeight && Number(selectedRecipe.fillingWeight) > 0) {
+                          weightItems.push(
+                            <div key="filling_pastry" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
+                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🌰 分割後一個<br/>餡料重 (克)</div>
+                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">{selectedRecipe.fillingWeight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div>
+                            </div>
+                          );
+                        }
+                        // 份數 (通常會有值)
+                        weightItems.push(
+                          <div key="quantity_pastry" className="flex-1 min-w-[80px] space-y-1.5">
+                            <div className="text-xs font-black text-slate-400 uppercase">🔢 份數</div>
+                            <div className="text-2xl font-black text-slate-700 tabular-nums">{selectedRecipe.quantity || 1}<span className="text-sm font-bold text-slate-400 ml-0.5">顆</span></div>
+                          </div>
+                        );
+                      } else {
+                        // 一般模式的欄位
+                        if (selectedRecipe.doughWeight && Number(selectedRecipe.doughWeight) > 0) {
+                          weightItems.push(
+                            <div key="dough" className="flex-1 min-w-[140px] sm:min-w-[170px] space-y-2">
+                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">⚖️ 分割後一個<br/>麵團/糊重 (克)</div>
+                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">
+                                {selectedRecipe.doughWeight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
+                              </div>
+                            </div>
+                          );
+                        }
+                        if (selectedRecipe.fillingWeight && Number(selectedRecipe.fillingWeight) > 0) {
+                          weightItems.push(
+                            <div key="filling_gen" className="flex-1 min-w-[140px] sm:min-w-[170px] space-y-2">
+                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🌰 分割後一個<br/>內餡重 (克)</div>
+                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">
+                                {selectedRecipe.fillingWeight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
+                              </div>
+                            </div>
+                          );
+                        }
+                        // 製作份數
+                        weightItems.push(
+                          <div key="quantity_gen" className="flex-1 min-w-[100px] space-y-1.5">
+                            <div className="text-xs font-black text-slate-400 uppercase">🔢 製作份數</div>
+                            <div className="text-2xl font-black text-slate-700 tabular-nums">
+                              {selectedRecipe.quantity || 1}<span className="text-sm font-bold text-slate-400 ml-0.5">份</span>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // 渲染包含分隔線的結果
+                      return weightItems.map((item, idx) => (
+                        <React.Fragment key={idx}>
+                          {item}
+                          {idx < weightItems.length - 1 && (
+                            <div className="w-px h-10 bg-orange-50 hidden sm:block" />
+                          )}
+                        </React.Fragment>
+                      ));
+                    })()}
+                  </div>
+                  {selectedRecipe.moldName && (
+                    <div className="bg-white px-6 py-4 rounded-[32px] border border-orange-50 shadow-sm flex items-center justify-center gap-3">
+                      <span className="text-xl">🍞</span>
+                      <span className="text-xs font-black text-slate-400 uppercase">模具規格</span>
+                      <div className="text-base font-black text-slate-700">{selectedRecipe.moldName}</div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-4">
+                {/* PDF 專用：大型橫向規格資訊列 */}
+                {(selectedRecipe.doughWeight || selectedRecipe.fillingWeight || selectedRecipe.crustWeight || selectedRecipe.oilPasteWeight || selectedRecipe.moldName) && (
+                  <div className="hidden print:flex items-center justify-around bg-orange-50/20 border border-orange-100 p-4 rounded-2xl gap-4 my-4">
+                    {(() => {
+                      const pdfSpecs = [];
+                      if (selectedRecipe.category === '中式點心') {
+                        if (selectedRecipe.crustWeight && Number(selectedRecipe.crustWeight) > 0) pdfSpecs.push(<div key="cr" className="flex items-center gap-2 text-base font-black text-slate-800">⚖️ 油皮：{selectedRecipe.crustWeight}g</div>);
+                        if (selectedRecipe.oilPasteWeight && Number(selectedRecipe.oilPasteWeight) > 0) pdfSpecs.push(<div key="op" className="flex items-center gap-2 text-base font-black text-slate-800">🧈 油酥：{selectedRecipe.oilPasteWeight}g</div>);
+                        if (selectedRecipe.fillingWeight && Number(selectedRecipe.fillingWeight) > 0) pdfSpecs.push(<div key="fi" className="flex items-center gap-2 text-base font-black text-slate-800">🌰 內餡：{selectedRecipe.fillingWeight}g</div>);
+                        pdfSpecs.push(<div key="qt" className="flex items-center gap-2 text-base font-black text-slate-800">🔢 份數：{selectedRecipe.quantity || 1}顆</div>);
+                      } else {
+                        if (selectedRecipe.doughWeight && Number(selectedRecipe.doughWeight) > 0) pdfSpecs.push(<div key="dw" className="flex items-center gap-2 text-base font-black text-slate-800">⚖️ 分割重量：{selectedRecipe.doughWeight}g</div>);
+                        if (selectedRecipe.fillingWeight && Number(selectedRecipe.fillingWeight) > 0) pdfSpecs.push(<div key="fi" className="flex items-center gap-2 text-base font-black text-slate-800">🌰 內餡重量：{selectedRecipe.fillingWeight}g</div>);
+                        pdfSpecs.push(<div key="qt" className="flex items-center gap-2 text-base font-black text-slate-800">🔢 製作份數：{selectedRecipe.quantity || 1}份</div>);
+                      }
+                      if (selectedRecipe.moldName) pdfSpecs.push(<div key="mn" className="flex items-center gap-2 text-base font-black text-slate-800">🍞 模具：{selectedRecipe.moldName}</div>);
+                      
+                      return pdfSpecs.map((spec, i) => (
+                        <React.Fragment key={i}>
+                          {spec}
+                          {i < pdfSpecs.length - 1 && <div className="w-px h-6 bg-orange-200" />}
+                        </React.Fragment>
+                      ));
+                    })()}
+                  </div>
+                )}
+
                 {/* 食譜出處區塊 */}
                 {(selectedRecipe.sourceName || selectedRecipe.onlineCourse || selectedRecipe.sourceUrl || (selectedRecipe.sourceLinks && selectedRecipe.sourceLinks.length > 0) || selectedRecipe.sourceNote) && (
                   <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-4 print:rounded-2xl print:border-slate-200">
@@ -3851,17 +4297,30 @@ const App: React.FC = () => {
                         <div className="flex items-center gap-3 p-3 bg-orange-50/30 rounded-2xl border border-orange-50 sm:col-span-2">
                           <span className="text-lg">🌐</span>
                           <div className="flex flex-col min-w-0 flex-1">
-                            <span className="text-[10px] font-black text-slate-400 uppercase">出處網址</span>
-                            <div className="overflow-x-auto scrollbar-hide">
+                            <span className="text-[10px] font-black text-slate-400 uppercase print:text-sm print:text-slate-500">出處網址</span>
+                            <div className="overflow-x-auto scrollbar-hide print:overflow-visible print:break-all">
                               {selectedRecipe.sourceUrl.startsWith('http') ? (
-                                <a href={selectedRecipe.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-600 hover:underline whitespace-nowrap">
+                                <a href={selectedRecipe.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-600 hover:underline whitespace-nowrap print:text-[16px] print:font-black print:whitespace-pre-wrap print:break-all print:block print:mt-1">
                                   {selectedRecipe.sourceUrl}
                                 </a>
                               ) : (
-                                <span className="text-sm font-bold text-slate-700 whitespace-nowrap">{selectedRecipe.sourceUrl}</span>
+                                <span className="text-sm font-bold text-slate-700 whitespace-nowrap print:text-[16px] print:font-black print:whitespace-pre-wrap print:break-all print:block print:mt-1">{selectedRecipe.sourceUrl}</span>
                               )}
                             </div>
                           </div>
+                          {selectedRecipe.sourceUrl.startsWith('http') && (
+                            <div className="shrink-0 ml-auto p-1 bg-white rounded-xl border border-orange-100/50 shadow-sm print:shadow-none">
+                              <QRCodeCanvas 
+                                value={selectedRecipe.sourceUrl} 
+                                size={96} 
+                                style={{ display: 'block' }} 
+                                level="H"
+                                includeMargin={true}
+                                fgColor="#000000"
+                                bgColor="#FFFFFF"
+                              />
+                            </div>
+                          )}
                         </div>
                       )}
                       {/* 動態連結清單 */}
@@ -3869,13 +4328,26 @@ const App: React.FC = () => {
                         <div key={idx} className="flex items-center gap-3 p-3 bg-orange-50/30 rounded-2xl border border-orange-50 sm:col-span-2">
                           <span className="text-lg">🔗</span>
                           <div className="flex flex-col min-w-0 flex-1">
-                            <span className="text-[10px] font-black text-slate-400 uppercase">參考連結</span>
-                            <div className="overflow-x-auto scrollbar-hide">
-                              <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-600 hover:underline whitespace-nowrap">
+                            <span className="text-[10px] font-black text-slate-400 uppercase print:text-sm print:text-slate-500">參考連結</span>
+                            <div className="overflow-x-auto scrollbar-hide print:overflow-visible print:break-all">
+                              <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-600 hover:underline whitespace-nowrap print:text-[16px] print:font-black print:whitespace-pre-wrap print:break-all print:block print:mt-1">
                                 {link.name || '點擊前往'}
                               </a>
                             </div>
                           </div>
+                          {link.url && link.url.startsWith('http') && (
+                            <div className="shrink-0 ml-auto p-1 bg-white rounded-xl border border-orange-100/50 shadow-sm print:shadow-none">
+                              <QRCodeCanvas 
+                                value={link.url} 
+                                size={96} 
+                                style={{ display: 'block' }} 
+                                level="H"
+                                includeMargin={true}
+                                fgColor="#000000"
+                                bgColor="#FFFFFF"
+                              />
+                            </div>
+                          )}
                         </div>
                       ))}
                       {selectedRecipe.sourcePage && (
@@ -3892,96 +4364,13 @@ const App: React.FC = () => {
                           <span className="text-lg">📝</span>
                           <div className="flex flex-col">
                             <span className="text-[10px] font-black text-slate-400 uppercase">心得備註</span>
-                            <span className="text-sm font-bold text-slate-700">{selectedRecipe.sourceNote}</span>
+                            <span className="text-sm font-bold text-slate-700 whitespace-pre-wrap">{selectedRecipe.sourceNote}</span>
                           </div>
                         </div>
                       )}
                     </div>
                   </div>
                 )}
-
-                <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm flex flex-wrap gap-y-6 items-center justify-around text-center print:rounded-2xl print:border-slate-200">
-                  {(() => {
-                    const weightItems = [];
-
-                    if (selectedRecipe.category === '中式點心') {
-                      // 中式點心模式的欄位
-                      if (selectedRecipe.crustWeight && Number(selectedRecipe.crustWeight) > 0) {
-                        weightItems.push(
-                          <div key="crust" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
-                            <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">⚖️ 分割後一個<br/>油皮重 (克)</div>
-                            <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums print:text-lg">{selectedRecipe.crustWeight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div>
-                          </div>
-                        );
-                      }
-                      if (selectedRecipe.oilPasteWeight && Number(selectedRecipe.oilPasteWeight) > 0) {
-                        weightItems.push(
-                          <div key="oilPaste" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
-                            <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🧈 分割後一個<br/>油酥重 (克)</div>
-                            <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums print:text-lg">{selectedRecipe.oilPasteWeight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div>
-                          </div>
-                        );
-                      }
-                      if (selectedRecipe.fillingWeight && Number(selectedRecipe.fillingWeight) > 0) {
-                        weightItems.push(
-                          <div key="filling_pastry" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
-                            <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🌰 分割後一個<br/>餡料重 (克)</div>
-                            <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums print:text-lg">{selectedRecipe.fillingWeight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div>
-                          </div>
-                        );
-                      }
-                      // 份數 (通常會有值)
-                      weightItems.push(
-                        <div key="quantity_pastry" className="flex-1 min-w-[80px] space-y-1.5">
-                          <div className="text-xs font-black text-slate-400 uppercase">🔢 份數</div>
-                          <div className="text-2xl font-black text-slate-700 tabular-nums print:text-lg">{selectedRecipe.quantity || 1}<span className="text-sm font-bold text-slate-400 ml-0.5">顆</span></div>
-                        </div>
-                      );
-                    } else {
-                      // 一般模式的欄位
-                      if (selectedRecipe.doughWeight && Number(selectedRecipe.doughWeight) > 0) {
-                        weightItems.push(
-                          <div key="dough" className="flex-1 min-w-[140px] sm:min-w-[170px] space-y-2">
-                            <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">⚖️ 分割後一個<br/>麵團/糊重 (克)</div>
-                            <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums print:text-lg">
-                              {selectedRecipe.doughWeight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
-                            </div>
-                          </div>
-                        );
-                      }
-                      if (selectedRecipe.fillingWeight && Number(selectedRecipe.fillingWeight) > 0) {
-                        weightItems.push(
-                          <div key="filling_gen" className="flex-1 min-w-[140px] sm:min-w-[170px] space-y-2">
-                            <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🌰 分割後一個<br/>內餡重 (克)</div>
-                            <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums print:text-lg">
-                              {selectedRecipe.fillingWeight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
-                            </div>
-                          </div>
-                        );
-                      }
-                      // 製作份數
-                      weightItems.push(
-                        <div key="quantity_gen" className="flex-1 min-w-[100px] space-y-1.5">
-                          <div className="text-xs font-black text-slate-400 uppercase">🔢 製作份數</div>
-                          <div className="text-2xl font-black text-slate-700 tabular-nums print:text-lg">
-                            {selectedRecipe.quantity || 1}<span className="text-sm font-bold text-slate-400 ml-0.5">份</span>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    // 渲染包含分隔線的結果
-                    return weightItems.map((item, idx) => (
-                      <React.Fragment key={idx}>
-                        {item}
-                        {idx < weightItems.length - 1 && (
-                          <div className="w-px h-10 bg-orange-50 hidden sm:block print:bg-slate-100" />
-                        )}
-                      </React.Fragment>
-                    ));
-                  })()}
-                </div>
-                {selectedRecipe.moldName && (<div className="bg-white px-6 py-4 rounded-[32px] border border-orange-50 shadow-sm flex items-center justify-center gap-3 print:rounded-2xl print:border-slate-200 print:py-2"><span className="text-xl">🍞</span><span className="text-xs font-black text-slate-400 uppercase">模具規格</span><div className="text-base font-black text-slate-700 print:text-sm">{selectedRecipe.moldName}</div></div>)}
               </div>
               
               <div className="flex flex-col gap-12 print:gap-6">
@@ -3992,7 +4381,7 @@ const App: React.FC = () => {
                       食材配方
                     </h3>
                   </div>
-                  <div className="space-y-6 max-w-3xl mx-auto">
+                  <div className="space-y-6 max-w-3xl mx-auto print:space-y-0 print:flex print:flex-wrap print:gap-4">
                     {selectedRecipe.sectionsOrder?.map(secKey => {
                         const commonProps = {
                           isBaking: selectedRecipe.isBakingRecipe,
@@ -4015,21 +4404,47 @@ const App: React.FC = () => {
                   if (!hasFermentation && !hasBaking) return null;
 
                   return (
-                    <div className="bg-white p-8 rounded-[40px] border-2 border-orange-50 shadow-sm print:rounded-2xl print:border-slate-200 print:p-6 max-w-3xl mx-auto w-full">
+                    <div className="bg-white p-8 rounded-[40px] border-2 border-orange-50 shadow-sm print:rounded-2xl print:border-slate-200 print:p-2 print:mb-2 max-w-3xl mx-auto w-full">
                       <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-3 px-2 print:text-base print:mb-4">
                         <span className="w-2 h-8 bg-orange-500 rounded-full"></span>
                         發酵與烤焙
                       </h3>
                       {hasFermentation && (
-                        <div className="mb-10">
-                          <h4 className="text-base font-black text-orange-500 uppercase tracking-widest mb-4 ml-1 print:text-black">發酵時序</h4>
-                          <div className="space-y-4">
+                        <div className="mb-10 print:mb-4">
+                          <h4 className="text-base font-black text-orange-500 uppercase tracking-widest mb-4 ml-1 print:text-black print:mb-2 text-left">發酵時序</h4>
+                          
+                          {/* 列印專用表格 */}
+                          <table className="hidden print:table print-table mb-4">
+                            <thead>
+                              <tr>
+                                <th>階段名稱</th>
+                                <th>時間</th>
+                                <th>溫度</th>
+                                <th>濕度</th>
+                                <th>備註</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {selectedRecipe.fermentationStages?.map((stage, idx) => (
+                                <tr key={idx}>
+                                  <td>{stage.name || `階段 ${idx+1}`}</td>
+                                  <td>{formatTimeWithUnit(stage.time, stage.timeUnit)}</td>
+                                  <td>{stage.temperature ? `${stage.temperature}°C` : '--'}</td>
+                                  <td>{stage.humidity ? `${stage.humidity}%` : '--'}</td>
+                                  <td>{stage.note || '--'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+
+                          {/* 螢幕顯示卡片 */}
+                          <div className="space-y-4 print:hidden">
                             {selectedRecipe.fermentationStages?.map((stage, idx) => (
-                              <div key={idx} className="flex flex-col p-6 bg-orange-50/20 rounded-3xl border border-orange-50 gap-y-2 print:bg-white print:border-slate-200">
-                                <div className="text-xl font-black text-slate-800 print:text-lg text-left mb-2 lg:mb-0">{stage.name || `階段 ${idx+1}`}</div>
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 text-lg lg:text-xl font-black text-[#E67E22] tabular-nums border-t border-orange-100/50 pt-5 print:text-black print:border-slate-100">
+                              <div key={idx} className="flex flex-col p-6 bg-orange-50/20 rounded-3xl border border-orange-50 gap-y-2">
+                                <div className="text-xl font-black text-slate-800 text-left mb-2 lg:mb-0">{stage.name || `階段 ${idx+1}`}</div>
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 text-lg lg:text-xl font-black text-[#E67E22] tabular-nums border-t border-orange-100/50 pt-5">
                                   <div className="flex flex-col items-center gap-2"><span className="text-xs lg:text-sm text-slate-400 font-bold uppercase">時間</span><div className="flex items-center gap-1.5 whitespace-nowrap tracking-tighter">⏲️ {formatTimeWithUnit(stage.time, stage.timeUnit)}</div></div>
-                                  <div className="flex flex-col items-center gap-2 border-y lg:border-y-0 lg:border-x border-orange-100/50 py-4 lg:py-0 print:border-slate-100"><span className="text-xs lg:text-sm text-slate-400 font-bold uppercase">溫度</span><div className="flex items-center gap-1.5">🌡️ {stage.temperature ? `${stage.temperature}°` : '--'}</div></div>
+                                  <div className="flex flex-col items-center gap-2 border-y lg:border-y-0 lg:border-x border-orange-100/50 py-4 lg:py-0"><span className="text-xs lg:text-sm text-slate-400 font-bold uppercase">溫度</span><div className="flex items-center gap-1.5">🌡️ {stage.temperature ? `${stage.temperature}°` : '--'}</div></div>
                                   <div className="flex flex-col items-center gap-2"><span className="text-xs lg:text-sm text-slate-400 font-bold uppercase">濕度</span><div className="flex items-center gap-1.5">💧 {stage.humidity ? `${stage.humidity}%` : '--'}</div></div>
                                 </div>
                                 {stage.note && (
@@ -4043,22 +4458,48 @@ const App: React.FC = () => {
                         </div>
                       )}
                       {hasBaking && (
-                        <div className="mb-8">
-                          <h4 className="text-base font-black text-orange-500 uppercase tracking-widest mb-4 ml-1 print:text-black">烤焙參數</h4>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 print:grid-cols-2">
+                        <div className="mb-8 print:mb-2">
+                          <h4 className="text-base font-black text-orange-500 uppercase tracking-widest mb-4 ml-1 print:text-black print:mb-1 text-left">烤焙參數</h4>
+                          
+                          {/* 列印專用表格 */}
+                          <table className="hidden print:table print-table mb-2">
+                            <thead>
+                              <tr>
+                                <th>烤焙階段</th>
+                                <th>時間</th>
+                                <th>上火</th>
+                                <th>下火</th>
+                                <th>備註</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {selectedRecipe.bakingStages?.map((stage, idx) => (
+                                <tr key={idx}>
+                                  <td>{stage.name || `階段 ${idx+1}`}</td>
+                                  <td>{formatTimeWithUnit(stage.time, stage.timeUnit)}</td>
+                                  <td>{stage.topHeat}°C</td>
+                                  <td>{stage.bottomHeat}°C</td>
+                                  <td>{stage.note || '--'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+
+                          {/* 螢幕顯示卡片 */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 print:hidden">
                             {selectedRecipe.bakingStages?.map((stage, idx) => (
-                              <div key={idx} className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm relative overflow-hidden print:rounded-xl print:border-slate-200">
+                              <div key={idx} className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm relative overflow-hidden">
                                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-2 lg:gap-4 mb-8">
                                   <span className="text-lg font-black text-slate-800 uppercase tracking-wide text-left w-full lg:w-auto">{stage.name || `STAGE ${idx+1}`}</span>
-                                  <span className="text-lg lg:text-xl font-black text-[#E67E22] bg-orange-50 px-5 py-2 rounded-2xl print:bg-slate-50 print:text-black flex items-center justify-center gap-2 shrink-0 w-full lg:w-auto">
+                                  <span className="text-lg lg:text-xl font-black text-[#E67E22] bg-orange-50 px-5 py-2 rounded-2xl flex items-center justify-center gap-2 shrink-0 w-full lg:w-auto">
                                     <span>⏲️</span>
                                     <span className="whitespace-nowrap tracking-tighter">{formatTimeWithUnit(stage.time, stage.timeUnit)}</span>
                                   </span>
                                 </div>
                                 <div className="flex flex-col lg:flex-row justify-around text-center items-center py-2 gap-8 lg:gap-0">
-                                  <div className="flex-1 w-full"><div className="text-sm text-slate-400 font-bold uppercase mb-3">上火</div><div className="text-4xl font-black text-slate-800 tabular-nums print:text-2xl">{stage.topHeat}<span className="text-lg opacity-60 ml-1">°C</span></div></div>
-                                  <div className="w-full h-px lg:w-px lg:h-16 bg-orange-100 print:bg-slate-100" />
-                                  <div className="flex-1 w-full"><div className="text-sm text-slate-400 font-bold uppercase mb-3">下火</div><div className="text-4xl font-black text-slate-800 tabular-nums print:text-2xl">{stage.bottomHeat}<span className="text-lg opacity-60 ml-1">°C</span></div></div>
+                                  <div className="flex-1 w-full"><div className="text-sm text-slate-400 font-bold uppercase mb-3">上火</div><div className="text-4xl font-black text-slate-800 tabular-nums">{stage.topHeat}<span className="text-lg opacity-60 ml-1">°C</span></div></div>
+                                  <div className="w-full h-px lg:w-px lg:h-16 bg-orange-100" />
+                                  <div className="flex-1 w-full"><div className="text-sm text-slate-400 font-bold uppercase mb-3">下火</div><div className="text-4xl font-black text-slate-800 tabular-nums">{stage.bottomHeat}<span className="text-lg opacity-60 ml-1">°C</span></div></div>
                                 </div>
                                 {stage.note && (
                                   <div className="mt-8 p-5 bg-[#F5E6D3] rounded-2xl text-base font-bold text-slate-700 whitespace-pre-wrap leading-relaxed border border-orange-100/50">
@@ -4074,7 +4515,7 @@ const App: React.FC = () => {
                   );
                 })()}
 
-                <div className="bg-white p-8 rounded-[40px] border-2 border-orange-50 shadow-sm print:rounded-2xl print:border-slate-200 print:p-6">
+                <div className="bg-white p-8 rounded-[40px] border-2 border-orange-50 shadow-sm print:rounded-2xl print:border-slate-200 print:p-2 print:space-y-1">
                   <div className="flex justify-between items-center mb-8 print:mb-4">
                     <h3 className="text-xl font-black text-slate-800 flex items-center gap-3 px-2 print:text-base">
                       <span className="w-2 h-8 bg-orange-500 rounded-full"></span>
@@ -4090,7 +4531,7 @@ const App: React.FC = () => {
                       </button>
                     )}
                   </div>
-                  <div className="space-y-8 print:space-y-4">
+                  <div className="space-y-8 print:space-y-1 print:print-steps-compact">
                     {(() => {
                       let stepNumber = 0;
                       const currentCompleted = selectedRecipe ? (completedSteps[selectedRecipe.id] || []) : [];
@@ -4114,8 +4555,8 @@ const App: React.FC = () => {
 
                         stepNumber++;
                         return (
-                          <div key={idx} className="flex gap-4 sm:gap-6 items-start group print:gap-3">
-                            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                          <div key={idx} className="flex gap-4 sm:gap-6 items-start group print:gap-2 print:mb-2">
+                            <div className="flex items-center gap-2 sm:gap-3 shrink-0 print:gap-1">
                               <button 
                                 onClick={() => selectedRecipe && toggleStepCompleted(selectedRecipe.id, idx)}
                                 className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full border-2 flex items-center justify-center transition-all active:scale-90 print:hidden ${
@@ -4131,14 +4572,14 @@ const App: React.FC = () => {
                               <span className={`flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 font-black rounded-2xl flex items-center justify-center text-sm sm:text-base shadow-sm border transition-all print:w-6 print:h-6 print:text-xs print:rounded-lg ${
                                 isCompleted 
                                   ? 'bg-slate-100 text-slate-400 border-slate-200' 
-                                  : 'bg-orange-50 text-[#E67E22] border-orange-100 group-hover:bg-orange-500 group-hover:text-white'
+                                  : 'bg-orange-50 text-[#E67E22] border-orange-100 group-hover:bg-orange-500 group-hover:text-white print:bg-white print:text-black print:border-slate-200'
                               }`}>
                                 {stepNumber}
                               </span>
                             </div>
-                            <div className="flex-grow pt-1.5 sm:pt-2">
-                              <p className={`text-base leading-relaxed font-bold tracking-wide transition-all print:text-sm ${
-                                isCompleted ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-700'
+                            <div className="flex-grow pt-1.5 sm:pt-2 print:pt-0">
+                              <p className={`text-base leading-relaxed font-bold tracking-wide transition-all whitespace-pre-wrap print:text-sm print:font-normal print:leading-tight ${
+                                isCompleted ? 'text-slate-400 line-through decoration-slate-300 print:text-slate-400 print:no-underline' : 'text-slate-700'
                               }`}>
                                 {content}
                               </p>
@@ -4151,7 +4592,7 @@ const App: React.FC = () => {
                 </div>
                 
                 {selectedRecipe.notes && (
-                  <div className="bg-yellow-50/50 p-8 rounded-[40px] border-2 border-yellow-100 shadow-sm relative overflow-hidden print:rounded-2xl print:border-slate-200 print:p-6 print:bg-white">
+                  <div className="bg-yellow-50/50 p-8 rounded-[40px] border-2 border-yellow-100 shadow-sm relative overflow-hidden print:rounded-2xl print:border-slate-200 print:p-2 print:bg-white print:mb-2">
                     <h3 className="text-xl font-black text-yellow-700 mb-6 flex items-center gap-3 px-2 print:text-base print:text-black">
                       <span className="w-2 h-8 bg-yellow-500 rounded-full"></span>
                       📝 老師的小叮嚀
@@ -4160,7 +4601,7 @@ const App: React.FC = () => {
                   </div>
                 )}
 
-                <div className="bg-white p-8 rounded-[40px] border-2 border-orange-50 shadow-sm space-y-8 print:rounded-2xl print:border-slate-200 print:p-6">
+                <div className="bg-white p-8 rounded-[40px] border-2 border-orange-50 shadow-sm space-y-8 print:rounded-2xl print:border-slate-200 print:p-2 print:space-y-1 print:mb-2">
                     <div className="flex justify-between items-center px-2">
                       <h3 className="text-xl font-black text-slate-800 flex items-center gap-3 print:text-base">
                         <span className="w-2 h-8 bg-orange-500 rounded-full"></span>
@@ -4276,97 +4717,7 @@ const App: React.FC = () => {
         onImportAll={handleImportAllParsedRecipes}
       />
       
-      {/* 臨時配方卡 Modal */}
-      {isRecipeCardModalOpen && scalingRecipe && (
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-300">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsRecipeCardModalOpen(false)} />
-          <div className="bg-white w-full max-w-2xl rounded-[40px] shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300 border-4 border-orange-100">
-            {/* Header */}
-            <div className="p-6 sm:p-8 border-b border-orange-50 flex items-center justify-between bg-orange-50/30">
-              <div className="flex flex-col gap-1">
-                <span className="text-xs font-black text-orange-400 uppercase tracking-widest">臨時換算配方卡</span>
-                <h2 className="text-2xl sm:text-3xl font-black text-slate-800 leading-tight">{scalingRecipe.title}</h2>
-              </div>
-              <button 
-                onClick={() => setIsRecipeCardModalOpen(false)}
-                className="w-12 h-12 bg-white rounded-full shadow-md flex items-center justify-center text-slate-400 hover:text-red-500 transition-all active:scale-90 border border-orange-50"
-              >
-                <span className="text-2xl">✕</span>
-              </button>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-8 custom-scrollbar">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-orange-50/50 p-5 rounded-3xl border border-orange-100 text-center">
-                  <span className="text-xs font-black text-orange-400 uppercase block mb-1">目標份數</span>
-                  <span className="text-3xl font-black text-orange-600">{targetQuantity} <span className="text-lg">{scalingRecipe.category === '中式點心' ? '顆' : '份'}</span></span>
-                </div>
-                <div className="bg-orange-50/50 p-5 rounded-3xl border border-orange-100 text-center">
-                  <span className="text-xs font-black text-orange-400 uppercase block mb-1">總重量 (約)</span>
-                  <span className="text-3xl font-black text-orange-600">{totalScaledWeight.toFixed(1)} <span className="text-lg">g</span></span>
-                </div>
-              </div>
-
-              <div className="space-y-8">
-                {scalingRecipe.sectionsOrder?.map(secKey => {
-                  const sectionIngredients = 
-                    secKey === 'ingredients' ? scalingRecipe.ingredients :
-                    secKey === 'liquidStarterIngredients' ? scalingRecipe.liquidStarterIngredients :
-                    secKey === 'fillingIngredients' ? scalingRecipe.fillingIngredients :
-                    secKey === 'decorationIngredients' ? scalingRecipe.decorationIngredients :
-                    secKey === 'customSectionIngredients' ? scalingRecipe.customSectionIngredients : [];
-                  
-                  const sectionTitle = 
-                    secKey === 'ingredients' ? (scalingRecipe.mainSectionName || "主麵團") :
-                    secKey === 'liquidStarterIngredients' ? (scalingRecipe.liquidStarterName || "發酵種") :
-                    secKey === 'fillingIngredients' ? (scalingRecipe.fillingSectionName || "內餡") :
-                    secKey === 'decorationIngredients' ? (scalingRecipe.decorationSectionName || "裝飾 / 表面") :
-                    secKey === 'customSectionIngredients' ? (scalingRecipe.customSectionName || "其他區塊") : "";
-
-                  if (!sectionIngredients || sectionIngredients.length === 0) return null;
-
-                  return (
-                    <div key={`modal-${secKey}`} className="space-y-4">
-                      <h3 className="text-lg font-black text-slate-700 flex items-center gap-2">
-                        <span className="w-1.5 h-6 bg-orange-400 rounded-full" />
-                        {sectionTitle}
-                      </h3>
-                      <div className="bg-slate-50/50 rounded-3xl p-4 sm:p-6 border border-slate-100 space-y-3">
-                        {sectionIngredients.map((ing, idx) => {
-                          const originalAmt = typeof ing.amount === 'number' ? ing.amount : parseFloat(ing.amount as string) || 0;
-                          const scaledAmt = originalAmt * scalingFactor;
-                          return (
-                            <div key={idx} className="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
-                              <span className="text-xl font-bold text-slate-700">{ing.name}</span>
-                              <div className="flex items-baseline gap-1">
-                                <span className="text-2xl font-black text-orange-600 tabular-nums">
-                                  {scaledAmt.toFixed(1).replace(/\.0$/, '')}
-                                </span>
-                                <span className="text-sm font-black text-slate-400 uppercase">{ing.unit}</span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="p-6 sm:p-8 bg-slate-50 border-t border-slate-100">
-              <button 
-                onClick={() => setIsRecipeCardModalOpen(false)}
-                className="w-full py-4 bg-slate-800 text-white rounded-2xl font-black text-lg shadow-lg hover:bg-slate-900 transition-all active:scale-95"
-              >
-                關閉視窗
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 臨時配方卡 Modal 已移除 */}
 
       <ConfirmDialog 
         isOpen={confirmConfig?.isOpen || false}

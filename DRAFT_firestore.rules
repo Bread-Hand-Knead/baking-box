@@ -1,0 +1,100 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitive Definition
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function incoming() {
+      return request.resource.data;
+    }
+    function existing() {
+      return resource.data;
+    }
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == "linda6623@gmail.com" || 
+        request.auth.token.email == "linda6623@gamil.com"
+      );
+    }
+
+    // Helper: Validate Recipe data shape
+    function isValidRecipe(data) {
+      return data.keys().hasAll(['title', 'category'])
+        && data.title is string && data.title.size() <= 200
+        && data.category is string && data.category.size() <= 100
+        // Conditional UID checks (supporting legacy or flexible fields)
+        && (!('uid' in data) || (data.uid is string && data.uid.size() <= 128))
+        && (!('author_id' in data) || (data.author_id is string && data.author_id.size() <= 128))
+        // Identity matching (MUST match if present)
+        && (
+          (data.get('uid', request.auth.uid) == request.auth.uid) ||
+          (data.get('author_id', request.auth.uid) == request.auth.uid)
+        );
+    }
+
+    // Phase 4: Match Blocks
+    
+    match /userSettings/{userId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+    }
+
+    match /user_categories/{userId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+    }
+
+    match /recipes/{recipeId} {
+      allow get: if isSignedIn() && (
+        isAdmin() || 
+        existing().get('uid', '') == request.auth.uid || 
+        existing().get('author_id', '') == request.auth.uid
+      );
+      
+      allow list: if isSignedIn() && (
+        isAdmin() || 
+        resource.data.get('uid', '') == request.auth.uid || 
+        resource.data.get('author_id', '') == request.auth.uid
+      );
+
+      allow create: if isSignedIn() && isValidId(recipeId) && isValidRecipe(incoming()) && (
+        isAdmin() || 
+        incoming().get('uid', '') == request.auth.uid || 
+        incoming().get('author_id', '') == request.auth.uid
+      );
+
+      allow update: if isSignedIn() && isValidRecipe(incoming()) && (
+        isAdmin() || (
+          (existing().get('uid', '') == request.auth.uid || existing().get('author_id', '') == request.auth.uid) &&
+          // Immutable fields
+          incoming().get('uid', existing().get('uid', '')) == existing().get('uid', '') &&
+          incoming().get('author_id', existing().get('author_id', '')) == existing().get('author_id', '')
+        )
+      );
+
+      allow delete: if isSignedIn() && (
+        isAdmin() || 
+        existing().get('uid', '') == request.auth.uid || 
+        existing().get('author_id', '') == request.auth.uid
+      );
+    }
+    
+    // Support for drafts (mentioned in some turns)
+    match /drafts/{userId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+    }
+  }
+}

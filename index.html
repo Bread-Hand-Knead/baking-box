@@ -28,14 +28,42 @@
       background: #cbd5e1;
     }
 
+    /* 隱藏捲軸 */
+    .scrollbar-hide::-webkit-scrollbar {
+      display: none;
+    }
+    .scrollbar-hide {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
     /* 列印專用樣式 */
     @media print {
-      body {
+      html, body {
+        height: auto !important;
+        min-height: auto !important;
         background-color: white !important;
+        font-size: 12pt !important;
+      }
+      body {
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
       }
-      .no-print {
+      #root, main, .print-area {
+        height: auto !important;
+        min-height: auto !important;
+        max-height: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+      .no-print, 
+      nav.fixed, 
+      button.fixed,
+      .fixed:not(.print-area),
+      [class*="scroll-to-top"],
+      [class*="floating-button"],
+      [title="回到頂端"],
+      [title="直達底部"] {
         display: none !important;
       }
       .print-area {
@@ -44,14 +72,119 @@
         padding: 0 !important;
         box-shadow: none !important;
         border: none !important;
+        display: block !important;
       }
-      /* 確保食材清單在換頁時不會被切斷 */
-      li, .bg-white {
+      /* 食材數據精確對齊 */
+      .print-data-group {
+        width: 130px !important;
+        display: flex !important;
+        align-items: baseline !important;
+        margin-left: auto !important;
+        flex-shrink: 0 !important;
+      }
+      .print-weight-cell {
+        flex: 1 !important;
+        text-align: right !important;
+        padding-right: 15px !important;
+        white-space: nowrap !important;
+      }
+      .print-percent-cell {
+        width: 55px !important;
+        text-align: right !important;
+        white-space: nowrap !important;
+      }
+      /* 確保內容區塊不會被隨意分頁，且移除冗餘高度 */
+      .bg-white, .rounded-\[32px\], .rounded-\[40px\], .recipe-card {
+        height: auto !important;
+        min-height: auto !important;
         page-break-inside: avoid;
+        margin-bottom: 0.25rem !important;
+        padding: 0.5rem !important;
       }
       h2, h3, h4 {
         page-break-after: avoid;
+        margin-top: 0.15rem !important;
+        margin-bottom: 0.15rem !important;
+        font-weight: bold !important;
       }
+      h2 { font-size: 18pt !important; }
+      h3 { font-size: 15pt !important; }
+      h4 { font-size: 13pt !important; }
+
+      /* 強制背景容器自適應內容 */
+      div[class*="min-h-screen"], div[class*="min-h-0"] {
+        min-height: auto !important;
+        height: auto !important;
+      }
+      /* 防止網址溢出並隱藏拉桿 */
+      .print-nowrap-to-wrap {
+        white-space: pre-wrap !important;
+        word-break: break-all !important;
+        overflow: hidden !important;
+      }
+      /* 緊湊化食材表格 */
+      .print-grid-2 {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 0.15rem 1.5rem !important;
+      }
+      /* 列印表格樣式 */
+      .print-table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        font-size: 10pt !important;
+        margin-top: 0.25rem !important;
+      }
+      .print-table th, .print-table td {
+        border: 1px solid #e2e8f0 !important;
+        padding: 3px 5px !important;
+        text-align: left !important;
+        line-height: 1.2 !important;
+      }
+      .print-table th {
+        background-color: #f8fafc !important;
+        font-weight: bold !important;
+      }
+      /* 圖片縮排 */
+      .print-float-img {
+        float: right !important;
+        width: 28% !important;
+        margin-left: 1rem !important;
+        margin-bottom: 0.5rem !important;
+        border-radius: 4px !important;
+      }
+      /* 縮小無限符號 */
+      .print-symbol-small {
+        font-size: 14px !important;
+        opacity: 0.7 !important;
+      }
+      /* 製作步驟緊湊化 */
+      .print-steps-compact {
+        gap: 0.25rem !important;
+      }
+    }
+
+    /* 訂閱彈窗美化拉桿 - 感應式增厚 */
+    .modern-scrollbar::-webkit-scrollbar {
+      width: 4px;
+      transition: width 0.3s ease;
+    }
+    .modern-scrollbar:hover::-webkit-scrollbar {
+      width: 10px;
+    }
+    .modern-scrollbar::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.03);
+      border-radius: 10px;
+    }
+    .modern-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(139, 94, 61, 0.2);
+      border-radius: 10px;
+      border: 1px solid transparent;
+      background-clip: content-box;
+    }
+    .modern-scrollbar:hover::-webkit-scrollbar-thumb {
+      background: #FF6600;
+      border: 2px solid rgba(255, 255, 255, 0.1);
     }
   </style>
 </head>

@@ -7,6 +7,7 @@
       "properties": {
         "id": { "type": "string" },
         "uid": { "type": "string", "description": "User ID of the owner" },
+        "author_id": { "type": "string", "description": "User ID of the creator/owner (matches uid)" },
         "title": { "type": "string" },
         "category": { "type": "string" },
         "quantity": { "type": "number" },

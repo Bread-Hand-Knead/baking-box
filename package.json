@@ -16,13 +16,16 @@
     "firebase": "^12.11.0",
     "lucide-react": "^1.7.0",
     "motion": "^12.38.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "vite-plugin-pwa": "^1.2.0"
   },
   "devDependencies": {
+    "@firebase/eslint-plugin-security-rules": "^0.0.2",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "eslint": "^10.2.1",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }
