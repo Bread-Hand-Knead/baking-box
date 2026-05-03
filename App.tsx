@@ -568,14 +568,11 @@ const DisplayIngredientSection: React.FC<{
         )}
       </div>
       <div className="space-y-0 print:grid-1">
-        {/* 表頭 (僅桌面版，PDF中隱藏以省空間) */}
-        <div className="hidden sm:flex items-center px-6 py-4 border-b border-orange-100/50 text-xs font-black text-slate-500 uppercase tracking-widest bg-orange-50/30 rounded-t-2xl print:hidden">
-          <div className="flex-1 min-w-0">材料名稱</div>
-          <div className="flex shrink-0 items-center justify-end">
-            {/* 重量欄位：w-44 (176px)，pr-10 (40px)，實際居中範圍 136px */}
-            <div className="w-44 text-center pr-10">重量 (G)</div>
-            {isBaking && showPercentage && <div className="w-32 text-center pr-4">百分比 (%)</div>}
-          </div>
+        {/* 表頭 (PDF中隱藏以省空間) */}
+        <div className="flex items-center px-4 md:px-6 py-4 border-b border-orange-100/50 text-lg md:text-xs font-black text-slate-500 uppercase tracking-widest bg-orange-50/30 rounded-t-2xl print:hidden gap-1">
+          <div className="flex-[4] px-1 truncate">材料名稱</div>
+          <div className="flex-[3] text-center px-1">重量 (G)</div>
+          {isBaking && showPercentage && <div className="flex-[3] text-center px-1">百分比 (%)</div>}
         </div>
 
         {ingredients.map((ing, idx) => {
@@ -590,7 +587,7 @@ const DisplayIngredientSection: React.FC<{
           return (
             <div key={`scaling-ing-${idx}`} className={`flex flex-col md:flex-row md:items-center py-4 md:py-3 border-b border-orange-50/50 last:border-0 px-2 md:px-6 hover:bg-orange-50/20 transition-colors rounded-2xl gap-3 md:gap-0 mb-3 md:mb-0 print:mb-0 print:py-0.5 print:border-slate-100 print:rounded-none print:hover:bg-transparent print:flex-row print:items-center ${isBase ? 'bg-orange-50/50 border-orange-200 print:bg-transparent print:border-slate-100' : ''}`}>
               {/* 第一行：材料名稱 */}
-              <div className="flex items-start gap-4 flex-1 min-w-0 w-full px-1 md:px-0 pt-1 print:gap-1 print:flex-1 print:pt-0">
+              <div className="flex items-start gap-4 flex-1 md:flex-[3] min-w-0 w-full px-1 md:px-2 pt-1 print:gap-1 print:flex-[3] print:pt-0">
                 <span className={`shrink-0 w-3 h-3 rounded-full mt-2 print:w-1.5 print:h-1.5 print:mt-1 ${ing.isFlour ? 'bg-orange-500 shadow-[0_0_8px_rgba(230,126,34,0.4)] print:bg-slate-400' : 'bg-slate-200'}`} />
                 <span className="text-slate-800 font-black text-lg md:text-[1.1rem] leading-snug whitespace-pre-wrap break-words print:text-[12px] print:font-bold">
                   {ing.name}
@@ -598,52 +595,45 @@ const DisplayIngredientSection: React.FC<{
                 </span>
               </div>
 
-              {/* 第二行 (手機版) / 數據列 (電腦版) */}
-              <div className="flex shrink-0 items-center justify-between md:justify-end w-full md:w-auto pl-7 md:pl-0 px-2 md:px-0 print-data-group gap-3 md:gap-0">
-                {/* 重量欄位：寬度與標題嚴格對齊 */}
-                <div className="flex-1 md:flex-none md:w-44 flex justify-start md:justify-center items-center shrink-0 md:pr-10 print:pr-0 print-weight-cell">
-                  <div className="flex items-baseline justify-start md:justify-center w-full">
-                    <div className="flex items-baseline gap-1 min-w-[120px] md:min-w-0 justify-end md:justify-center">
-                      {onReverseScale && isWeight ? (
-                        <div className="relative flex items-center print:hidden">
-                          {/* 輸入框固定寬度 w-24 (96px)，數值居中 */}
-                          <div className="relative flex items-center">
-                            <input 
-                              type="number" 
-                              step="0.1"
-                              value={scaledAmt.toFixed(1).replace(/\.0$/, '')} 
-                              onChange={(e) => onReverseScale(idx, parseFloat(e.target.value) || 0)}
-                              className={`w-24 px-2 py-1.5 bg-white border-2 rounded-lg text-center font-black text-xl md:text-lg outline-none transition-all tabular-nums ${isBase ? 'border-orange-400 text-orange-600' : 'border-orange-100 focus:border-orange-300 text-slate-900'}`}
-                            />
-                            <span className="ml-2 text-sm font-bold text-slate-400 w-5 inline-block text-left">{ing.unit}</span>
-                          </div>
-                        </div>
-                      ) : null}
-                      
-                      {/* 列印時或非反向換算時顯示文本 */}
-                      <div className={`flex items-baseline justify-end md:justify-center relative ${onReverseScale && isWeight ? 'hidden md:flex print:flex' : 'flex'}`}>
-                        <div className="flex items-baseline md:justify-center min-w-[80px] md:min-w-0">
-                          <span className="text-slate-900 font-black text-2xl md:text-lg leading-none print:text-base print:font-bold tabular-nums">
-                            {isAdjustableAmt ? (ing.unit) : (numericAmt * scalingFactor).toFixed(1).replace(/\.0$/, '')}
-                          </span>
-                          {!isAdjustableAmt && (
-                            <span className="text-sm font-bold text-slate-400 ml-2 w-5 inline-block text-left print:text-[10px] print:font-normal print:ml-1">{ing.unit}</span>
-                          )}
-                        </div>
+              {/* 第二行：數據列 (重量與百分比) */}
+              <div className="flex shrink-0 items-center justify-between md:flex-[3.5] w-full md:w-auto pl-7 md:pl-0 px-2 md:px-0 print-data-group gap-4 md:gap-0">
+                {/* 重量欄位：精確對齊表頭 */}
+                <div className="flex-[2] flex justify-start md:justify-center items-center print-weight-cell">
+                  <div className="flex items-center justify-center w-full">
+                    {onReverseScale && isWeight ? (
+                      <div className="relative flex items-center print:hidden">
+                        <input 
+                          type="number" 
+                          step="0.1"
+                          value={scaledAmt.toFixed(1).replace(/\.0$/, '')} 
+                          onChange={(e) => onReverseScale(idx, parseFloat(e.target.value) || 0)}
+                          className={`w-28 px-2 py-1.5 bg-white border-2 rounded-lg text-center font-black text-xl md:text-lg outline-none transition-all tabular-nums ${isBase ? 'border-orange-400 text-orange-600' : 'border-orange-100 focus:border-orange-300 text-slate-900 shadow-sm'}`}
+                        />
+                        <span className="ml-2 text-sm font-bold text-slate-400 w-5 text-left">{ing.unit}</span>
                       </div>
+                    ) : null}
+                    
+                    {/* 徹底移除冗餘數值：非輸入模式或列印時顯示數值 */}
+                    <div className={`flex items-baseline justify-center min-w-[70px] md:min-w-0 ${onReverseScale && isWeight ? 'hidden print:flex' : 'flex'}`}>
+                      <span className="text-slate-900 font-black text-2xl md:text-lg print:text-base print:font-bold tabular-nums">
+                        {isAdjustableAmt ? (ing.unit) : (numericAmt * scalingFactor).toFixed(1).replace(/\.0$/, '')}
+                      </span>
+                      {!isAdjustableAmt && (
+                        <span className="text-sm font-bold text-slate-400 ml-2 w-5 text-left print:text-[10px] print:font-normal print:ml-1">{ing.unit}</span>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                {/* 百分比欄位 */}
+                {/* 百分比欄位：精確對齊表頭 */}
                 {isBaking && showPercentage && (
-                  <div className="flex-1 md:flex-none md:w-32 flex justify-end md:justify-center items-center shrink-0 print:pr-0 print-percent-cell">
+                  <div className="flex-[1.5] flex justify-end md:justify-center items-center print-percent-cell">
                     {percentage ? (
-                      <span className="text-sm md:text-base font-black px-4 py-2 rounded-xl bg-orange-50 text-orange-600 shadow-sm inline-block min-w-[80px] md:min-w-[90px] text-right md:text-center border border-orange-100/50 tabular-nums print:bg-transparent print:border-none print:px-0 print:py-0 print:text-[11px] print:text-slate-400 print:font-normal">
+                      <span className="text-sm md:text-base font-black px-4 py-2 rounded-xl bg-orange-50 text-orange-600 shadow-sm min-w-[85px] text-center border border-orange-100/50 tabular-nums print:bg-transparent print:border-none print:px-0 print:py-0 print:text-[11px] print:text-slate-400 print:font-normal">
                         ({percentage}%)
                       </span>
                     ) : (
-                      <div className="w-[80px] md:w-[90px] print:hidden" />
+                      <div className="min-w-[85px] print:hidden" />
                     )}
                   </div>
                 )}
@@ -1266,7 +1256,9 @@ const Sidebar: React.FC<{
             {/* Footer */}
             <div className="p-6 border-t border-orange-100/10 text-center space-y-2">
                <p className="text-[9px] text-slate-300 font-bold tracking-widest uppercase">版本 1.2.5 • 手作的溫度</p>
-               <p className="text-[11px] text-slate-400 opacity-60 font-medium">{COPYRIGHT_TEXT}</p>
+              <div className="text-[10px] font-bold text-slate-400 tracking-tighter text-center">
+                © 2026 Linda's Recipe Box. All rights reserved.
+              </div>
             </div>
           </motion.div>
         </>
