@@ -71,6 +71,7 @@ const AI_RECIPE_SCHEMA = {
     title: { type: "string" },
     master: { type: "string" },
     category: { type: "string" },
+    subcategory: { type: "string" },
     description: { type: "string" },
     ingredients: { type: "array", items: INGREDIENT_OBJECT_SCHEMA },
     liquidStarterIngredients: { type: "array", items: INGREDIENT_OBJECT_SCHEMA },
@@ -120,7 +121,7 @@ export interface Resource { id: string; title: string; url: string; category: st
 
 export interface Recipe {
   id: string; title: string; master: string; sourceName?: string; sourceUrl?: string; sourceLinks?: { name: string; url: string; }[]; sourceDate?: string; onlineCourse?: string; sourcePage?: string; sourceNote?: string; recordDate: string;
-  category: string; description: string; imageUrl: string; ingredients: Ingredient[]; instructions: string[];
+  category: string; subcategory?: string; description: string; imageUrl: string; ingredients: Ingredient[]; instructions: string[];
   mainSectionName?: string; liquidStarterName?: string; liquidStarterIngredients?: Ingredient[];
   fillingSectionName?: string; fillingIngredients?: Ingredient[];
   decorationSectionName?: string; decorationIngredients?: Ingredient[];
@@ -129,15 +130,135 @@ export interface Recipe {
   fermentationStages?: FermentationStage[]; bakingStages?: BakingStage[];
   notes?: string; tags?: string[]; moldName?: string;
   doughWeight?: number | string; crustWeight?: number | string; oilPasteWeight?: number | string; fillingWeight?: number | string;
+  relatedRecipeIds?: string[];
   quantity?: number; shelfLife?: string; totalDuration?: string; createdAt: number; updatedAt?: number; executionLogs?: ExecutionLog[];
   uid?: string;
   author_id?: string;
   bakingPercentage?: number | string;
 }
 
-interface Category { id: string; name: string; order: number; }
+interface Category { 
+  id: string; 
+  name: string; 
+  order: number; 
+  subcategories?: { id: string; name: string; order: number; }[];
+}
 
 // --- 2. 內部小組件 (原 components 內容) ---
+
+// --- Related Recipes Section ---
+const RelatedRecipesSection: React.FC<{
+  currentRecipe: Recipe;
+  allRecipes: Recipe[];
+  onLink: (recipeId: string, relatedId: string) => void;
+  onUnlink: (recipeId: string, relatedId: string) => void;
+  onJump: (recipe: Recipe) => void;
+}> = ({ currentRecipe, allRecipes, onLink, onUnlink, onJump }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  // 排除自己以及已經關聯的食譜
+  const filteredOptions = allRecipes.filter(r => 
+    r.id !== currentRecipe.id && 
+    !(currentRecipe.relatedRecipeIds || []).includes(r.id) &&
+    (r.title.toLowerCase().includes(searchTerm.toLowerCase()) || r.master.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  const linkedRecipes = allRecipes.filter(r => (currentRecipe.relatedRecipeIds || []).includes(r.id));
+
+  return (
+    <div className="bg-white p-8 rounded-[40px] border-2 border-orange-50 shadow-sm space-y-6 print:hidden">
+      <div className="flex justify-between items-center px-2">
+        <h3 className="text-xl font-black text-slate-800 flex items-center gap-3">
+          <span className="w-2 h-8 bg-orange-500 rounded-full"></span>
+          🔗 關聯食譜
+        </h3>
+        <div className="relative">
+          <button 
+            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+            className="px-6 py-2.5 bg-orange-50 text-orange-600 rounded-2xl border border-orange-100 font-black text-sm hover:bg-orange-100 transition-all flex items-center gap-2"
+          >
+            <span>➕ 連結現有食譜</span>
+          </button>
+          
+          {isDropdownOpen && (
+            <div className="absolute right-0 mt-3 w-72 bg-white rounded-3xl shadow-2xl border border-orange-100 z-[100] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+              <div className="p-4 border-b border-orange-50 bg-orange-50/20">
+                <input 
+                  type="text" 
+                  placeholder="搜尋食譜或師傅..." 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full px-4 py-2 bg-white border border-orange-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-orange-200"
+                  autoFocus
+                />
+              </div>
+              <div className="max-h-60 overflow-y-auto p-2 custom-scrollbar">
+                {filteredOptions.length > 0 ? (
+                  filteredOptions.map(r => (
+                    <button 
+                      key={r.id}
+                      onClick={() => {
+                        onLink(currentRecipe.id, r.id);
+                        setIsDropdownOpen(false);
+                        setSearchTerm('');
+                      }}
+                      className="w-full text-left px-4 py-3 hover:bg-orange-50 rounded-2xl transition-all flex items-center gap-3 group"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-slate-100 overflow-hidden shrink-0 border border-slate-200 group-hover:border-orange-200 transition-all">
+                        <img src={r.imageUrl || 'https://picsum.photos/100/100?random=' + r.id} className="w-full h-full object-cover" alt={r.title} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-black text-slate-700 text-sm truncate">{r.title}</p>
+                        <p className="text-[10px] font-bold text-slate-400">{r.master}</p>
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <p className="p-8 text-center text-sm font-bold text-slate-400 italic">找不要其他配方呢 🥣</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {linkedRecipes.length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          {linkedRecipes.map(r => (
+            <div key={r.id} className="group relative bg-orange-50/30 rounded-3xl p-4 border border-orange-100 hover:border-orange-300 hover:bg-orange-50 hover:shadow-lg hover:shadow-orange-100 transition-all">
+              <button 
+                onClick={() => onJump(r)}
+                className="w-full h-full flex items-center gap-4 text-left"
+              >
+                <div className="w-14 h-14 rounded-2xl overflow-hidden border-2 border-white shadow-sm shrink-0">
+                  <img src={r.imageUrl || 'https://picsum.photos/150/150?random=' + r.id} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={r.title} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className="text-[9px] font-black text-orange-400 uppercase tracking-widest">{r.category}</span>
+                  <p className="font-black text-slate-800 text-sm truncate leading-tight group-hover:text-orange-600 transition-colors">{r.title}</p>
+                  <p className="text-[10px] font-bold text-slate-500 mt-0.5">{r.master}</p>
+                </div>
+              </button>
+              <button 
+                onClick={() => onUnlink(currentRecipe.id, r.id)}
+                className="absolute -top-2 -right-2 w-7 h-7 bg-white text-slate-400 hover:text-red-500 border border-slate-200 rounded-full flex items-center justify-center text-xs shadow-md transition-all opacity-0 group-hover:opacity-100 hover:scale-110 z-10"
+                title="取消關聯"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="p-12 border-2 border-dashed border-orange-100 rounded-[32px] text-center space-y-3">
+          <p className="text-4xl">🖇️</p>
+          <p className="text-sm font-bold text-slate-400 italic">目前尚未關聯其他食譜，快去連結關聯的麵種或餡料吧！</p>
+        </div>
+      )}
+    </div>
+  );
+};
 const ConfirmDialog: React.FC<{
   isOpen: boolean;
   title: string;
@@ -453,10 +574,75 @@ const DEFAULT_SECTIONS_ORDER = [
 ];
 
 const DEFAULT_CATEGORIES: Category[] = [
-  { id: 'cat-1', name: '麵包', order: 0 }, { id: 'cat-2', name: '蛋糕', order: 1 },
-  { id: 'cat-3', name: '點心', order: 2 }, { id: 'cat-4', name: '餡料', order: 3 },
-  { id: 'cat-5', name: '抹醬/其他', order: 4 }, { id: 'cat-6', name: '中式點心', order: 5 },
-  { id: 'cat-7', name: '果醬', order: 6 }
+  { 
+    id: 'cat-1', name: '麵包', order: 0,
+    subcategories: [
+      { id: 'sub-1-1', name: '吐司', order: 0 },
+      { id: 'sub-1-2', name: '歐式', order: 1 },
+      { id: 'sub-1-3', name: '日式', order: 2 },
+      { id: 'sub-1-4', name: '甜麵包', order: 3 },
+      { id: 'sub-1-5', name: '貝果', order: 4 },
+      { id: 'sub-1-6', name: '法混', order: 5 },
+      { id: 'sub-1-7', name: '中種/液種', order: 6 }
+    ]
+  },
+  { 
+    id: 'cat-2', name: '蛋糕', order: 1,
+    subcategories: [
+      { id: 'sub-2-1', name: '戚風', order: 0 },
+      { id: 'sub-2-2', name: '海綿', order: 1 },
+      { id: 'sub-2-3', name: '磅蛋糕', order: 2 },
+      { id: 'sub-2-4', name: '生乳捲', order: 3 },
+      { id: 'sub-2-5', name: '起司蛋糕', order: 4 },
+      { id: 'sub-2-6', name: '慕斯', order: 5 }
+    ]
+  },
+  { 
+    id: 'cat-3', name: '點心', order: 2, 
+    subcategories: [
+      { id: 'sub-3-1', name: '餅乾', order: 0 },
+      { id: 'sub-3-2', name: '塔派', order: 1 },
+      { id: 'sub-3-3', name: '常溫蛋糕', order: 2 },
+      { id: 'sub-3-4', name: '泡芙', order: 3 },
+      { id: 'sub-3-5', name: '巧克力', order: 4 },
+      { id: 'sub-3-6', name: '馬卡龍', order: 5 }
+    ] 
+  },
+  { 
+    id: 'cat-4', name: '餡料', order: 3, 
+    subcategories: [
+      { id: 'sub-4-1', name: '克林姆', order: 0 },
+      { id: 'sub-4-2', name: '豆沙', order: 1 },
+      { id: 'sub-4-3', name: '芋泥', order: 2 },
+      { id: 'sub-4-4', name: '水果餡', order: 3 },
+      { id: 'sub-4-5', name: '甘那許', order: 4 }
+    ] 
+  },
+  { 
+    id: 'cat-5', name: '抹醬/其他', order: 4, 
+    subcategories: [
+      { id: 'sub-5-1', name: '手工抹醬', order: 0 },
+      { id: 'sub-5-2', name: '糖醬', order: 1 },
+      { id: 'sub-5-3', name: '淋醬', order: 2 }
+    ] 
+  },
+  { 
+    id: 'cat-6', name: '中式點心', order: 5, 
+    subcategories: [
+      { id: 'sub-6-1', name: '月餅', order: 0 },
+      { id: 'sub-6-2', name: '蛋黃酥', order: 1 },
+      { id: 'sub-6-3', name: '饅頭', order: 2 },
+      { id: 'sub-6-4', name: '包子', order: 3 },
+      { id: 'sub-6-5', name: '酥餅', order: 4 }
+    ] 
+  },
+  { 
+    id: 'cat-7', name: '果醬', order: 6, 
+    subcategories: [
+      { id: 'sub-7-1', name: '單一果醬', order: 0 },
+      { id: 'sub-7-2', name: '複合果醬', order: 1 }
+    ] 
+  }
 ];
 
 const DEFAULT_KNOWLEDGE: Knowledge[] = [
@@ -569,10 +755,12 @@ const DisplayIngredientSection: React.FC<{
       </div>
       <div className="space-y-0 print:grid-1">
         {/* 表頭 (PDF中隱藏以省空間) */}
-        <div className="flex items-center px-4 md:px-6 py-4 border-b border-orange-100/50 text-lg md:text-xs font-black text-slate-500 uppercase tracking-widest bg-orange-50/30 rounded-t-2xl print:hidden gap-1">
-          <div className="flex-[4] px-1 truncate">材料名稱</div>
-          <div className="flex-[3] text-center px-1">重量 (G)</div>
-          {isBaking && showPercentage && <div className="flex-[3] text-center px-1">百分比 (%)</div>}
+        <div className="flex items-center px-2 md:px-6 py-4 border-b border-orange-100/50 text-[18px] font-black text-slate-500 uppercase tracking-widest bg-orange-50/30 rounded-t-2xl print:hidden gap-0 mb-2 md:mb-0 overflow-hidden flex-nowrap">
+          <div className="flex-[4] px-1 truncate shrink-0">材料名稱</div>
+          <div className="flex-[6] flex items-center justify-between shrink-0 gap-0 pr-0">
+            <div className="flex-[3] text-center px-1 whitespace-nowrap min-w-[70px]">重量 (G)</div>
+            {isBaking && showPercentage && <div className="flex-[2] text-center px-1 whitespace-nowrap min-w-[100px]">百分比 (%)</div>}
+          </div>
         </div>
 
         {ingredients.map((ing, idx) => {
@@ -585,22 +773,22 @@ const DisplayIngredientSection: React.FC<{
           const isBase = baseIngredientIndex === idx;
 
           return (
-            <div key={`scaling-ing-${idx}`} className={`flex flex-col md:flex-row md:items-center py-4 md:py-3 border-b border-orange-50/50 last:border-0 px-2 md:px-6 hover:bg-orange-50/20 transition-colors rounded-2xl gap-3 md:gap-0 mb-3 md:mb-0 print:mb-0 print:py-0.5 print:border-slate-100 print:rounded-none print:hover:bg-transparent print:flex-row print:items-center ${isBase ? 'bg-orange-50/50 border-orange-200 print:bg-transparent print:border-slate-100' : ''}`}>
+            <div key={`scaling-ing-${idx}`} className={`flex flex-col md:flex-row md:items-center py-4 border-b border-orange-50/50 last:border-0 px-2 md:px-6 hover:bg-orange-50/20 transition-colors rounded-2xl gap-3 md:gap-0 mb-3 md:mb-0 print:mb-0 print:py-0.5 print:border-slate-100 print:rounded-none print:hover:bg-transparent print:flex-row print:items-center ${isBase ? 'bg-orange-50/50 border-orange-200 print:bg-transparent print:border-slate-100' : ''}`}>
               {/* 第一行：材料名稱 */}
-              <div className="flex items-start gap-4 flex-1 md:flex-[3] min-w-0 w-full px-1 md:px-2 pt-1 print:gap-1 print:flex-[3] print:pt-0">
+              <div className="flex items-start gap-4 w-full md:flex-[4] px-1 pt-1 print:gap-1 print:flex-[3] print:pt-0">
                 <span className={`shrink-0 w-3 h-3 rounded-full mt-2 print:w-1.5 print:h-1.5 print:mt-1 ${ing.isFlour ? 'bg-orange-500 shadow-[0_0_8px_rgba(230,126,34,0.4)] print:bg-slate-400' : 'bg-slate-200'}`} />
-                <span className="text-slate-800 font-black text-lg md:text-[1.1rem] leading-snug whitespace-pre-wrap break-words print:text-[12px] print:font-bold">
+                <span className="text-slate-800 font-black text-lg leading-snug whitespace-pre-wrap break-words print:text-[12px] print:font-bold">
                   {ing.name}
                   {isBase && <span className="inline-flex items-center ml-2 text-orange-500 text-sm print:hidden" title="基準材料">⚖️</span>}
                 </span>
               </div>
 
-              {/* 第二行：數據列 (重量與百分比) */}
-              <div className="flex shrink-0 items-center justify-between md:flex-[3.5] w-full md:w-auto pl-7 md:pl-0 px-2 md:px-0 print-data-group gap-4 md:gap-0">
+              {/* 第二行：數據列 (重量與百分比) 併排顯示 */}
+              <div className="flex shrink-0 items-center justify-between md:flex-[6] w-full md:w-auto pl-7 md:pl-0 px-2 md:px-0 print-data-group gap-0">
                 {/* 重量欄位：精確對齊表頭 */}
-                <div className="flex-[2] flex justify-start md:justify-center items-center print-weight-cell">
+                <div className="flex-[3] flex justify-start md:justify-center items-center print-weight-cell">
                   <div className="flex items-center justify-center w-full">
-                    {onReverseScale && isWeight ? (
+                    {onReverseScale && isWeight && (
                       <div className="relative flex items-center print:hidden">
                         <input 
                           type="number" 
@@ -611,11 +799,10 @@ const DisplayIngredientSection: React.FC<{
                         />
                         <span className="ml-2 text-sm font-bold text-slate-400 w-5 text-left">{ing.unit}</span>
                       </div>
-                    ) : null}
+                    )}
                     
-                    {/* 徹底移除冗餘數值：非輸入模式或列印時顯示數值 */}
-                    <div className={`flex items-baseline justify-center min-w-[70px] md:min-w-0 ${onReverseScale && isWeight ? 'hidden print:flex' : 'flex'}`}>
-                      <span className="text-slate-900 font-black text-2xl md:text-lg print:text-base print:font-bold tabular-nums">
+                    <div className={`flex items-baseline justify-center min-w-[70px] md:min-w-0 ${(onReverseScale && isWeight) ? 'hidden print:flex' : 'flex'}`}>
+                      <span className={`text-2xl md:text-lg font-black tabular-nums print:text-[11px] print:font-normal ${isBase ? 'text-orange-600' : 'text-slate-700'}`}>
                         {isAdjustableAmt ? (ing.unit) : (numericAmt * scalingFactor).toFixed(1).replace(/\.0$/, '')}
                       </span>
                       {!isAdjustableAmt && (
@@ -627,7 +814,7 @@ const DisplayIngredientSection: React.FC<{
 
                 {/* 百分比欄位：精確對齊表頭 */}
                 {isBaking && showPercentage && (
-                  <div className="flex-[1.5] flex justify-end md:justify-center items-center print-percent-cell">
+                  <div className="flex-[2] flex justify-end md:justify-center items-center print-percent-cell min-w-[100px]">
                     {percentage ? (
                       <span className="text-sm md:text-base font-black px-4 py-2 rounded-xl bg-orange-50 text-orange-600 shadow-sm min-w-[85px] text-center border border-orange-100/50 tabular-nums print:bg-transparent print:border-none print:px-0 print:py-0 print:text-[11px] print:text-slate-400 print:font-normal">
                         ({percentage}%)
@@ -1037,9 +1224,10 @@ const Sidebar: React.FC<{
   weeklyCount: number;
   onUpgrade: () => void;
   onShowInstructions: () => void;
+  onShowHelp: () => void;
   isVip: boolean;
   aiUsage: { count: number };
-}> = ({ isOpen, onClose, user, onLogin, onLogout, subscriptionStatus, isAdmin, isVip, recipeCount, onUpgrade, onShowInstructions, aiUsage }) => {
+}> = ({ isOpen, onClose, user, onLogin, onLogout, subscriptionStatus, isAdmin, isVip, recipeCount, onUpgrade, onShowInstructions, onShowHelp, aiUsage }) => {
   const isPremiumUser = isVip || isAdmin || subscriptionStatus === 'active';
 
   return (
@@ -1065,10 +1253,8 @@ const Sidebar: React.FC<{
             {/* Header / Logo Branding */}
             <div className="p-8 pb-4 flex flex-col items-center">
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-3xl">🍞</span>
-                <h1 className="text-[#8B5E3C] font-black text-2xl tracking-tighter">Linda's</h1>
+                <h1 className="text-[#8B5E3C] font-black text-2xl tracking-tighter whitespace-nowrap">🍞 Linda's Recipe Box</h1>
               </div>
-              <h2 className="text-[#A67C52] font-black text-xs tracking-[0.3em] uppercase opacity-70">Recipe Box</h2>
             </div>
 
             {/* Combined Info Block */}
@@ -1199,13 +1385,24 @@ const Sidebar: React.FC<{
               <div className="space-y-1">
                 <button 
                   onClick={() => {
+                    onShowHelp();
+                    onClose();
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-orange-600 font-black text-sm hover:bg-orange-50 rounded-xl transition-all group border border-orange-100/50 shadow-sm"
+                >
+                  <div className="w-5 h-5 flex items-center justify-center text-base">❓</div>
+                  <span>使用教學 / 快速上手</span>
+                </button>
+
+                <button 
+                  onClick={() => {
                     onShowInstructions();
                     onClose();
                   }}
                   className="w-full flex items-center gap-3 px-4 py-3 text-[#8B5E3C] font-black text-sm hover:bg-orange-50/50 rounded-xl transition-all group"
                 >
                   <div className="w-5 h-5 flex items-center justify-center text-base">📖</div>
-                  <span>使用說明</span>
+                  <span>大師筆記小撇步</span>
                 </button>
 
                 <button 
@@ -1253,6 +1450,14 @@ const Sidebar: React.FC<{
               </div>
             </div>
 
+            {/* 廣告位 placeholder (僅在免費版顯示) */}
+            {!isPremiumUser && (
+              <div className="mx-6 mb-6 mt-4 h-[100px] bg-[#F2E8DB]/30 rounded-2xl flex flex-col items-center justify-center border-2 border-dashed border-[#E8DCCB]/60 shadow-sm shrink-0">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">廣告位</span>
+                <span className="text-[9px] font-bold text-slate-400 mt-1">(免費版限定)</span>
+              </div>
+            )}
+
             {/* Footer */}
             <div className="p-6 border-t border-orange-100/10 text-center space-y-2">
                <p className="text-[9px] text-slate-300 font-bold tracking-widest uppercase">版本 1.2.5 • 手作的溫度</p>
@@ -1286,6 +1491,7 @@ const App: React.FC = () => {
   const [subscriptionStatus, setSubscriptionStatus] = useState<'free' | 'active'>('free');
   const [subTypeLabel, setSubTypeLabel] = useState('一般用戶');
   const [aiUsage, setAiUsage] = useState({ date: '', count: 0 });
+  const [newSubCatInputs, setNewSubCatInputs] = useState<Record<string, string>>({});
   const [isCloudSyncEnabled, setIsCloudSyncEnabled] = useState(false);
   const [view, setView] = useState<AppView>(AppView.LIST);
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
@@ -1293,6 +1499,7 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showUserStatus, setShowUserStatus] = useState(false);
   const [isInstructionsOpen, setIsInstructionsOpen] = useState(false);
+  const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [suppressUpgradeModal, setSuppressUpgradeModal] = useState(false);
 
   const recipeStats = useMemo(() => {
@@ -1348,6 +1555,7 @@ const App: React.FC = () => {
   }, [searchQuery]);
 
   const [activeCategory, setActiveCategory] = useState<string>('全部');
+  const [activeSubCategory, setActiveSubCategory] = useState<string>('');
   const [sortBy, setSortBy] = useState<'createdAt' | 'updatedAt' | 'category' | 'title'>('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [isAiParsing, setIsAiParsing] = useState(false);
@@ -1467,6 +1675,8 @@ const App: React.FC = () => {
         if (localKnowledge) setKnowledge(JSON.parse(localKnowledge));
         const localSteps = localStorage.getItem(COMPLETED_STEPS_KEY);
         if (localSteps) setCompletedSteps(JSON.parse(localSteps));
+        const localUsage = localStorage.getItem('local_ai_usage');
+        if (localUsage) setAiUsage(JSON.parse(localUsage));
         setIsSettingsReady(true);
       }
       return;
@@ -1861,10 +2071,10 @@ const App: React.FC = () => {
     calculateUsage();
   }, [recipes, isPremiumUser, user]);
 
-  const extractHashtags = (text: string): string[] => {
-    if (!text) return [];
+  const extractHashtags = (text: any): string[] => {
+    const safeText = String(text || '');
     const hashRegex = /#([\w\u4e00-\u9fa5]+)/g;
-    const matches = text.match(hashRegex);
+    const matches = safeText.match(hashRegex);
     return matches ? matches.map(m => m.slice(1)) : [];
   };
 
@@ -1918,7 +2128,11 @@ const App: React.FC = () => {
         activeCategory === '全部' ? true :
         activeCategory === '⏳ 待嘗試' ? r.isTried :
         r.category === activeCategory;
-      return matchSearch && matchCategory;
+
+      const matchSubCategory = 
+        !activeSubCategory || r.subcategory === activeSubCategory;
+
+      return matchSearch && matchCategory && matchSubCategory;
     }).sort((a, b) => {
       let comparison = 0;
       if (sortBy === 'createdAt') {
@@ -1934,7 +2148,7 @@ const App: React.FC = () => {
       }
       return sortOrder === 'desc' ? -comparison : comparison;
     });
-  }, [recipes, debouncedSearchQuery, activeCategory, sortBy, sortOrder]);
+  }, [recipes, debouncedSearchQuery, activeCategory, activeSubCategory, sortBy, sortOrder]);
 
   const scalingRecipe = useMemo(() => recipes.find(r => r.id === scalingRecipeId), [recipes, scalingRecipeId]);
   
@@ -2115,44 +2329,39 @@ const App: React.FC = () => {
 
         const client = new GoogleGenerativeAI(apiKey);
         const model = client.getGenerativeModel({ 
-          model: "models/gemini-2.5-flash",
-          generationConfig: { responseMimeType: "application/json" }
+          model: "models/gemini-3-flash-preview",
+          generationConfig: { 
+            responseMimeType: "application/json",
+            responseSchema: AI_MULTI_RECIPE_SCHEMA as any
+          }
         });
 
-        console.log('[AI] Using model path: models/gemini-2.5-flash');
+        console.log('[AI] Using model path: models/gemini-3-flash-preview');
 
         const prompt = `你是一個專業且極具適應力的烘焙食譜解析助手。
         請從下方的【筆記內容】中識別並提取烘焙食譜資訊。
         
-        【重要指引】：
-        1. 內容可能包含大量的表情符號、小叮嚀、閒聊或不規則的換行，請無視這些噪音，專注於提取食譜的核心結構（標題、材料、步驟）。
-        2. 只要內容中偵測到「數字 + 單位（如 g, ml, 份, tsp, tbsp）」的組合，通常表示這是有效的食譜材料，請務必盡力解析。
-        3. 烘焙食譜常包含多個區塊（例如：中種、主麵糰、內餡、抹面、裝飾），請務必將這些區塊資料分別提取到對應的欄位中。
-        4. 請務必識別出以下特殊資訊：
-           - 食譜簡介 (description)：筆記開頭通常有一段感性描述、食譜來源背景或作者的真心推薦。
-           - 小叮嚀 (notes)：筆記中關於「💡 小技巧」、「注意」、「Tips」或是作者額外補充的技術細節。
-           - 規格重量：若筆記中有提到「麵糰/皮/主體」的每顆克數，請放入 doughWeight；若提到「內餡/餡」的每顆克數，請放入 fillingWeight。僅提取數字部分。
-        5. 請確保輸出是一個可以用 JSON.parse() 直接解析的純 JSON 對象。
+        【核心目標】：
+        1. 專注提取核心結構：『食譜名稱』、『材料』、『步驟』與『大師/師傅名稱』。
+        2. 烤溫與發酵資訊智慧識別與自動對應：
+           - 仔細過濾筆記文字中的「烤溫/烘烤參數」（例如：上火 210°C / 下火 190°C、180度、烤 12 分鐘、烘焙時間等）與「發酵資訊」（例如：基本發酵 60 分鐘、最後發酵 50 分、冷藏發酵 12~16 小時等）。
+           - 將這些數據精確填入 "bakingStages" 與 "fermentationStages" 中：
+             - bakingStages 每個元素應為包含: "name" (例如: 烘烤, 預熱等), "topHeat" (僅數字、文字，不要包含°C字眼), "bottomHeat" (僅數字、文字，不要包含°C字眼), "time" (時間數值, 如: 12, 25), "timeUnit" ("分鐘" 或 "小時"), "note" 的物件。如果是單一溫度不分上下火，或只有一組溫度，請同時填入 topHeat 與 bottomHeat 或填入 note。
+             - fermentationStages 每個元素應為包含: "name" (例如: 基本發酵, 最後發酵, 中間發酵等), "time" (時間數值, 如: 60, 50, 12), "timeUnit" ("分鐘" 或 "小時"), "temperature" (溫度，如: 28, 32-35), "humidity" (濕度，如: 75%, 85%), "note" 的物件。
+           - ⚠️ 烤溫與發酵參數一旦被提取成階段欄位，請不要再將它們混雜在材料清單或一般步驟文字裡，使系統結構更乾淨。
+        3. 數據清洗：請移除與食譜無關的個人心情、廣告文字、日期、無效標記或瑣碎碎念。
+        4. 解析韌性 (Resilience)：
+           - 若遇到格式模糊、沒有明確比例的配方，請優先以【總麵粉/粉類重量 = 100%】的烘焙百分比邏輯進行逆推計算。
+           - 任何包含「數字 + 單位（g, ml, %, 份）」的組合皆視為有效材料。
+        5. 區塊辨識：烘焙常包含中種、主麵糰、內餡、抹面等區塊，請分別提取。
+        6. 規格重量：若提到「麵糰/皮/主體」的單顆克數，存入 doughWeight；若提到「內餡/餡」的單顆克數，存入 fillingWeight。僅提取純數字。
         
         【筆記內容】：
         ${smartPasteText}
         
         【輸出要求】：
-        1. 請務必回傳純 JSON 格式，不要包含任何 Markdown 標籤或是 code block 符號。
-        2. 根節點必須是一個名為 "recipes" 的陣列。
-        3. 每個食譜物件必須包含:
-           - title (食譜名稱)
-           - description (食譜感性簡介，若無則留空)
-           - notes (小叮嚀或技術細節，若無則留空)
-           - doughWeight (麵糰或皮的重量數字，若無則留空)
-           - fillingWeight (內餡重量數字，若無則留空)
-           - ingredients (陣列, 包含 name, amount, unit)
-           - instructions (陣列, 包含步驟字串)
-           - liquidStarterIngredients (如有中種區塊，請放入此陣列)
-           - fillingIngredients (如有內餡區塊，請放入此陣列)
-           - decorationIngredients (如有裝飾區塊，請放入此陣列)
-           - customSectionIngredients (如有其他自定義區塊，請放入此陣列)
-        4. 即使格式混亂，也請嘗試將內容對應到最接近的欄位。
+        - 必須回傳純 JSON 格式，根節點名為 "recipes" (陣列)。
+        - 每個物件包含: title, description, notes, master, category, subcategory, doughWeight, fillingWeight, ingredients (name, amount, unit), instructions (字串陣列), liquidStarterIngredients, fillingIngredients, decorationIngredients, customSectionIngredients, fermentationStages, bakingStages。
         `;
 
         // 實作超時保護 (60s)
@@ -2182,10 +2391,13 @@ const App: React.FC = () => {
           (r.customSectionIngredients?.length || 0) > 0
         );
 
+        setIsAiParsing(false); // Move cleanup before returns
+
         if (recipesFound.length === 0) {
           console.warn('[AI] No recipes identified. Results:', parsed);
           console.log('[AI] Raw Output for debugging:', textOutput);
           showToast("未能識別出有效食譜，請確認內容是否包含材料量 (如 100g)");
+          return false;
         } else {
           console.log('[AI] Parsing Success');
           if (recipesFound.length === 1) {
@@ -2193,10 +2405,8 @@ const App: React.FC = () => {
           } else {
             setAiPreviewData(recipesFound);
           }
+          return true;
         }
-        
-        lastError = null;
-        break; // Success
       } catch (err: any) {
         lastError = err;
         const code = err?.message || "UNKNOWN_ERROR";
@@ -2242,6 +2452,7 @@ const App: React.FC = () => {
     }
 
     setIsAiParsing(false);
+    return false;
   };
 
   const handleSmartPaste = async () => {
@@ -2256,15 +2467,34 @@ const App: React.FC = () => {
       }
     }
     
-    await proceedWithAIParse();
+    const success = await proceedWithAIParse();
     
-    // 解析成功後，若非 Premium 則更新次數
-    if (!isPremiumUser) {
+    // 解析成功後，更新次數 (所有用戶皆紀錄，不論是否為進階用戶)
+    if (success) {
       const thisMonth = getThisMonthString();
       const newUsage = aiUsage.date === thisMonth ? { ...aiUsage, count: aiUsage.count + 1 } : { date: thisMonth, count: 1 };
+      
+      // [Sync] 立即更新本地狀態與 LocalStorage
       setAiUsage(newUsage);
+      localStorage.setItem('local_ai_usage', JSON.stringify(newUsage));
+      
       if (user) {
-        saveUserSettings({ aiUsage: newUsage });
+        // [Sync] 更新資料庫並確保最新 (包含指定的 ai_parse_count 以供審核)
+        await saveUserSettings({ 
+          aiUsage: newUsage,
+          ai_parse_count: newUsage.count // 同步更新使用者要求的欄位
+        });
+
+        // [Sync] 同步更新 user_usage 集合（獨立資料表）
+        try {
+          await setDoc(doc(db, 'user_usage', user.uid), {
+            ai_parse_count: newUsage.count,
+            last_parse_at: Date.now(),
+            email: user.email
+          }, { merge: true });
+        } catch (e) {
+          console.warn("user_usage sync failed", e);
+        }
       }
     }
   };
@@ -2273,6 +2503,8 @@ const App: React.FC = () => {
     setFormRecipe(prev => ({
       ...prev,
       ...parsed,
+      category: parsed.category || prev.category,
+      subcategory: parsed.subcategory || prev.subcategory || '',
       description: parsed.description || prev.description,
       notes: parsed.notes || prev.notes,
       doughWeight: parsed.doughWeight || prev.doughWeight,
@@ -2625,6 +2857,56 @@ const App: React.FC = () => {
     showToast("紀錄儲存成功！");
   };
 
+  const handleLinkRecipe = async (recipeId: string, relatedId: string) => {
+    const targetRecipe = recipes.find(r => r.id === recipeId);
+    if (!targetRecipe) return;
+
+    const updatedRecipe: Recipe = {
+      ...targetRecipe,
+      relatedRecipeIds: [...(targetRecipe.relatedRecipeIds || []), relatedId],
+      updatedAt: Date.now()
+    };
+
+    if (user && isCloudSyncEnabled) {
+      try {
+        await setDoc(doc(db, 'recipes', updatedRecipe.id), updatedRecipe);
+      } catch (error) {
+        console.error("Error linking recipe:", error);
+        showToast("雲端同步失敗");
+        return;
+      }
+    }
+
+    setRecipes(prev => prev.map(r => r.id === recipeId ? updatedRecipe : r));
+    if (selectedRecipe?.id === recipeId) setSelectedRecipe(updatedRecipe);
+    showToast("關聯成功！");
+  };
+
+  const handleUnlinkRecipe = async (recipeId: string, relatedId: string) => {
+    const targetRecipe = recipes.find(r => r.id === recipeId);
+    if (!targetRecipe) return;
+
+    const updatedRecipe: Recipe = {
+      ...targetRecipe,
+      relatedRecipeIds: (targetRecipe.relatedRecipeIds || []).filter(id => id !== relatedId),
+      updatedAt: Date.now()
+    };
+
+    if (user && isCloudSyncEnabled) {
+      try {
+        await setDoc(doc(db, 'recipes', updatedRecipe.id), updatedRecipe);
+      } catch (error) {
+        console.error("Error unlinking recipe:", error);
+        showToast("雲端同步失敗");
+        return;
+      }
+    }
+
+    setRecipes(prev => prev.map(r => r.id === recipeId ? updatedRecipe : r));
+    if (selectedRecipe?.id === recipeId) setSelectedRecipe(updatedRecipe);
+    showToast("已取消關聯");
+  };
+
   const handleAddNote = () => {
     if (!newNote.title || !newNote.content) return;
     setKnowledge(prev => [{ ...newNote, id: 'kn-' + Date.now(), createdAt: Date.now() }, ...prev]);
@@ -2674,6 +2956,7 @@ const App: React.FC = () => {
         weeklyCount={recipeStats.weekly}
         onUpgrade={() => triggerUpgradePrompt(true)}
         onShowInstructions={() => setIsInstructionsOpen(true)}
+        onShowHelp={() => setIsHelpModalOpen(true)}
         aiUsage={aiUsage}
       />
       
@@ -2795,13 +3078,13 @@ const App: React.FC = () => {
 
               {/* 熱門標籤區塊 */}
               {hotTags.length > 0 && (
-                <div className="flex flex-wrap gap-2 px-1">
-                  <span className="text-[10px] font-black text-slate-300 uppercase self-center tracking-widest mr-1">熱門標籤</span>
+                <div className="flex flex-wrap gap-3 px-1">
+                  <span className="text-[12px] font-black text-slate-300 uppercase self-center tracking-widest mr-1">熱門標籤</span>
                   {hotTags.map(tag => (
                     <button 
                       key={`hot-${tag}`} 
                       onClick={() => setSearchQuery('#' + tag)}
-                      className="px-3 py-1 bg-[#E67E22]/10 text-[11px] font-black text-[#8B5E3C] rounded-lg hover:bg-orange-100 transition-all border border-orange-100/50"
+                      className="px-5 py-2.5 bg-[#E67E22]/10 text-[18px] font-black text-[#8B5E3C] rounded-2xl hover:bg-orange-100 transition-all border border-orange-100/50 shadow-sm"
                     >
                       #{tag}
                     </button>
@@ -2824,20 +3107,58 @@ const App: React.FC = () => {
                 </div>
               )}
 
-              <div className="flex flex-col sm:flex-row gap-3 pt-2 border-t border-orange-100/30">
-                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar flex-1">
-                  <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest whitespace-nowrap">分類篩選</span>
-                  {['⏳ 待嘗試', '全部', ...categories.map(c => c.name)].map(cat => (
-                    <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${activeCategory === cat ? 'bg-[#E67E22] text-white shadow-md' : 'bg-white text-orange-400 border border-orange-100 hover:border-orange-300'}`}>{cat}</button>
-                  ))}
+              <div className="flex flex-col gap-3 pt-2 border-t border-orange-100/30">
+                <div className="flex flex-col gap-3 flex-1">
+                  <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-1 flex-nowrap shrink-0 scroll-smooth touch-pan-x">
+                    <span className="text-[12px] font-black text-slate-300 uppercase tracking-widest whitespace-nowrap">分類篩選</span>
+                    {['⏳ 待嘗試', '全部', ...categories.map(c => c.name)].map(cat => (
+                      <button 
+                        key={cat} 
+                        onClick={() => {
+                          if (activeCategory !== cat) {
+                            setActiveCategory(cat);
+                            setActiveSubCategory('');
+                          }
+                        }} 
+                        className={`px-6 py-2.5 rounded-full text-[18px] font-bold whitespace-nowrap transition-all shadow-sm shrink-0 ${activeCategory === cat ? 'bg-[#E67E22] text-white shadow-md' : 'bg-white text-orange-400 border border-orange-100 hover:border-orange-300'}`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* 子分類標籤動態顯示 */}
+                  {activeCategory !== '全部' && activeCategory !== '⏳ 待嘗試' && (categories.find(c => c.name === activeCategory)?.subcategories?.length || 0) > 0 && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex items-center gap-3 overflow-x-auto no-scrollbar pl-12 py-3 flex-nowrap shrink-0 scroll-smooth touch-pan-x"
+                    >
+                      <button 
+                        onClick={() => setActiveSubCategory('')}
+                        className={`px-6 py-3 rounded-2xl text-[18px] font-black transition-all shadow-sm shrink-0 ${!activeSubCategory ? 'bg-orange-100 text-orange-600 ring-2 ring-orange-200' : 'bg-white text-slate-400 border border-orange-50 hover:border-orange-200 hover:text-orange-500'}`}
+                      >
+                        全部次類
+                      </button>
+                      {(categories.find(c => c.name === activeCategory)?.subcategories || []).map(sub => (
+                        <button 
+                          key={sub.id} 
+                          onClick={() => setActiveSubCategory(sub.name === activeSubCategory ? '' : sub.name)}
+                          className={`px-6 py-3 rounded-2xl text-[18px] font-black whitespace-nowrap transition-all shadow-sm shrink-0 ${activeSubCategory === sub.name ? 'bg-orange-100 text-orange-600 ring-2 ring-orange-200' : 'bg-white text-slate-400 border border-orange-50 hover:border-orange-200 hover:text-orange-500'}`}
+                        >
+                          {sub.name}
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">排序</span>
+                <div className="flex items-center gap-4 shrink-0">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[12px] font-black text-slate-300 uppercase tracking-widest">排序</span>
                     <select 
                       value={sortBy} 
                       onChange={(e) => setSortBy(e.target.value as any)}
-                      className="bg-white border border-orange-100 rounded-lg px-2 py-1 text-xs font-bold text-orange-600 outline-none focus:border-orange-300"
+                      className="bg-white border border-orange-100 rounded-xl px-4 py-2 text-[18px] font-bold text-orange-600 outline-none focus:border-orange-300 shadow-sm"
                     >
                       <option value="createdAt">建立日期</option>
                       <option value="updatedAt">最後修改</option>
@@ -2847,7 +3168,7 @@ const App: React.FC = () => {
                   </div>
                   <button 
                     onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-                    className="p-1 px-2 bg-white border border-orange-100 rounded-lg text-[10px] font-black text-orange-400 hover:bg-orange-50"
+                    className="px-5 py-2 bg-white border border-orange-100 rounded-xl text-[18px] font-black text-orange-400 hover:bg-orange-50 shadow-sm active:scale-95 transition-all"
                   >
                     {sortOrder === 'desc' ? '遞減 ↓' : '遞增 ↑'}
                   </button>
@@ -2862,8 +3183,16 @@ const App: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 animate-in fade-in no-print">
               {!isRecipesLoading ? (
                 <>
-                  {filteredRecipes.map(recipe => (
-                    <RecipeCard key={recipe.id} recipe={recipe} onClick={(r) => { setSelectedRecipe(r); setView(AppView.DETAIL); }} />
+                  {filteredRecipes.map((recipe, index) => (
+                    <React.Fragment key={recipe.id}>
+                      <RecipeCard recipe={recipe} onClick={(r) => { setSelectedRecipe(r); setView(AppView.DETAIL); }} />
+                      {!isPremiumUser && (index + 1) % 5 === 0 && (
+                        <div className="col-span-full h-32 bg-[#F2E8DB]/20 rounded-[32px] border-2 border-dashed border-[#E8DCCB]/50 flex flex-col items-center justify-center mb-6">
+                           <span className="text-sm font-black text-[#8B5E3C]/40 uppercase tracking-[0.2em]">廣告推薦</span>
+                           <span className="text-[10px] font-bold text-slate-400 mt-1">(免費版限定)</span>
+                        </div>
+                      )}
+                    </React.Fragment>
                   ))}
                   {filteredRecipes.length === 0 && (
                     <div className="col-span-full py-20 text-center bg-white rounded-[32px] border border-dashed border-orange-100 flex flex-col items-center gap-4">
@@ -3221,10 +3550,10 @@ const App: React.FC = () => {
                          secKey === 'customSectionIngredients' ? scalingRecipe.customSectionIngredients : [];
                        
                        const sectionTitle = 
-                         secKey === 'ingredients' ? (scalingRecipe.mainSectionName || "主麵團") :
-                         secKey === 'liquidStarterIngredients' ? (scalingRecipe.liquidStarterName || "發酵種") :
-                         secKey === 'fillingIngredients' ? (scalingRecipe.fillingSectionName || "內餡") :
-                         secKey === 'decorationIngredients' ? (scalingRecipe.decorationSectionName || "裝飾 / 表面") :
+                         secKey === 'ingredients' ? (scalingRecipe.mainSectionName || "主材料") :
+                         secKey === 'liquidStarterIngredients' ? (scalingRecipe.liquidStarterName || "液種 / 老麵") :
+                         secKey === 'fillingIngredients' ? (scalingRecipe.fillingSectionName || "內餡製作") :
+                         secKey === 'decorationIngredients' ? (scalingRecipe.decorationSectionName || "裝飾 / 表層") :
                          secKey === 'customSectionIngredients' ? (scalingRecipe.customSectionName || "其他區塊") : "";
 
                        return (
@@ -3240,6 +3569,20 @@ const App: React.FC = () => {
                          />
                        );
                     })}
+                  </div>
+
+                  {/* 關聯食譜區塊 (換算頁面) */}
+                  <div className="mt-12">
+                    <RelatedRecipesSection 
+                      currentRecipe={scalingRecipe!} 
+                      allRecipes={recipes}
+                      onLink={handleLinkRecipe}
+                      onUnlink={handleUnlinkRecipe}
+                      onJump={(r) => { 
+                        setScalingRecipeId(r.id); 
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                    />
                   </div>
                 </div>
               )}
@@ -3375,9 +3718,22 @@ const App: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
               <div className="w-full">
                 <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">📂 分類</label>
-                <select value={formRecipe.category || ''} onChange={e => setFormRecipe(p => ({ ...p, category: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold focus:border-orange-200 transition-all">
-                  {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                </select>
+                <div className="flex flex-col gap-3">
+                  <select value={formRecipe.category || ''} onChange={e => {
+                    const newCat = e.target.value;
+                    setFormRecipe(p => ({ ...p, category: newCat, subcategory: '' }));
+                  }} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-sm font-bold focus:border-orange-200 transition-all">
+                    <option value="">選擇分類</option>
+                    {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                  </select>
+                  
+                  {formRecipe.category && (categories.find(c => c.name === formRecipe.category)?.subcategories?.length || 0) > 0 && (
+                    <select value={formRecipe.subcategory || ''} onChange={e => setFormRecipe(p => ({ ...p, subcategory: e.target.value }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/20 border border-orange-100 outline-none text-sm font-bold focus:border-orange-200 transition-all">
+                      <option value="">選擇子分類</option>
+                      {(categories.find(c => c.name === formRecipe.category)?.subcategories || []).map(sub => <option key={sub.id} value={sub.name}>{sub.name}</option>)}
+                    </select>
+                  )}
+                </div>
               </div>
               <div className="w-full">
                 <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">🕒 保存期限</label>
@@ -3961,85 +4317,193 @@ const App: React.FC = () => {
                   const isEditing = editingCatId === cat.id;
 
                   return (
-                    <div key={cat.id} className="flex items-center justify-between p-4 bg-orange-50/20 rounded-2xl border border-orange-100 shadow-sm transition-all hover:bg-orange-50/40">
-                      <div className="flex items-center gap-3 flex-grow pr-4">
-                        <span className="text-[10px] font-black text-orange-300 w-4">#{idx + 1}</span>
-                        {isEditing ? (
-                          <input 
-                            autoFocus
-                            type="text"
-                            value={editingCatValue}
-                            onChange={(e) => setEditingCatValue(e.target.value)}
-                            onBlur={() => renameCategory(cat.name, editingCatValue)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') renameCategory(cat.name, editingCatValue);
-                              if (e.key === 'Escape') setEditingCatId(null);
-                            }}
-                            className="flex-grow px-2 py-1 bg-white border border-orange-300 rounded-lg text-sm font-bold outline-none"
-                          />
-                        ) : (
-                          <div className="flex items-center gap-2 group">
-                            <span className="font-black text-slate-700 text-sm">{cat.name}</span>
-                            <span className="text-[10px] font-bold text-slate-400">({recipeCount})</span>
-                            <button 
-                              onClick={() => {
-                                setEditingCatId(cat.id);
-                                setEditingCatValue(cat.name);
+                    <div key={cat.id} className="bg-orange-50/20 rounded-2xl border border-orange-100 shadow-sm transition-all hover:bg-orange-50/10 p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3 flex-grow pr-4">
+                          <span className="text-[10px] font-black text-orange-300 w-4">#{idx + 1}</span>
+                          {isEditing ? (
+                            <input 
+                              autoFocus
+                              type="text"
+                              value={editingCatValue}
+                              onChange={(e) => setEditingCatValue(e.target.value)}
+                              onBlur={() => renameCategory(cat.name, editingCatValue)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') renameCategory(cat.name, editingCatValue);
+                                if (e.key === 'Escape') setEditingCatId(null);
                               }}
-                              className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-orange-500 transition-all"
+                              className="flex-grow px-2 py-1 bg-white border border-orange-300 rounded-lg text-sm font-bold outline-none"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-2 group">
+                              <span className="font-black text-slate-700 text-sm">{cat.name}</span>
+                              <span className="text-[10px] font-bold text-slate-400">({recipeCount})</span>
+                              <button 
+                                onClick={() => {
+                                  setEditingCatId(cat.id);
+                                  setEditingCatValue(cat.name);
+                                }}
+                                className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-orange-500 transition-all"
+                              >
+                                <Edit2 size={12} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="flex flex-col">
+                            <button 
+                              onClick={() => { 
+                                const nc = [...categories]; 
+                                [nc[idx], nc[idx-1]] = [nc[idx-1], nc[idx]]; 
+                                const updatedCats = nc.map((c,i)=>({...c,order:i}));
+                                setCategories(updatedCats); 
+                                syncCategoriesToCloud(updatedCats);
+                              }} 
+                              disabled={idx === 0} 
+                              className="p-1 px-2 text-[#E67E22] disabled:opacity-10 hover:bg-white rounded-md transition-all font-black text-lg"
+                              title="上移"
                             >
-                              <Edit2 size={12} />
+                              ▲
+                            </button>
+                            <button 
+                              onClick={() => { 
+                                const nc = [...categories]; 
+                                [nc[idx], nc[idx+1]] = [nc[idx+1], nc[idx]]; 
+                                const updatedCats = nc.map((c,i)=>({...c,order:i}));
+                                setCategories(updatedCats); 
+                                syncCategoriesToCloud(updatedCats);
+                              }} 
+                              disabled={idx === categories.length-1} 
+                              className="p-1 px-2 text-[#E67E22] disabled:opacity-10 hover:bg-white rounded-md transition-all font-black text-lg"
+                              title="下移"
+                            >
+                              ▼
                             </button>
                           </div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="flex flex-col">
                           <button 
-                            onClick={() => { 
-                              const nc = [...categories]; 
-                              [nc[idx], nc[idx-1]] = [nc[idx-1], nc[idx]]; 
-                              const updatedCats = nc.map((c,i)=>({...c,order:i}));
-                              setCategories(updatedCats); 
-                              syncCategoriesToCloud(updatedCats);
-                            }} 
-                            disabled={idx === 0} 
-                            className="p-1 px-2 text-[#E67E22] disabled:opacity-10 hover:bg-white rounded-md transition-all font-black text-lg"
-                            title="上移"
+                            onClick={() => {
+                              const hasRecipes = recipes.some(r => r.category === cat.name);
+                              const confirmMsg = hasRecipes ? `「${cat.name}」分類下還有 ${recipeCount} 份食譜，確定要刪除嗎？` : null;
+                              triggerConfirm(() => {
+                                const updatedCats = categories.filter(c => c.id !== cat.id);
+                                setCategories(updatedCats);
+                                syncCategoriesToCloud(updatedCats);
+                                showToast(`分類「${cat.name}」已刪除`);
+                              }, confirmMsg);
+                            }}
+                            className="p-2 text-red-200 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                            title="刪除"
                           >
-                            ▲
-                          </button>
-                          <button 
-                            onClick={() => { 
-                              const nc = [...categories]; 
-                              [nc[idx], nc[idx+1]] = [nc[idx+1], nc[idx]]; 
-                              const updatedCats = nc.map((c,i)=>({...c,order:i}));
-                              setCategories(updatedCats); 
-                              syncCategoriesToCloud(updatedCats);
-                            }} 
-                            disabled={idx === categories.length-1} 
-                            className="p-1 px-2 text-[#E67E22] disabled:opacity-10 hover:bg-white rounded-md transition-all font-black text-lg"
-                            title="下移"
-                          >
-                            ▼
+                            <Trash2 size={16} />
                           </button>
                         </div>
-                        <button 
-                          onClick={() => {
-                            const hasRecipes = recipes.some(r => r.category === cat.name);
-                            const confirmMsg = hasRecipes ? `「${cat.name}」分類下還有 ${recipeCount} 份食譜，確定要刪除嗎？` : null;
-                            triggerConfirm(() => {
-                              const updatedCats = categories.filter(c => c.id !== cat.id);
+                      </div>
+
+                      {/* 子分類管理區塊 */}
+                      <div className="mt-4 pl-7 pt-4 border-t border-orange-100/30 space-y-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <input 
+                            type="text" 
+                            value={newSubCatInputs[cat.id] || ''} 
+                            onChange={(e) => setNewSubCatInputs(prev => ({ ...prev, [cat.id]: e.target.value }))}
+                            className="flex-grow px-3 py-1.5 bg-white border border-orange-50 rounded-xl text-[11px] outline-none focus:border-orange-200 transition-all" 
+                            placeholder="新子分類名稱..." 
+                          />
+                          <button 
+                            onClick={() => {
+                              const input = newSubCatInputs[cat.id]?.trim();
+                              if (!input) return;
+                              const updatedCats = categories.map(c => {
+                                if (c.id === cat.id) {
+                                  const subs = c.subcategories || [];
+                                  if (subs.find(s => s.name === input)) {
+                                    showToast("子分類已存在");
+                                    return c;
+                                  }
+                                  return {
+                                    ...c,
+                                    subcategories: [...subs, { id: 'sub-' + Date.now(), name: input, order: subs.length }]
+                                  };
+                                }
+                                return c;
+                              });
                               setCategories(updatedCats);
                               syncCategoriesToCloud(updatedCats);
-                              showToast(`分類「${cat.name}」已刪除`);
-                            }, confirmMsg);
-                          }}
-                          className="p-2 text-red-200 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                          title="刪除"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                              setNewSubCatInputs(prev => ({ ...prev, [cat.id]: '' }));
+                              showToast("子分類新增成功");
+                            }}
+                            className="px-3 py-1.5 bg-orange-200 text-orange-700 rounded-xl text-[10px] font-black hover:bg-orange-300 transition-all"
+                          >
+                            新增
+                          </button>
+                        </div>
+                        
+                        {(cat.subcategories || []).sort((a,b) => a.order - b.order).map((sub, sIdx) => (
+                          <div key={sub.id} className="flex items-center justify-between group/sub bg-white/50 px-3 py-2 rounded-xl border border-transparent hover:border-orange-100 transition-all">
+                            <span className="text-[11px] font-bold text-slate-500">└ {sub.name}</span>
+                            <div className="flex items-center gap-1 opacity-0 group-hover/sub:opacity-100 transition-opacity">
+                              <button 
+                                onClick={() => {
+                                  const updatedCats = categories.map(c => {
+                                    if (c.id === cat.id) {
+                                      const subs = [...(c.subcategories || [])];
+                                      if (sIdx > 0) {
+                                         [subs[sIdx], subs[sIdx-1]] = [subs[sIdx-1], subs[sIdx]];
+                                         return { ...c, subcategories: subs.map((s,i)=>({...s,order:i})) };
+                                      }
+                                    }
+                                    return c;
+                                  });
+                                  setCategories(updatedCats);
+                                  syncCategoriesToCloud(updatedCats);
+                                }}
+                                disabled={sIdx === 0}
+                                className="text-[10px] p-0.5 text-orange-300 hover:text-orange-500 disabled:opacity-0"
+                              >
+                                ▲
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  const updatedCats = categories.map(c => {
+                                    if (c.id === cat.id) {
+                                      const subs = [...(c.subcategories || [])];
+                                      if (sIdx < subs.length - 1) {
+                                         [subs[sIdx], subs[sIdx+1]] = [subs[sIdx+1], subs[sIdx]];
+                                         return { ...c, subcategories: subs.map((s,i)=>({...s,order:i})) };
+                                      }
+                                    }
+                                    return c;
+                                  });
+                                  setCategories(updatedCats);
+                                  syncCategoriesToCloud(updatedCats);
+                                }}
+                                disabled={sIdx === (cat.subcategories?.length || 0) - 1}
+                                className="text-[10px] p-0.5 text-orange-300 hover:text-orange-500 disabled:opacity-0"
+                              >
+                                ▼
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  triggerConfirm(() => {
+                                    const updatedCats = categories.map(c => {
+                                      if (c.id === cat.id) {
+                                        return { ...c, subcategories: (c.subcategories || []).filter(s => s.id !== sub.id) };
+                                      }
+                                      return c;
+                                    });
+                                    setCategories(updatedCats);
+                                    syncCategoriesToCloud(updatedCats);
+                                    showToast("子分類已移除");
+                                  }, `確定要移除子分類「${sub.name}」嗎？`);
+                                }}
+                                className="text-[10px] p-0.5 text-red-200 hover:text-red-400"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   );
@@ -4131,7 +4595,12 @@ const App: React.FC = () => {
                 <div className="space-y-2">
                   <h2 className="text-2xl font-black text-slate-800 leading-tight mb-2 whitespace-pre-wrap">{selectedRecipe.title}</h2>
                   <div className="flex flex-wrap gap-x-6 gap-y-2 text-base font-bold text-slate-500 print:text-[16px] print:text-slate-700 print:gap-x-12">
-                    <span className="print:font-black">分類：{selectedRecipe.category}</span>
+                    <span className="print:font-black">
+                      分類：{selectedRecipe.category}
+                      {selectedRecipe.subcategory && (
+                        <span className="ml-1 text-orange-400">/ {selectedRecipe.subcategory}</span>
+                      )}
+                    </span>
                     <span className="print:font-black">師傅：{selectedRecipe.master}</span>
                     {selectedRecipe.shelfLife && <span className="print:font-black">保鮮：{selectedRecipe.shelfLife}</span>}
                     {selectedRecipe.totalDuration && <span className="print:font-black">總時：{formatTimeWithUnit(selectedRecipe.totalDuration)}</span>}
@@ -4584,7 +5053,7 @@ const App: React.FC = () => {
                 </div>
                 
                 {selectedRecipe.notes && (
-                  <div className="bg-yellow-50/50 p-8 rounded-[40px] border-2 border-yellow-100 shadow-sm relative overflow-hidden print:rounded-2xl print:border-slate-200 print:p-2 print:bg-white print:mb-2">
+                  <div className="bg-yellow-50/50 p-8 rounded-[40px] border-2 border-yellow-100 shadow-sm relative overflow-hidden print:rounded-2xl print:border-slate-200 print:p-2 print:bg-white print:mb-2 text-balance">
                     <h3 className="text-xl font-black text-yellow-700 mb-6 flex items-center gap-3 px-2 print:text-base print:text-black">
                       <span className="w-2 h-8 bg-yellow-500 rounded-full"></span>
                       📝 老師的小叮嚀
@@ -4592,6 +5061,18 @@ const App: React.FC = () => {
                     <p className="text-base text-slate-700 leading-relaxed font-bold tracking-wide whitespace-pre-wrap px-2 print:text-sm">{selectedRecipe.notes}</p>
                   </div>
                 )}
+
+                {/* 關聯食譜區塊 (詳情頁面) */}
+                <RelatedRecipesSection 
+                  currentRecipe={selectedRecipe} 
+                  allRecipes={recipes}
+                  onLink={handleLinkRecipe}
+                  onUnlink={handleUnlinkRecipe}
+                  onJump={(r) => { 
+                    setSelectedRecipe(r); 
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                />
 
                 <div className="bg-white p-8 rounded-[40px] border-2 border-orange-50 shadow-sm space-y-8 print:rounded-2xl print:border-slate-200 print:p-2 print:space-y-1 print:mb-2">
                     <div className="flex justify-between items-center px-2">
@@ -4689,6 +5170,63 @@ const App: React.FC = () => {
         <button onClick={() => setView(AppView.SCALING)} className={`flex flex-col items-center gap-1 transition-all ${view === AppView.SCALING ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}><span className="text-2xl">⚖️</span><span className="text-[10px] font-black">換算</span></button>
         <button onClick={() => setView(AppView.COLLECTION)} className={`flex flex-col items-center gap-1 transition-all ${view === AppView.COLLECTION ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}><span className="text-2xl">📥</span><span className="text-[10px] font-black">收集</span></button>
       </nav>
+
+      {/* Help Modal */}
+      {isHelpModalOpen && (
+        <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            className="bg-white rounded-[40px] shadow-2xl w-full max-w-md overflow-hidden ring-1 ring-black/5"
+          >
+            <div className="bg-gradient-to-r from-orange-500 to-orange-600 px-8 py-6 flex items-center justify-between">
+              <h3 className="text-white font-black text-xl flex items-center gap-3">
+                <span className="bg-white/20 w-10 h-10 rounded-2xl flex items-center justify-center text-2xl shadow-inner">❓</span> 
+                使用教學
+              </h3>
+              <button 
+                onClick={() => setIsHelpModalOpen(false)}
+                className="bg-white/20 hover:bg-white/40 text-white w-10 h-10 rounded-2xl flex items-center justify-center transition-all active:scale-90"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto custom-scrollbar-thin">
+              <div className="space-y-6">
+                <div className="flex items-start gap-4 group">
+                  <div className="w-10 h-10 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center font-black shrink-0 border border-orange-100 shadow-sm group-hover:bg-orange-500 group-hover:text-white transition-all">1</div>
+                  <div className="pt-0.5">
+                    <p className="font-black text-slate-800 text-lg leading-tight mb-1">貼上食譜筆記</p>
+                    <p className="text-sm text-slate-500 font-bold leading-relaxed">在首頁輸入框直接貼上文字或網址，按下「AI 解析」。</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-4 group">
+                  <div className="w-10 h-10 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center font-black shrink-0 border border-orange-100 shadow-sm group-hover:bg-orange-500 group-hover:text-white transition-all">2</div>
+                  <div className="pt-0.5">
+                    <p className="font-black text-slate-800 text-lg leading-tight mb-1">AI 自動解析</p>
+                    <p className="text-sm text-slate-500 font-bold leading-relaxed">系統會自動辨識材料、比例、步驟與師傅名稱。</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-4 group">
+                  <div className="w-10 h-10 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center font-black shrink-0 border border-orange-100 shadow-sm group-hover:bg-orange-500 group-hover:text-white transition-all">3</div>
+                  <div className="pt-0.5">
+                    <p className="font-black text-slate-800 text-lg leading-tight mb-1">彈性調整換算</p>
+                    <p className="text-sm text-slate-500 font-bold leading-relaxed">進入換算頁面調整倍數，所有材料份量會自動聯動換算。</p>
+                  </div>
+                </div>
+              </div>
+              <div className="pt-4">
+                <button
+                  onClick={() => setIsHelpModalOpen(false)}
+                  className="w-full py-5 bg-[#E67E22] text-white rounded-[24px] font-black text-lg shadow-xl shadow-orange-200 hover:bg-orange-600 active:scale-95 transition-all transform"
+                >
+                  開始解析食譜！
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* Modals */}
       <SubscriptionModal 

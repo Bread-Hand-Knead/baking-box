@@ -43,11 +43,13 @@
         height: auto !important;
         min-height: auto !important;
         background-color: white !important;
-        font-size: 12pt !important;
+        font-size: 14pt !important;
+        overflow: visible !important;
       }
       body {
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
+        overflow: visible !important;
       }
       #root, main, .print-area {
         height: auto !important;
@@ -55,6 +57,7 @@
         max-height: none !important;
         padding: 0 !important;
         margin: 0 !important;
+        overflow: visible !important;
       }
       .no-print, 
       nav.fixed, 
@@ -73,6 +76,7 @@
         box-shadow: none !important;
         border: none !important;
         display: block !important;
+        overflow: visible !important;
       }
       /* 食材數據精確對齊 */
       .print-data-group {
@@ -100,6 +104,7 @@
         page-break-inside: avoid;
         margin-bottom: 0.25rem !important;
         padding: 0.5rem !important;
+        overflow: visible !important;
       }
       h2, h3, h4 {
         page-break-after: avoid;
@@ -107,20 +112,25 @@
         margin-bottom: 0.15rem !important;
         font-weight: bold !important;
       }
-      h2 { font-size: 18pt !important; }
-      h3 { font-size: 15pt !important; }
-      h4 { font-size: 13pt !important; }
+      h2 { font-size: 20pt !important; }
+      h3 { font-size: 17pt !important; }
+      h4 { font-size: 15pt !important; }
 
       /* 強制背景容器自適應內容 */
       div[class*="min-h-screen"], div[class*="min-h-0"] {
         min-height: auto !important;
         height: auto !important;
+        overflow: visible !important;
       }
       /* 防止網址溢出並隱藏拉桿 */
       .print-nowrap-to-wrap {
         white-space: pre-wrap !important;
         word-break: break-all !important;
-        overflow: hidden !important;
+        overflow: visible !important;
+      }
+      a[href] {
+        word-break: break-all !important;
+        white-space: pre-wrap !important;
       }
       /* 緊湊化食材表格 */
       .print-grid-2 {
@@ -162,6 +172,22 @@
       .print-steps-compact {
         gap: 0.25rem !important;
       }
+    }
+
+    /* 現代化細緻捲軸 */
+    .custom-scrollbar-thin::-webkit-scrollbar {
+      width: 4px;
+    }
+    .custom-scrollbar-thin::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.02);
+      border-radius: 10px;
+    }
+    .custom-scrollbar-thin::-webkit-scrollbar-thumb {
+      background: rgba(230, 126, 34, 0.2);
+      border-radius: 10px;
+    }
+    .custom-scrollbar-thin::-webkit-scrollbar-thumb:hover {
+      background: rgba(230, 126, 34, 0.5);
     }
 
     /* 訂閱彈窗美化拉桿 - 感應式增厚 */
