@@ -41,6 +41,7 @@ jobs:
       - name: 建置 Vite 專案
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          VITE_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: npm run build
 
       - name: 設定 GitHub Pages
