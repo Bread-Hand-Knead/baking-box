@@ -9,13 +9,21 @@ import {
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 
 // Initialize Gemini AI with fallback support for different environment variable names
-const getApiKey = () => {
+const getApiKey = (forcePrompt = false) => {
   // 優先順序：localStorage (除錯優先) -> Vite 環境變數
-  const key = localStorage.getItem('VITE_GEMINI_API_KEY') ||
-              (import.meta as any).env?.VITE_GEMINI_API_KEY || 
-              (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : null) ||
-              localStorage.getItem('gemini_api_key');
+  let key = localStorage.getItem('VITE_GEMINI_API_KEY') ||
+            (import.meta as any).env?.VITE_GEMINI_API_KEY || 
+            (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : null) ||
+            localStorage.getItem('gemini_api_key');
   
+  if (forcePrompt && (!key || key === 'YOUR_API_KEY')) {
+    const userInput = window.prompt("線上版本未設定開發金鑰\n\n請輸入您的 Gemini API Key 以啟用「AI 快速筆記助手」：");
+    if (userInput) {
+      localStorage.setItem("gemini_api_key", userInput.trim());
+      key = userInput.trim();
+    }
+  }
+
   // [Auth] API Key 診斷：僅告知狀態，不暴露私鑰
   const apiStatus = !!key ? 'Detected' : 'Missing';
   console.log('[Auth] API Key status:', apiStatus);
@@ -2314,7 +2322,7 @@ const App: React.FC = () => {
 
   const proceedWithAIParse = async () => {
     setIsAiParsing(true);
-    const apiKey = getApiKey();
+    const apiKey = getApiKey(true);
     console.log('[Auth] API Key status:', !!apiKey ? 'Detected' : 'Missing');
 
     let lastError: any = null;
