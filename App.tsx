@@ -36,6 +36,29 @@ const getApiKey = (forcePrompt = false) => {
 
 const genAI = new GoogleGenerativeAI(getApiKey());
 
+const sanitizeBakingStages = (stages: any[] | undefined): BakingStage[] => {
+  if (!Array.isArray(stages)) return [];
+  return stages.map((s: any) => {
+    let top = String(s.topHeat || '').trim();
+    let bottom = String(s.bottomHeat || '').trim();
+
+    // 如果其中一邊有設定溫度，但另一邊為空，則帶入相同溫度
+    if (top && !bottom) {
+      bottom = top;
+    } else if (bottom && !top) {
+      top = bottom;
+    }
+
+    return {
+      ...s,
+      topHeat: top,
+      bottomHeat: bottom,
+      time: String(s.time || '').replace(/mins?\.?/gi, '分鐘').replace(/hrs?\.?/gi, '小時'),
+      timeUnit: s.timeUnit || '分鐘'
+    };
+  });
+};
+
 const INGREDIENT_OBJECT_SCHEMA = {
   type: "object",
   properties: {
@@ -2337,14 +2360,14 @@ const App: React.FC = () => {
 
         const client = new GoogleGenerativeAI(apiKey);
         const model = client.getGenerativeModel({ 
-          model: "models/gemini-3-flash-preview",
+          model: "gemini-2.5-flash",
           generationConfig: { 
             responseMimeType: "application/json",
             responseSchema: AI_MULTI_RECIPE_SCHEMA as any
           }
         });
 
-        console.log('[AI] Using model path: models/gemini-3-flash-preview');
+        console.log('[AI] Using model path: gemini-2.5-flash');
 
         const prompt = `你是一個專業且極具適應力的烘焙食譜解析助手。
         請從下方的【筆記內容】中識別並提取烘焙食譜資訊。
@@ -2528,7 +2551,7 @@ const App: React.FC = () => {
       decorationSectionName: parsed.decorationSectionName || prev.decorationSectionName,
       customSectionName: parsed.customSectionName || prev.customSectionName,
       fermentationStages: parsed.fermentationStages || [],
-      bakingStages: parsed.bakingStages || [],
+      bakingStages: sanitizeBakingStages(parsed.bakingStages),
       instructions: Array.isArray(parsed.instructions) ? parsed.instructions : (parsed.instructions ? [parsed.instructions] : prev.instructions),
       tags: [...new Set([...(prev.tags || []), ...(parsed.tags || [])])]
     }));
@@ -2553,7 +2576,7 @@ const App: React.FC = () => {
       decorationIngredients: aiPreviewData.flatMap(r => r.decorationIngredients || []) as Ingredient[],
       customSectionIngredients: aiPreviewData.flatMap(r => r.customSectionIngredients || []) as Ingredient[],
       fermentationStages: aiPreviewData.flatMap(r => r.fermentationStages || []) as FermentationStage[],
-      bakingStages: aiPreviewData.flatMap(r => r.bakingStages || []) as BakingStage[],
+      bakingStages: sanitizeBakingStages(aiPreviewData.flatMap(r => r.bakingStages || [])),
       instructions: aiPreviewData.flatMap(r => r.instructions || []) as string[],
       tags: [...new Set(aiPreviewData.flatMap(r => r.tags || []) as string[])],
       notes: aiPreviewData.map(r => r.notes).filter(Boolean).join('\n---\n'),
