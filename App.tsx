@@ -1257,8 +1257,9 @@ const Sidebar: React.FC<{
   onShowInstructions: () => void;
   onShowHelp: () => void;
   isVip: boolean;
+  subTypeLabel: string;
   aiUsage: { count: number };
-}> = ({ isOpen, onClose, user, onLogin, onLogout, subscriptionStatus, isAdmin, isVip, recipeCount, onUpgrade, onShowInstructions, onShowHelp, aiUsage }) => {
+}> = ({ isOpen, onClose, user, onLogin, onLogout, subscriptionStatus, isAdmin, isVip, subTypeLabel, recipeCount, onUpgrade, onShowInstructions, onShowHelp, aiUsage }) => {
   const isPremiumUser = isVip || isAdmin || subscriptionStatus === 'active';
 
   return (
@@ -1296,10 +1297,22 @@ const Sidebar: React.FC<{
                   {isPremiumUser && <span className="text-xl">👑</span>}
                   <span className="text-lg font-black text-[#8B5A2B] tracking-[0.08em] leading-tight flex flex-wrap items-center">
                     <span>方案：</span>
-                    {isPremiumUser ? 
-                      <span>Premium 進階版</span> : 
+                    {isPremiumUser ? (
+                      <span className="flex items-center gap-1.5 flex-wrap">
+                        <span>Premium 進階版</span>
+                        {subTypeLabel && (
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                            subTypeLabel.includes('試用中') 
+                              ? 'bg-orange-50 text-orange-600 border-orange-200 animate-pulse-subtle' 
+                              : 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                          }`}>
+                            {subTypeLabel}
+                          </span>
+                        )}
+                      </span>
+                    ) : (
                       <span className="flex items-center">Standard <span className="whitespace-nowrap ml-1">免費版</span></span>
-                    }
+                    )}
                   </span>
                 </div>
 
@@ -1719,6 +1732,15 @@ const App: React.FC = () => {
         const data = snapshot.data();
         isSyncingFromCloud.current = true;
         
+        // 若無試用期欄位，則為其初始化 15 天試用期
+        if (data.trial_until === undefined) {
+          const trialDuration = 15 * 24 * 60 * 60 * 1000;
+          saveUserSettings({
+            trial_until: Date.now() + trialDuration
+          });
+          return;
+        }
+
         let subStatus: 'free' | 'active' = 'free';
         const now = Date.now();
         const isTrialActive = data.trial_until && data.trial_until > now;
@@ -1734,7 +1756,10 @@ const App: React.FC = () => {
         let label = '一般用戶';
         if (isAdmin) label = '超級管理員';
         else if (isPermanentVip) label = '永久 VIP';
-        else if (isTrialActive) label = '試用中';
+        else if (isTrialActive) {
+          const remainingDays = Math.ceil((data.trial_until - now) / (24 * 60 * 60 * 1000));
+          label = `試用中 (剩餘 ${remainingDays} 天)`;
+        }
         else if (subStatus === 'active') label = 'Premium 會員';
         setSubTypeLabel(label);
         
@@ -1749,6 +1774,16 @@ const App: React.FC = () => {
         setTimeout(() => { isSyncingFromCloud.current = false; }, 100);
       } else {
         // Doc doesn't exist yet, but settings are "ready" (with defaults)
+        // 新登入使用者初始化 15 天試用期
+        const trialDuration = 15 * 24 * 60 * 60 * 1000;
+        saveUserSettings({
+          trial_until: Date.now() + trialDuration,
+          is_vip: false,
+          subscriptionStatus: 'free',
+          is_cloud_sync_enabled: true,
+          createdAt: Date.now()
+        });
+
         setIsCloudSyncEnabled(true);
         setIsSettingsReady(true);
       }
@@ -2983,6 +3018,7 @@ const App: React.FC = () => {
         subscriptionStatus={subscriptionStatus}
         isAdmin={isAdmin}
         isVip={isVip}
+        subTypeLabel={subTypeLabel}
         recipeCount={recipes.length}
         weeklyCount={recipeStats.weekly}
         onUpgrade={() => triggerUpgradePrompt(true)}
