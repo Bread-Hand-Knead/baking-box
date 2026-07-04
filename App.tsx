@@ -1870,6 +1870,7 @@ const App: React.FC = () => {
       setCategories(DEFAULT_CATEGORIES);
       setKnowledge([]);
       setCompletedSteps({});
+      setAiUsage({ date: '', count: 0 });
       setHasSyncedCloud(false);
       
       // Clear local storage for privacy
@@ -1878,6 +1879,7 @@ const App: React.FC = () => {
       localStorage.removeItem(KNOWLEDGE_KEY);
       localStorage.removeItem(RESOURCE_STORAGE_KEY);
       localStorage.removeItem(COMPLETED_STEPS_KEY);
+      localStorage.removeItem('local_ai_usage');
       
       setView(AppView.LIST);
     } catch (error) {
@@ -2540,11 +2542,13 @@ const App: React.FC = () => {
       const thisMonth = getThisMonthString();
       const newUsage = aiUsage.date === thisMonth ? { ...aiUsage, count: aiUsage.count + 1 } : { date: thisMonth, count: 1 };
       
-      // [Sync] 立即更新本地狀態與 LocalStorage
+      // [Sync] 立即更新本地狀態
       setAiUsage(newUsage);
-      localStorage.setItem('local_ai_usage', JSON.stringify(newUsage));
       
-      if (user) {
+      if (!user) {
+        // 僅在未登入時寫入本地 localStorage，避免污染匿名狀態
+        localStorage.setItem('local_ai_usage', JSON.stringify(newUsage));
+      } else {
         // [Sync] 更新資料庫並確保最新 (包含指定的 ai_parse_count 以供審核)
         await saveUserSettings({ 
           aiUsage: newUsage,
