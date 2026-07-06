@@ -2177,19 +2177,19 @@ const App: React.FC = () => {
       }
 
       const matchSearch = !query || (
-        r.title.toLowerCase().includes(query) || 
-        (r.master && r.master.toLowerCase().includes(query)) ||
+        (typeof r.title === 'string' && r.title.toLowerCase().includes(query)) || 
+        (typeof r.master === 'string' && r.master.toLowerCase().includes(query)) ||
         // 全文檢索材料
-        (r.ingredients || []).some(i => i.name.toLowerCase().includes(query)) ||
-        (r.liquidStarterIngredients || []).some(i => i.name.toLowerCase().includes(query)) ||
-        (r.fillingIngredients || []).some(i => i.name.toLowerCase().includes(query)) ||
-        (r.decorationIngredients || []).some(i => i.name.toLowerCase().includes(query)) ||
-        (r.customSectionIngredients || []).some(i => i.name.toLowerCase().includes(query)) ||
+        (r.ingredients || []).some(i => typeof i.name === 'string' && i.name.toLowerCase().includes(query)) ||
+        (r.liquidStarterIngredients || []).some(i => typeof i.name === 'string' && i.name.toLowerCase().includes(query)) ||
+        (r.fillingIngredients || []).some(i => typeof i.name === 'string' && i.name.toLowerCase().includes(query)) ||
+        (r.decorationIngredients || []).some(i => typeof i.name === 'string' && i.name.toLowerCase().includes(query)) ||
+        (r.customSectionIngredients || []).some(i => typeof i.name === 'string' && i.name.toLowerCase().includes(query)) ||
         // 全文檢索步驟
-        (r.instructions || []).some(step => step.toLowerCase().includes(query)) ||
+        (r.instructions || []).some(step => typeof step === 'string' && step.toLowerCase().includes(query)) ||
         // 全文檢索備註與介紹
-        (r.description && r.description.toLowerCase().includes(query)) ||
-        (r.notes && r.notes.toLowerCase().includes(query))
+        (typeof r.description === 'string' && r.description.toLowerCase().includes(query)) ||
+        (typeof r.notes === 'string' && r.notes.toLowerCase().includes(query))
       );
       
       const matchCategory = 
