@@ -3850,7 +3850,7 @@ const App: React.FC = () => {
 
                     <div className="relative">
                       <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">🔢 製作份數</label>
-                      <input type="number" value={formRecipe.quantity ?? ''} onChange={e => setFormRecipe(p => ({ ...p, quantity: Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
+                      <input type="number" value={formRecipe.quantity ?? ''} onChange={e => setFormRecipe(p => ({ ...p, quantity: e.target.value === '' ? undefined : Number(e.target.value) }))} className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold" />
                     </div>
                   </div>
 
