@@ -1,11 +1,13 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, updateDoc, deleteDoc, Timestamp, addDoc, getDocFromServer, enableMultiTabIndexedDbPersistence } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import firebaseConfig from './firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const functions = getFunctions(app, 'asia-east1');
 
 // Enable offline persistence
 if (typeof window !== 'undefined') {
@@ -20,5 +22,5 @@ if (typeof window !== 'undefined') {
 
 export const googleProvider = new GoogleAuthProvider();
 
-export { signInWithPopup, signOut, onAuthStateChanged, collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, updateDoc, deleteDoc, Timestamp, addDoc, getDocFromServer, setPersistence, browserLocalPersistence };
+export { signInWithPopup, signOut, onAuthStateChanged, collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, updateDoc, deleteDoc, Timestamp, addDoc, getDocFromServer, setPersistence, browserLocalPersistence, httpsCallable };
 export type { User };

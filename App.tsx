@@ -4,7 +4,7 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { 
   auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged, User,
   collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, updateDoc, deleteDoc,
-  getDocFromServer, setPersistence, browserLocalPersistence
+  getDocFromServer, setPersistence, browserLocalPersistence, functions, httpsCallable
 } from './firebase';
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 
@@ -1085,7 +1085,13 @@ const IngredientList: React.FC<{
 
 // --- 2. 輔助元件 (UI Components) ---
 
-const SubscriptionModal: React.FC<{ isOpen: boolean; onClose: () => void; message?: string }> = ({ isOpen, onClose, message }) => {
+const SubscriptionModal: React.FC<{ 
+  isOpen: boolean; 
+  onClose: () => void; 
+  message?: string;
+  onCheckout: (planType: 'monthly' | 'yearly' | 'permanent') => void;
+  isCheckoutLoading: boolean;
+}> = ({ isOpen, onClose, message, onCheckout, isCheckoutLoading }) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4 sm:p-6 bg-slate-900/40 backdrop-blur-[8px] animate-in fade-in duration-300">
@@ -1151,8 +1157,7 @@ const SubscriptionModal: React.FC<{ isOpen: boolean; onClose: () => void; messag
                     <span className="bg-white/20 text-white text-[10px] px-1.5 py-0.5 rounded-lg font-black italic">PRO</span>
                   </div>
                   <div className="flex items-baseline gap-1">
-                    <span className="text-white font-black text-3xl">$99</span>
-                    <span className="text-orange-100 text-sm font-bold">/ 月</span>
+                    <span className="text-white font-black text-3.5xl">升級解鎖</span>
                   </div>
                 </div>
                 <ul className="space-y-3 mb-6 flex-1">
@@ -1176,28 +1181,56 @@ const SubscriptionModal: React.FC<{ isOpen: boolean; onClose: () => void; messag
             </div>
           </div>
 
-          {/* 按鈕區域 */}
-          <div className="w-full max-w-[360px] flex flex-col items-center space-y-2 pb-4">
+          {/* 方案選擇與按鈕區域 */}
+          <div className="w-full max-w-[450px] flex flex-col items-center space-y-3 pb-4">
+            <div className="text-center mb-1">
+              <span className="text-xs font-black text-[#8B5A2B]/75 tracking-wider">選擇付費方案 (由安全藍新金流處理)</span>
+            </div>
+            
             <button 
-              onClick={() => {
-                window.open('https://ais-dev-2v2log3rzdrogmvvnzxg3i-102707397029.asia-east1.run.app', '_blank');
-              }}
-              className="w-full py-3 bg-[#8B5E3C] text-white rounded-[18px] font-black text-base shadow-[0_10px_30px_rgba(139,94,61,0.2)] hover:bg-[#724D31] transition-all active:scale-95 flex items-center justify-center gap-3"
+              onClick={() => onCheckout('monthly')}
+              disabled={isCheckoutLoading}
+              className="w-full py-3 bg-[#E67E22] text-white rounded-[18px] font-black text-sm shadow-[0_4px_12px_rgba(230,126,34,0.15)] hover:bg-[#D35400] transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-between px-6"
             >
-              <span>立即升級 Premium</span>
-              <div className="w-5 h-5 bg-white/20 rounded-full flex items-center justify-center text-xs">🚀</div>
+              <div className="flex items-center gap-2">
+                <span>📅</span>
+                <span>Premium 月費訂閱</span>
+              </div>
+              <span className="font-extrabold text-base">NT$ 120 / 月</span>
             </button>
             
             <button 
-              onClick={() => {
-                window.location.href = `mailto:linda6623@gmail.com?subject=烘焙靈感箱支付開通確認&body=我的帳號是：${auth.currentUser?.email}%0D%0A我已完成支付，請協助開通 Premium 權限。`;
-              }}
-              className="w-full py-2 bg-white text-[#8B5E3C] rounded-[18px] font-black text-[11px] hover:bg-orange-50 transition-all active:scale-95 border-2 border-orange-100/50 flex items-center justify-center gap-2"
+              onClick={() => onCheckout('yearly')}
+              disabled={isCheckoutLoading}
+              className="w-full py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-[18px] font-black text-sm shadow-[0_6px_16px_rgba(243,156,18,0.25)] hover:shadow-lg transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-between px-6 border border-orange-400 relative overflow-hidden"
             >
-              <span>我已付款，通知作者開通</span>
-              <div className="w-3.5 h-3.5 bg-orange-100 rounded-full flex items-center justify-center text-[9px]">📩</div>
+              <div className="absolute top-0 right-0 bg-yellow-400 text-orange-950 text-[8px] font-black px-2 py-0.5 rounded-bl-lg uppercase tracking-wider">最划算</div>
+              <div className="flex items-center gap-2">
+                <span>🔥</span>
+                <span>Premium 年費訂閱</span>
+              </div>
+              <span className="font-extrabold text-base">NT$ 990 / 年</span>
             </button>
 
+            <button 
+              onClick={() => onCheckout('permanent')}
+              disabled={isCheckoutLoading}
+              className="w-full py-3 bg-slate-800 text-white rounded-[18px] font-black text-sm shadow-[0_4px_12px_rgba(30,41,59,0.15)] hover:bg-slate-900 transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-between px-6"
+            >
+              <div className="flex items-center gap-2">
+                <span>👑</span>
+                <span>終身買斷版 (永久 VIP)</span>
+              </div>
+              <span className="font-extrabold text-base">NT$ 2,500</span>
+            </button>
+
+            {isCheckoutLoading && (
+              <div className="text-xs text-orange-600 font-bold flex items-center gap-2 animate-pulse pt-2">
+                <span className="animate-spin w-3.5 h-3.5 border-2 border-orange-500 border-t-transparent rounded-full"></span>
+                安全連線至藍新金流收銀台...
+              </div>
+            )}
+            
             <button 
               onClick={onClose}
               className="w-full pt-2 text-slate-400 font-bold text-[11px] hover:text-slate-600 transition-all text-center"
@@ -1535,6 +1568,53 @@ const App: React.FC = () => {
   const [subscriptionStatus, setSubscriptionStatus] = useState<'free' | 'active'>('free');
   const [subTypeLabel, setSubTypeLabel] = useState('一般用戶');
   const [aiUsage, setAiUsage] = useState({ date: '', count: 0 });
+  const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
+
+  // 藍新金流付費跳轉處理
+  const handleCheckout = async (planType: 'monthly' | 'yearly' | 'permanent') => {
+    if (!user) {
+      showToast("🔑 請先登入帳號再進行訂閱。");
+      handleLogin();
+      return;
+    }
+    setIsCheckoutLoading(true);
+    try {
+      const createPaymentFn = httpsCallable(functions, 'createPayment');
+      const res = await createPaymentFn({ planType, email: user.email });
+      const { MerchantID, TradeInfo, TradeSha, Version, newebpayUrl } = res.data as any;
+      
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = newebpayUrl;
+      
+      const fields = { MerchantID, TradeInfo, TradeSha, Version };
+      Object.entries(fields).forEach(([key, val]) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = key;
+        input.value = val;
+        form.appendChild(input);
+      });
+      
+      document.body.appendChild(form);
+      form.submit();
+    } catch (err: any) {
+      console.error("Checkout Error:", err);
+      alert(err.message || "建立交易失敗，請稍後再試。");
+    } finally {
+      setIsCheckoutLoading(false);
+    }
+  };
+
+  // 監聽付款成功導回參數
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') === 'success') {
+      showToast("🎉 付款完成！您的 Premium 權限已成功啟用！");
+      // 清除參數保持網址乾淨
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
   const [newSubCatInputs, setNewSubCatInputs] = useState<Record<string, string>>({});
   const [isCloudSyncEnabled, setIsCloudSyncEnabled] = useState(false);
   const [view, setView] = useState<AppView>(AppView.LIST);
@@ -5303,6 +5383,8 @@ const App: React.FC = () => {
       <SubscriptionModal 
         isOpen={isSubscriptionModalOpen} 
         message={subscriptionModalMessage}
+        onCheckout={handleCheckout}
+        isCheckoutLoading={isCheckoutLoading}
         onClose={() => {
           setIsSubscriptionModalOpen(false);
           setSuppressUpgradeModal(true);
