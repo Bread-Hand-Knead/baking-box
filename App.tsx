@@ -1848,9 +1848,7 @@ const App: React.FC = () => {
         if (data.completedSteps) setCompletedSteps(data.completedSteps);
         if (data.aiUsage) setAiUsage(data.aiUsage);
         
-        if (data.is_cloud_sync_enabled !== undefined) {
-          setIsCloudSyncEnabled(true);
-        }
+        setIsCloudSyncEnabled(subStatus === 'active');
         setIsSettingsReady(true);
         setTimeout(() => { isSyncingFromCloud.current = false; }, 100);
       } else {
