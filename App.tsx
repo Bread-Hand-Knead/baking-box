@@ -1662,6 +1662,7 @@ const App: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [knowledgeSearchQuery, setKnowledgeSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   
   // Debounce for search
@@ -2301,6 +2302,16 @@ const App: React.FC = () => {
   }, [recipes, debouncedSearchQuery, activeCategory, activeSubCategory, sortBy, sortOrder]);
 
   const scalingRecipe = useMemo(() => recipes.find(r => r.id === scalingRecipeId), [recipes, scalingRecipeId]);
+
+  const filteredKnowledge = useMemo(() => {
+    const q = knowledgeSearchQuery.trim().toLowerCase();
+    if (!q) return knowledge;
+    return knowledge.filter(kn => 
+      (typeof kn.title === 'string' && kn.title.toLowerCase().includes(q)) ||
+      (typeof kn.content === 'string' && kn.content.toLowerCase().includes(q)) ||
+      (typeof kn.master === 'string' && kn.master.toLowerCase().includes(q))
+    );
+  }, [knowledge, knowledgeSearchQuery]);
   
   // Volume calculation helper
   const getVolume = (mold: { type: 'circular' | 'rectangular', diameter: number, height: number, length: number, width: number }) => {
@@ -3754,7 +3765,20 @@ const App: React.FC = () => {
                   <button onClick={handleAddNote} className="w-full py-3 bg-[#E67E22] text-white rounded-xl font-bold text-sm shadow-md active:scale-95 transition-all hover:bg-orange-600">新增筆記</button>
                 </div>
                 <div className="pt-6 space-y-4 border-t border-orange-50">
-                  {knowledge.map(kn => (
+                  <div className="flex items-center gap-2 bg-orange-50/20 px-4 py-2.5 rounded-xl border border-orange-50 focus-within:border-orange-200 transition-all">
+                    <span className="text-orange-400">🔍</span>
+                    <input 
+                      type="text" 
+                      placeholder="搜尋筆記標題、內容或老師..." 
+                      value={knowledgeSearchQuery} 
+                      onChange={e => setKnowledgeSearchQuery(e.target.value)} 
+                      className="w-full bg-transparent text-sm outline-none placeholder-orange-300"
+                    />
+                    {knowledgeSearchQuery && (
+                      <button onClick={() => setKnowledgeSearchQuery('')} className="text-xs text-orange-400 hover:text-orange-600 font-bold">清除</button>
+                    )}
+                  </div>
+                  {filteredKnowledge.map(kn => (
                     <div key={kn.id} className="p-5 bg-orange-50/20 rounded-2xl border border-orange-50 relative group transition-all hover:shadow-sm">
                       <button onClick={() => triggerConfirm(() => setKnowledge(knowledge.filter(k => k.id !== kn.id)))} className="absolute top-4 right-4 text-xs text-red-300 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-500">移除</button>
                       <div className="flex justify-between items-start mb-2">
