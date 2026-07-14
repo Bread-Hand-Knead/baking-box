@@ -3757,10 +3757,10 @@ const App: React.FC = () => {
                       <button onClick={() => triggerConfirm(() => setKnowledge(knowledge.filter(k => k.id !== kn.id)))} className="absolute top-4 right-4 text-xs text-red-300 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-500">移除</button>
                       <div className="flex justify-between items-start mb-2">
                         <h4 className="font-bold text-slate-800 text-base">{kn.title}</h4>
-                        <span className="text-[10px] text-orange-400 font-bold bg-white px-2 py-0.5 rounded shadow-sm">{kn.master}</span>
+                        <span className="text-xs text-orange-500 font-bold bg-white px-2.5 py-1 rounded-lg shadow-sm">{kn.master}</span>
                       </div>
                       <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">{kn.content}</p>
-                      <div className="mt-3 text-[10px] text-orange-200">{new Date(kn.createdAt).toLocaleDateString('zh-TW')}</div>
+                      <div className="mt-3 text-xs text-orange-300">{new Date(kn.createdAt).toLocaleDateString('zh-TW')}</div>
                     </div>
                   ))}
                 </div>
