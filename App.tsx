@@ -1903,33 +1903,35 @@ const App: React.FC = () => {
 
   // Update LocalStorage and Firestore
   useEffect(() => {
-    if (!user) {
+    if (!isRecipesLoading) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
     }
-  }, [recipes, user]);
+  }, [recipes, user, isRecipesLoading]);
 
   useEffect(() => {
-    if (!user) {
+    if (isCategoriesReady) {
       localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
     }
     // Categories are now synced explicitly in manage actions
-  }, [categories, user]);
+  }, [categories, user, isCategoriesReady]);
 
   useEffect(() => {
-    if (!user) {
+    if (isSettingsReady) {
       localStorage.setItem(KNOWLEDGE_KEY, JSON.stringify(knowledge));
-    } else if (!isSyncingFromCloud.current) {
-      saveUserSettings({ knowledge });
+      if (user && !isSyncingFromCloud.current) {
+        saveUserSettings({ knowledge });
+      }
     }
-  }, [knowledge, user]);
+  }, [knowledge, user, isSettingsReady]);
 
   useEffect(() => {
-    if (!user) {
+    if (isSettingsReady) {
       localStorage.setItem(COMPLETED_STEPS_KEY, JSON.stringify(completedSteps));
-    } else if (!isSyncingFromCloud.current) {
-      saveUserSettings({ completedSteps });
+      if (user && !isSyncingFromCloud.current) {
+        saveUserSettings({ completedSteps });
+      }
     }
-  }, [completedSteps, user]);
+  }, [completedSteps, user, isSettingsReady]);
 
   const handleLogin = async () => {
     try {
