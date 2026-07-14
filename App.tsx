@@ -1663,6 +1663,7 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [knowledgeSearchQuery, setKnowledgeSearchQuery] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   
   // Debounce for search
@@ -3075,6 +3076,19 @@ const App: React.FC = () => {
     showToast("筆記儲存成功！");
   };
 
+  const handleSaveEditedNote = () => {
+    if (!newNote.title || !newNote.content || !editingNoteId) return;
+    setKnowledge(prev => prev.map(k => k.id === editingNoteId ? { ...k, title: newNote.title, master: newNote.master, content: newNote.content } : k));
+    setNewNote({ title: '', content: '', master: '' });
+    setEditingNoteId(null);
+    showToast("修改儲存成功！");
+  };
+
+  const handleCancelEditNote = () => {
+    setNewNote({ title: '', content: '', master: '' });
+    setEditingNoteId(null);
+  };
+
   const handleDeleteRecipe = async () => {
     if (!selectedRecipe) return;
     const recipeIdToDelete = String(selectedRecipe.id);
@@ -3754,13 +3768,20 @@ const App: React.FC = () => {
           {view === AppView.COLLECTION && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 no-print">
               <h2 className="text-2xl font-black text-[#E67E22] flex items-center gap-2">烘焙知識庫</h2>
-              <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-6">
+              <div id="knowledge-form" className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-6">
                 <div className="space-y-3">
-                  <h3 className="text-sm font-black text-slate-700">✍️ 新增心得或技巧</h3>
+                  <h3 className="text-sm font-black text-slate-700">{editingNoteId ? '✏️ 編輯心得或技巧' : '✍️ 新增心得或技巧'}</h3>
                   <input type="text" placeholder="標題 (例如：鹽可頌滾圓)" value={newNote.title || ''} onChange={e => setNewNote(p => ({ ...p, title: e.target.value }))} className="w-full px-4 py-2 bg-orange-50/30 rounded-xl text-sm outline-none border border-orange-50 focus:border-orange-200 transition-all" />
                   <input type="text" placeholder="師傅/老師名稱" value={newNote.master || ''} onChange={e => setNewNote(p => ({ ...p, master: e.target.value }))} className="w-full px-4 py-2 bg-orange-50/30 rounded-xl text-sm outline-none border border-orange-50 focus:border-orange-200 transition-all" />
                   <textarea placeholder="重點內容或連結..." value={newNote.content || ''} onChange={e => setNewNote(p => ({ ...p, content: e.target.value }))} className="w-full px-4 py-3 bg-orange-50/30 rounded-xl text-sm outline-none border border-orange-50 h-24 transition-all focus:border-orange-200" />
-                  <button onClick={handleAddNote} className="w-full py-3 bg-[#E67E22] text-white rounded-xl font-bold text-sm shadow-md active:scale-95 transition-all hover:bg-orange-600">新增筆記</button>
+                  {editingNoteId ? (
+                    <div className="flex gap-2">
+                      <button onClick={handleSaveEditedNote} className="flex-1 py-3 bg-[#E67E22] text-white rounded-xl font-bold text-sm shadow-md active:scale-95 transition-all hover:bg-orange-600">儲存修改</button>
+                      <button onClick={handleCancelEditNote} className="py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-sm transition-all active:scale-95">取消</button>
+                    </div>
+                  ) : (
+                    <button onClick={handleAddNote} className="w-full py-3 bg-[#E67E22] text-white rounded-xl font-bold text-sm shadow-md active:scale-95 transition-all hover:bg-orange-600">新增筆記</button>
+                  )}
                 </div>
                 <div className="pt-6 space-y-4 border-t border-orange-50">
                   <div className="flex items-center gap-2 bg-orange-50/20 px-4 py-2.5 rounded-xl border border-orange-50 focus-within:border-orange-200 transition-all">
@@ -3778,8 +3799,33 @@ const App: React.FC = () => {
                   </div>
                   {filteredKnowledge.map(kn => (
                     <div key={kn.id} className="p-5 bg-orange-50/20 rounded-2xl border border-orange-50 relative group transition-all hover:shadow-sm">
-                      <button onClick={() => triggerConfirm(() => setKnowledge(knowledge.filter(k => k.id !== kn.id)))} className="absolute top-4 right-4 text-xs text-red-300 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-500">移除</button>
-                      <div className="flex justify-between items-start mb-2">
+                      <div className="absolute top-4 right-4 flex gap-3 text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={() => {
+                            setNewNote({ title: kn.title, master: kn.master || '', content: kn.content });
+                            setEditingNoteId(kn.id);
+                            const formElement = document.getElementById('knowledge-form');
+                            if (formElement) {
+                              formElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }
+                          }} 
+                          className="text-orange-400 hover:text-orange-600 font-bold"
+                        >
+                          編輯
+                        </button>
+                        <button 
+                          onClick={() => triggerConfirm(() => {
+                            setKnowledge(knowledge.filter(k => k.id !== kn.id));
+                            if (editingNoteId === kn.id) {
+                              handleCancelEditNote();
+                            }
+                          })} 
+                          className="text-red-300 hover:text-red-500 font-bold"
+                        >
+                          移除
+                        </button>
+                      </div>
+                      <div className="flex justify-between items-start mb-2 pr-12">
                         <h4 className="font-bold text-slate-800 text-base">{kn.title}</h4>
                         <span className="text-xs text-orange-500 font-bold bg-white px-2.5 py-1 rounded-lg shadow-sm">{kn.master}</span>
                       </div>
