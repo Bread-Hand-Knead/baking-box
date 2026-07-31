@@ -8,15 +8,13 @@ const db = admin.firestore();
 // 藍新金流方案價格設定 (新台幣)
 const PLAN_PRICES = {
   monthly: 120,
-  yearly: 990,
-  permanent: 2500,
+  yearly: 1190,
 };
 
 // 藍新金流商品描述設定
 const PLAN_DESCS = {
   monthly: "烘焙靈感箱 Premium - 月費訂閱 (30天)",
   yearly: "烘焙靈感箱 Premium - 年費訂閱 (365天)",
-  permanent: "烘焙靈感箱 Premium - 終身買斷版 (永久 VIP)",
 };
 
 /**

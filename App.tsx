@@ -1209,19 +1209,7 @@ const SubscriptionModal: React.FC<{
                 <span>🔥</span>
                 <span>Premium 年費訂閱</span>
               </div>
-              <span className="font-extrabold text-base">NT$ 990 / 年</span>
-            </button>
-
-            <button 
-              onClick={() => onCheckout('permanent')}
-              disabled={isCheckoutLoading}
-              className="w-full py-3 bg-slate-800 text-white rounded-[18px] font-black text-sm shadow-[0_4px_12px_rgba(30,41,59,0.15)] hover:bg-slate-900 transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-between px-6"
-            >
-              <div className="flex items-center gap-2">
-                <span>👑</span>
-                <span>終身買斷版 (永久 VIP)</span>
-              </div>
-              <span className="font-extrabold text-base">NT$ 2,500</span>
+              <span className="font-extrabold text-base">NT$ 1,190 / 年</span>
             </button>
 
             {isCheckoutLoading && (
