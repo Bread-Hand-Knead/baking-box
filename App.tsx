@@ -875,7 +875,11 @@ const DisplayIngredientSection: React.FC<{
   );
 };
 
-const isWeightUnit = (unit: string) => ['g', 'kg', 'ml', 'L'].includes(unit);
+const isWeightUnit = (unit: string) => {
+  if (!unit) return false;
+  const u = unit.trim().toLowerCase();
+  return ['g', '公克', '克', 'kg', '公斤', '千克', 'ml', '毫升', 'l', '公升', '升', 'cc', 'c.c.'].includes(u);
+};
 
 // Core UI: Stable Ingredient List
 const IngredientList: React.FC<{ 
@@ -2491,6 +2495,8 @@ const App: React.FC = () => {
         
         【核心目標】：
         1. 專注提取核心結構：『食譜名稱』、『材料』、『步驟』與『大師/師傅名稱』。
+           - ⚠️ 重要！單位標準化規則：
+             請將所有的重量與體積單位標準化。如果是「公克」、「克」、「G」，請一律將材料的 unit 填寫為小寫「g」。如果是「毫升」、「ML」、「C.C.」、「cc」，請一律填寫為小寫「ml」。如果是「公斤」、「KG」，請一律填寫為小寫「kg」。如果是「公升」、「L」，請一律填寫為大寫「L」。其餘非重量與體積單位（如：條、根、個、份、少許、適量）則原樣保留。
         2. 烤溫與發酵資訊智慧識別與自動對應：
            - 仔細過濾筆記文字中的「烤溫/烘烤參數」（例如：上火 210°C / 下火 190°C、180度、烤 12 分鐘、烘焙時間等）與「發酵資訊」（例如：基本發酵 60 分鐘、最後發酵 50 分、冷藏發酵 12~16 小時等）。
            - 將這些數據精確填入 "bakingStages" 與 "fermentationStages" 中：
