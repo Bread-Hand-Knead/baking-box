@@ -3603,7 +3603,8 @@ const App: React.FC = () => {
                   <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm flex flex-wrap gap-y-6 items-center justify-around text-center mb-8">
                     {(() => {
                       const items = [];
-                      if (scalingRecipe.category === '中式點心') {
+                      const isPineappleCake = scalingRecipe.subcategory === '鳳梨酥';
+                      if (scalingRecipe.category === '中式點心' && !isPineappleCake) {
                         if (scalingRecipe.crustWeight && Number(scalingRecipe.crustWeight) > 0) {
                           items.push(
                             <div key="crust_scale" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
@@ -3647,10 +3648,13 @@ const App: React.FC = () => {
                           </div>
                         );
                       } else {
+                        const isPineappleCake = scalingRecipe.subcategory === '鳳梨酥';
                         if (scalingRecipe.doughWeight && Number(scalingRecipe.doughWeight) > 0) {
                           items.push(
                             <div key="dough_scale" className="flex-1 min-w-[140px] sm:min-w-[170px] space-y-2">
-                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">⚖️ 分割後一個<br/>麵團/糊重 (克)</div>
+                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">
+                                ⚖️ 分割後一個<br/>{isPineappleCake ? '麵團重量' : '麵團/糊重'} (克)
+                              </div>
                               <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">
                                 {Number(scalingRecipe.doughWeight).toFixed(1).replace(/\.0$/, '')}
                                 <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
@@ -3661,7 +3665,9 @@ const App: React.FC = () => {
                         if (scalingRecipe.fillingWeight && Number(scalingRecipe.fillingWeight) > 0) {
                           items.push(
                             <div key="filling_gen_scale" className="flex-1 min-w-[140px] sm:min-w-[170px] space-y-2">
-                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🌰 分割後一個<br/>內餡重 (克)</div>
+                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">
+                                🌰 分割後一個<br/>{isPineappleCake ? '餡料重' : '內餡重'} (克)
+                              </div>
                               <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">
                                 {Number(scalingRecipe.fillingWeight).toFixed(1).replace(/\.0$/, '')}
                                 <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
@@ -3671,10 +3677,12 @@ const App: React.FC = () => {
                         }
                         items.push(
                           <div key="quantity_gen_scale" className="flex-1 min-w-[100px] space-y-1.5">
-                            <div className="text-xs font-black text-slate-400 uppercase">🔢 製作份數</div>
+                            <div className="text-xs font-black text-slate-400 uppercase">
+                              🔢 {isPineappleCake ? '份數' : '製作份數'}
+                            </div>
                             <div className="text-2xl font-black text-slate-700 tabular-nums">
                               {targetQuantity.toFixed(1).replace(/\.0$/, '')}
-                              <span className="text-sm font-bold text-slate-400 ml-0.5">份</span>
+                              <span className="text-sm font-bold text-slate-400 ml-0.5">{isPineappleCake ? '顆' : '份'}</span>
                             </div>
                           </div>
                         );
@@ -3976,7 +3984,7 @@ const App: React.FC = () => {
                   {/* 第三排：⚖️ 麵團/糊 (g)、🌰 內餡 (g)、🔢 製作份數 */}
                   <div className="space-y-6">
                     <div className={`transition-all duration-500 ease-in-out overflow-hidden ${(['餡料', '果醬', '抹醬/其他'].includes(formRecipe.category || '')) ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-[500px] opacity-100'}`}>
-                      {formRecipe.category === '中式點心' ? (
+                      {formRecipe.category === '中式點心' && formRecipe.subcategory !== '鳳梨酥' ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                           <div className="relative">
                             <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">⚖️ 分割後一個油皮重 (克)</label>
@@ -3985,6 +3993,17 @@ const App: React.FC = () => {
                           <div className="relative">
                             <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">🧈 分割後一個油酥重 (克)</label>
                             <input type="text" value={formRecipe.oilPasteWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, oilPasteWeight: e.target.value }))} placeholder="克數" className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold text-center" />
+                          </div>
+                          <div className="relative">
+                            <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">🌰 分割後一個餡料重 (克)</label>
+                            <input type="text" value={formRecipe.fillingWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, fillingWeight: e.target.value }))} placeholder="克數" className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold text-center" />
+                          </div>
+                        </div>
+                      ) : formRecipe.subcategory === '鳳梨酥' ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                          <div className="relative">
+                            <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">⚖️ 分割後一個麵團重量 (克)</label>
+                            <input type="text" value={formRecipe.doughWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, doughWeight: e.target.value }))} placeholder="克數" className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold text-center" />
                           </div>
                           <div className="relative">
                             <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">🌰 分割後一個餡料重 (克)</label>
@@ -4855,8 +4874,9 @@ const App: React.FC = () => {
                     {(() => {
                       const weightItems = [];
 
-                      if (selectedRecipe.category === '中式點心') {
-                        // 中式點心模式的欄位
+                      const isPineappleCake = selectedRecipe.subcategory === '鳳梨酥';
+                      if (selectedRecipe.category === '中式點心' && !isPineappleCake) {
+                        // 中式點心模式的欄位 (非鳳梨酥)
                         if (selectedRecipe.crustWeight && Number(selectedRecipe.crustWeight) > 0) {
                           weightItems.push(
                             <div key="crust" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
@@ -4889,11 +4909,13 @@ const App: React.FC = () => {
                           </div>
                         );
                       } else {
-                        // 一般模式的欄位
+                        // 一般模式的欄位 / 鳳梨酥模式
                         if (selectedRecipe.doughWeight && Number(selectedRecipe.doughWeight) > 0) {
                           weightItems.push(
                             <div key="dough" className="flex-1 min-w-[140px] sm:min-w-[170px] space-y-2">
-                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">⚖️ 分割後一個<br/>麵團/糊重 (克)</div>
+                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">
+                                ⚖️ 分割後一個<br/>{isPineappleCake ? '麵團重量' : '麵團/糊重'} (克)
+                              </div>
                               <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">
                                 {selectedRecipe.doughWeight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
                               </div>
@@ -4903,7 +4925,9 @@ const App: React.FC = () => {
                         if (selectedRecipe.fillingWeight && Number(selectedRecipe.fillingWeight) > 0) {
                           weightItems.push(
                             <div key="filling_gen" className="flex-1 min-w-[140px] sm:min-w-[170px] space-y-2">
-                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🌰 分割後一個<br/>內餡重 (克)</div>
+                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">
+                                🌰 分割後一個<br/>{isPineappleCake ? '餡料重' : '內餡重'} (克)
+                              </div>
                               <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">
                                 {selectedRecipe.fillingWeight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
                               </div>
@@ -4913,9 +4937,12 @@ const App: React.FC = () => {
                         // 製作份數
                         weightItems.push(
                           <div key="quantity_gen" className="flex-1 min-w-[100px] space-y-1.5">
-                            <div className="text-xs font-black text-slate-400 uppercase">🔢 製作份數</div>
+                            <div className="text-xs font-black text-slate-400 uppercase">
+                              🔢 {isPineappleCake ? '份數' : '製作份數'}
+                            </div>
                             <div className="text-2xl font-black text-slate-700 tabular-nums">
-                              {selectedRecipe.quantity || 1}<span className="text-sm font-bold text-slate-400 ml-0.5">份</span>
+                              {selectedRecipe.quantity || 1}
+                              <span className="text-sm font-bold text-slate-400 ml-0.5">{isPineappleCake ? '顆' : '份'}</span>
                             </div>
                           </div>
                         );
@@ -4948,15 +4975,16 @@ const App: React.FC = () => {
                   <div className="hidden print:flex items-center justify-around bg-orange-50/20 border border-orange-100 p-4 rounded-2xl gap-4 my-4">
                     {(() => {
                       const pdfSpecs = [];
-                      if (selectedRecipe.category === '中式點心') {
+                      const isPineappleCake = selectedRecipe.subcategory === '鳳梨酥';
+                      if (selectedRecipe.category === '中式點心' && !isPineappleCake) {
                         if (selectedRecipe.crustWeight && Number(selectedRecipe.crustWeight) > 0) pdfSpecs.push(<div key="cr" className="flex items-center gap-2 text-base font-black text-slate-800">⚖️ 油皮：{selectedRecipe.crustWeight}g</div>);
                         if (selectedRecipe.oilPasteWeight && Number(selectedRecipe.oilPasteWeight) > 0) pdfSpecs.push(<div key="op" className="flex items-center gap-2 text-base font-black text-slate-800">🧈 油酥：{selectedRecipe.oilPasteWeight}g</div>);
                         if (selectedRecipe.fillingWeight && Number(selectedRecipe.fillingWeight) > 0) pdfSpecs.push(<div key="fi" className="flex items-center gap-2 text-base font-black text-slate-800">🌰 內餡：{selectedRecipe.fillingWeight}g</div>);
                         pdfSpecs.push(<div key="qt" className="flex items-center gap-2 text-base font-black text-slate-800">🔢 份數：{selectedRecipe.quantity || 1}顆</div>);
                       } else {
-                        if (selectedRecipe.doughWeight && Number(selectedRecipe.doughWeight) > 0) pdfSpecs.push(<div key="dw" className="flex items-center gap-2 text-base font-black text-slate-800">⚖️ 分割重量：{selectedRecipe.doughWeight}g</div>);
-                        if (selectedRecipe.fillingWeight && Number(selectedRecipe.fillingWeight) > 0) pdfSpecs.push(<div key="fi" className="flex items-center gap-2 text-base font-black text-slate-800">🌰 內餡重量：{selectedRecipe.fillingWeight}g</div>);
-                        pdfSpecs.push(<div key="qt" className="flex items-center gap-2 text-base font-black text-slate-800">🔢 製作份數：{selectedRecipe.quantity || 1}份</div>);
+                        if (selectedRecipe.doughWeight && Number(selectedRecipe.doughWeight) > 0) pdfSpecs.push(<div key="dw" className="flex items-center gap-2 text-base font-black text-slate-800">⚖️ {isPineappleCake ? '麵團' : '分割重量'}：{selectedRecipe.doughWeight}g</div>);
+                        if (selectedRecipe.fillingWeight && Number(selectedRecipe.fillingWeight) > 0) pdfSpecs.push(<div key="fi" className="flex items-center gap-2 text-base font-black text-slate-800">🌰 {isPineappleCake ? '內餡' : '內餡重量'}：{selectedRecipe.fillingWeight}g</div>);
+                        pdfSpecs.push(<div key="qt" className="flex items-center gap-2 text-base font-black text-slate-800">🔢 {isPineappleCake ? '份數' : '製作份數'}：{selectedRecipe.quantity || 1}{isPineappleCake ? '顆' : '份'}</div>);
                       }
                       if (selectedRecipe.moldName) pdfSpecs.push(<div key="mn" className="flex items-center gap-2 text-base font-black text-slate-800">🍞 模具：{selectedRecipe.moldName}</div>);
                       
