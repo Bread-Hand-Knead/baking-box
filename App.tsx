@@ -4779,7 +4779,7 @@ const App: React.FC = () => {
                         師傅：{selectedRecipe.master}
                       </p>
                     </div>
-                    {(selectedRecipe.shelfLife || selectedRecipe.totalDuration) && (
+                    {(selectedRecipe.shelfLife || selectedRecipe.totalDuration || selectedRecipe.recordDate || selectedRecipe.sourceDate) && (
                       <div className="flex flex-wrap gap-4 pt-1">
                         {selectedRecipe.shelfLife && (
                           <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
@@ -4789,6 +4789,16 @@ const App: React.FC = () => {
                         {selectedRecipe.totalDuration && (
                           <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
                             <span>⏱️ 總時：{formatTimeWithUnit(selectedRecipe.totalDuration)}</span>
+                          </div>
+                        )}
+                        {selectedRecipe.recordDate && (
+                          <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
+                            <span>📝 記錄日期：{selectedRecipe.recordDate}</span>
+                          </div>
+                        )}
+                        {selectedRecipe.sourceDate && (
+                          <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
+                            <span>📅 分享日期：{selectedRecipe.sourceDate}</span>
                           </div>
                         )}
                       </div>
@@ -4821,6 +4831,8 @@ const App: React.FC = () => {
                     <span className="print:font-black">師傅：{selectedRecipe.master}</span>
                     {selectedRecipe.shelfLife && <span className="print:font-black">保鮮：{selectedRecipe.shelfLife}</span>}
                     {selectedRecipe.totalDuration && <span className="print:font-black">總時：{formatTimeWithUnit(selectedRecipe.totalDuration)}</span>}
+                    {selectedRecipe.recordDate && <span className="print:font-black">記錄日期：{selectedRecipe.recordDate}</span>}
+                    {selectedRecipe.sourceDate && <span className="print:font-black">分享日期：{selectedRecipe.sourceDate}</span>}
                   </div>
                 </div>
               </div>
