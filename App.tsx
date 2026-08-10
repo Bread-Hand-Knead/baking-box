@@ -806,7 +806,7 @@ const DisplayIngredientSection: React.FC<{
           return (
             <div key={`scaling-ing-${idx}`} className={`flex flex-col md:flex-row md:items-center py-4 border-b border-orange-50/50 last:border-0 px-2 md:px-6 hover:bg-orange-50/20 transition-colors rounded-2xl gap-3 md:gap-0 mb-3 md:mb-0 print:mb-0 print:py-0.5 print:border-slate-100 print:rounded-none print:hover:bg-transparent print:flex-row print:items-center ${isBase ? 'bg-orange-50/50 border-orange-200 print:bg-transparent print:border-slate-100' : ''}`}>
               {/* 第一行：材料名稱 */}
-              <div className="flex items-start gap-4 w-full md:flex-[4] px-1 pt-1 print:gap-1 print:flex-[3] print:pt-0">
+              <div className="flex items-start gap-4 w-full md:flex-[4] px-1 pt-1 print:gap-1 print:flex-1 print:pt-0">
                 <span className={`shrink-0 w-3 h-3 rounded-full mt-2 print:w-1.5 print:h-1.5 print:mt-1 ${ing.isFlour ? 'bg-orange-500 shadow-[0_0_8px_rgba(230,126,34,0.4)] print:bg-slate-400' : 'bg-slate-200'}`} />
                 <span className="text-slate-800 font-black text-lg leading-snug whitespace-pre-wrap break-words print:text-[12px] print:font-bold">
                   {ing.name}
@@ -815,10 +815,10 @@ const DisplayIngredientSection: React.FC<{
               </div>
 
               {/* 第二行：數據列 (重量與百分比) 併排顯示 */}
-              <div className="flex shrink-0 items-center justify-between md:flex-[6] w-full md:w-auto pl-7 md:pl-0 px-2 md:px-0 print-data-group gap-0">
+              <div className="flex shrink-0 items-center justify-between md:flex-[6] w-full md:w-auto pl-7 md:pl-0 px-2 md:px-0 print-data-group gap-0 print:flex-none print:w-28 print:justify-end print:gap-1">
                 {/* 重量欄位：精確對齊表頭 */}
-                <div className="flex-[3] flex justify-start md:justify-center items-center print-weight-cell">
-                  <div className="flex items-center justify-center w-full">
+                <div className="flex-[3] flex justify-start md:justify-center items-center print-weight-cell print:flex-none print:w-14 print:justify-end">
+                  <div className="flex items-center justify-center w-full print:justify-end">
                     {onReverseScale && isWeight && (
                       <div className="relative flex items-center print:hidden">
                         <input 
@@ -832,7 +832,7 @@ const DisplayIngredientSection: React.FC<{
                       </div>
                     )}
                     
-                    <div className={`flex items-baseline justify-center min-w-[70px] md:min-w-0 ${(onReverseScale && isWeight) ? 'hidden print:flex' : 'flex'}`}>
+                    <div className={`flex items-baseline justify-center min-w-[70px] md:min-w-0 print:min-w-0 ${(onReverseScale && isWeight) ? 'hidden print:flex' : 'flex'}`}>
                       <span className={`text-2xl md:text-lg font-black tabular-nums print:text-[11px] print:font-normal ${isBase ? 'text-orange-600' : 'text-slate-700'}`}>
                         {isAdjustableAmt ? (ing.unit) : (numericAmt * scalingFactor).toFixed(1).replace(/\.0$/, '')}
                       </span>
@@ -845,7 +845,7 @@ const DisplayIngredientSection: React.FC<{
 
                 {/* 百分比欄位：精確對齊表頭 */}
                 {isBaking && showPercentage && (
-                  <div className="flex-[2] flex justify-end md:justify-center items-center print-percent-cell min-w-[100px]">
+                  <div className="flex-[2] flex justify-end md:justify-center items-center print-percent-cell min-w-[100px] print:min-w-0 print:flex-none print:w-12 print:justify-end">
                     {percentage ? (
                       <span className="text-sm md:text-base font-black px-4 py-2 rounded-xl bg-orange-50 text-orange-600 shadow-sm min-w-[85px] text-center border border-orange-100/50 tabular-nums print:bg-transparent print:border-none print:px-0 print:py-0 print:text-[11px] print:text-slate-400 print:font-normal">
                         ({percentage}%)
