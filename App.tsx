@@ -7,6 +7,7 @@ import {
   getDocFromServer, setPersistence, browserLocalPersistence, functions, httpsCallable
 } from './firebase';
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { marked } from 'marked';
 
 // Initialize Gemini AI with fallback support for different environment variable names
 const getApiKey = (forcePrompt = false) => {
@@ -3476,9 +3477,12 @@ ${notesContext || '（目前沒有筆記）'}
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
-                        {aiQaResult?.answer}
-                      </p>
+                      <div 
+                        className="text-sm text-slate-700 leading-relaxed [&_h3]:text-base [&_h3]:font-black [&_h3]:text-slate-800 [&_h3]:mt-4 [&_h3]:mb-2 [&_h2]:text-lg [&_h2]:font-black [&_h2]:text-slate-900 [&_h2]:mt-5 [&_h2]:mb-2 [&_h1]:text-xl [&_h1]:font-black [&_h1]:text-slate-950 [&_h1]:mt-6 [&_h1]:mb-3 [&_ul]:list-disc [&_ul]:list-inside [&_ul]:ml-4 [&_ul]:space-y-1 [&_ul]:mb-3 [&_li]:text-slate-700 [&_li]:leading-relaxed [&_strong]:font-extrabold [&_strong]:text-slate-900 [&_p]:mb-3"
+                        dangerouslySetInnerHTML={{ 
+                          __html: marked.parse(aiQaResult?.answer || '') as string
+                        }} 
+                      />
                       
                       {aiQaResult?.references && aiQaResult.references.length > 0 && (
                         <div className="pt-4 border-t border-orange-50 space-y-2">
