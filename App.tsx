@@ -142,7 +142,7 @@ import {
 
 // --- 1. 類型定義 (原 types.ts 內容) ---
 const COPYRIGHT_TEXT = "© 2026 Linda's Recipe Box. All rights reserved.";
-export enum AppView { LIST, CREATE, EDIT, DETAIL, SCALING, COLLECTION, MANAGE_CATEGORIES }
+export enum AppView { LIST, CREATE, EDIT, DETAIL, SCALING, COLLECTION, MANAGE_CATEGORIES, ADMIN }
 
 export interface Ingredient { name: string; amount: string | number; unit: string; isFlour: boolean; percentage?: number | string; }
 export interface FermentationStage { name: string; time: string; timeUnit?: '分鐘' | '小時'; temperature: string; humidity: string; note?: string; }
@@ -1285,7 +1285,8 @@ const Sidebar: React.FC<{
   isVip: boolean;
   subTypeLabel: string;
   aiUsage: { count: number };
-}> = ({ isOpen, onClose, user, onLogin, onLogout, subscriptionStatus, isAdmin, isVip, subTypeLabel, recipeCount, onUpgrade, onShowInstructions, onShowHelp, aiUsage }) => {
+  onNavigate: (view: AppView) => void;
+}> = ({ isOpen, onClose, user, onLogin, onLogout, subscriptionStatus, isAdmin, isVip, subTypeLabel, recipeCount, onUpgrade, onShowInstructions, onShowHelp, aiUsage, onNavigate }) => {
   const isPremiumUser = isVip || isAdmin || subscriptionStatus === 'active';
 
   return (
@@ -1453,6 +1454,19 @@ const Sidebar: React.FC<{
 
               {/* Nav Links */}
               <div className="space-y-1">
+                {isAdmin && (
+                  <button 
+                    onClick={() => {
+                      onNavigate(AppView.ADMIN);
+                      onClose();
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-red-600 font-black text-sm hover:bg-red-50 rounded-xl transition-all group border border-red-100 shadow-sm"
+                  >
+                    <div className="w-5 h-5 flex items-center justify-center text-base">⚙️</div>
+                    <span>管理後台</span>
+                  </button>
+                )}
+
                 <button 
                   onClick={() => {
                     onShowHelp();
@@ -1653,6 +1667,8 @@ const App: React.FC = () => {
     }
   }, [isAdmin]);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
+  const [adminUsers, setAdminUsers] = useState<any[]>([]);
+  const [adminLoading, setAdminLoading] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
@@ -1814,6 +1830,10 @@ const App: React.FC = () => {
         const data = snapshot.data();
         isSyncingFromCloud.current = true;
         
+        if (user && (!data.email || data.email !== user.email)) {
+          saveUserSettings({ email: user.email });
+        }
+
         // 若無試用期欄位，則為其初始化 15 天試用期
         if (data.trial_until === undefined) {
           const trialDuration = 15 * 24 * 60 * 60 * 1000;
@@ -1858,6 +1878,7 @@ const App: React.FC = () => {
         // 新登入使用者初始化 15 天試用期
         const trialDuration = 15 * 24 * 60 * 60 * 1000;
         saveUserSettings({
+          email: user.email,
           trial_until: Date.now() + trialDuration,
           is_vip: false,
           subscriptionStatus: 'free',
@@ -2784,6 +2805,82 @@ ${notesContext || '（目前沒有筆記）'}
     }
   };
 
+  const fetchAdminData = async () => {
+    if (!isAdmin) return;
+    setAdminLoading(true);
+    try {
+      const q = collection(db, 'userSettings');
+      const snap = await getDocs(q);
+      const list = snap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      // Sort users by registration date descending if available
+      list.sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0));
+      setAdminUsers(list);
+    } catch (e) {
+      console.error("Admin fetch error:", e);
+      showToast("無法載入管理後台資料");
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const handleExtendVip = async (userId: string, currentTrialUntil: number) => {
+    const current = currentTrialUntil || Date.now();
+    const newUntil = Math.max(Date.now(), current) + 30 * 24 * 60 * 60 * 1000;
+    try {
+      await updateDoc(doc(db, 'userSettings', userId), {
+        trial_until: newUntil,
+        is_permanent_vip: false,
+        subscriptionStatus: 'active',
+        updatedAt: Date.now()
+      });
+      showToast("成功延長 VIP 30 天！");
+      fetchAdminData();
+    } catch (e) {
+      console.error(e);
+      showToast("操作失敗");
+    }
+  };
+
+  const handleSetPermanentVip = async (userId: string) => {
+    try {
+      await updateDoc(doc(db, 'userSettings', userId), {
+        is_permanent_vip: true,
+        subscriptionStatus: 'active',
+        updatedAt: Date.now()
+      });
+      showToast("已設定為永久 VIP！");
+      fetchAdminData();
+    } catch (e) {
+      console.error(e);
+      showToast("操作失敗");
+    }
+  };
+
+  const handleResetToFree = async (userId: string) => {
+    try {
+      await updateDoc(doc(db, 'userSettings', userId), {
+        is_permanent_vip: false,
+        trial_until: Date.now() - 1000,
+        subscriptionStatus: 'free',
+        updatedAt: Date.now()
+      });
+      showToast("已重設為一般免費戶");
+      fetchAdminData();
+    } catch (e) {
+      console.error(e);
+      showToast("操作失敗");
+    }
+  };
+
+  useEffect(() => {
+    if (view === AppView.ADMIN && isAdmin) {
+      fetchAdminData();
+    }
+  }, [view, isAdmin]);
+
   const handleSmartPaste = async () => {
     if (!smartPasteText.trim()) return;
     
@@ -3303,6 +3400,7 @@ ${notesContext || '（目前沒有筆記）'}
         onShowInstructions={() => setIsInstructionsOpen(true)}
         onShowHelp={() => setIsHelpModalOpen(true)}
         aiUsage={aiUsage}
+        onNavigate={(v) => setView(v)}
       />
       
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 print:max-w-none print:px-0 print:py-0">
@@ -5054,6 +5152,144 @@ ${notesContext || '（目前沒有筆記）'}
               >
                 返回建立頁面
               </button>
+            </div>
+          )}
+
+          {view === AppView.ADMIN && isAdmin && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 no-print">
+              <div className="flex justify-between items-center pb-4 border-b border-orange-100">
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl">⚙️</span>
+                  <h2 className="text-2xl font-black text-[#8B5E3C]">管理員專屬後台</h2>
+                </div>
+                <button 
+                  onClick={() => setView(AppView.LIST)} 
+                  className="px-4 py-2 bg-orange-100 text-[#8B5E3C] font-black rounded-xl text-sm transition-all hover:bg-orange-200 active:scale-95 border border-orange-200"
+                >
+                  返回首頁
+                </button>
+              </div>
+
+              {/* 簡易統計面板 */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white p-6 rounded-3xl border border-orange-100/50 shadow-sm space-y-2">
+                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest">總註冊人數</p>
+                  <p className="text-3xl font-black text-[#8B5E3C]">{adminUsers.length} <span className="text-xs font-bold text-slate-400">人</span></p>
+                </div>
+                <div className="bg-white p-6 rounded-3xl border border-orange-100/50 shadow-sm space-y-2">
+                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest">今日活躍人數 (24h)</p>
+                  <p className="text-3xl font-black text-emerald-600">
+                    {adminUsers.filter(u => {
+                      const updated = u.updatedAt || u.createdAt || 0;
+                      return (Date.now() - updated) < 24 * 60 * 60 * 1000;
+                    }).length} <span className="text-xs font-bold text-slate-400">人</span>
+                  </p>
+                </div>
+                <div className="bg-white p-6 rounded-3xl border border-orange-100/50 shadow-sm space-y-2">
+                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest">當月 AI 總調用量</p>
+                  <p className="text-3xl font-black text-blue-600">
+                    {adminUsers.reduce((sum, u) => sum + (u.aiUsage?.count || 0), 0)} <span className="text-xs font-bold text-slate-400">次</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* 用戶列表與狀態監控 */}
+              <div className="bg-white rounded-3xl border border-orange-100/50 shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-orange-50 bg-orange-50/10 flex justify-between items-center">
+                  <h3 className="font-black text-slate-800 text-lg">用戶列表與方案設定</h3>
+                  <button 
+                    onClick={fetchAdminData}
+                    className="px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-600 text-xs font-bold rounded-xl transition-all"
+                  >
+                    🔄 重新整理
+                  </button>
+                </div>
+                
+                {adminLoading ? (
+                  <div className="p-12 flex flex-col items-center justify-center gap-3">
+                    <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-xs text-slate-400 font-bold">正在讀取用戶資料...</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-orange-50/20 text-xs font-black text-slate-400 uppercase tracking-wider border-b border-orange-50">
+                          <th className="p-4 pl-6">Email / UID</th>
+                          <th className="p-4">註冊時間</th>
+                          <th className="p-4">目前方案</th>
+                          <th className="p-4">AI 解析量</th>
+                          <th className="p-4 pr-6 text-right">權限調整</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-orange-50/30 text-sm">
+                        {adminUsers.map(u => {
+                          const now = Date.now();
+                          const isPermanent = u.is_permanent_vip === true;
+                          const isTrial = u.trial_until && u.trial_until > now;
+                          const isVipUser = u.subscriptionStatus === 'active' || u.is_vip;
+                          
+                          let planLabel = '免費版';
+                          let planClass = 'bg-slate-100 text-slate-600';
+                          if (isPermanent) {
+                            planLabel = '永久 VIP';
+                            planClass = 'bg-emerald-100 text-emerald-700 font-bold';
+                          } else if (isTrial) {
+                            const days = Math.ceil((u.trial_until - now) / (24 * 60 * 60 * 1000));
+                            planLabel = `試用中 (剩 ${days} 天)`;
+                            planClass = 'bg-orange-100 text-orange-700';
+                          } else if (isVipUser) {
+                            planLabel = '付費 VIP';
+                            planClass = 'bg-amber-100 text-amber-700 font-bold';
+                          }
+
+                          return (
+                            <tr key={u.id} className="hover:bg-orange-50/10 transition-colors">
+                              <td className="p-4 pl-6 font-bold text-slate-700">
+                                <div>{u.email || '未提供 Email'}</div>
+                                <div className="text-[10px] text-slate-300 font-mono mt-0.5">{u.id}</div>
+                              </td>
+                              <td className="p-4 text-xs text-slate-400">
+                                {u.createdAt ? new Date(u.createdAt).toLocaleString('zh-TW') : '無記錄'}
+                              </td>
+                              <td className="p-4">
+                                <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${planClass}`}>
+                                  {planLabel}
+                                </span>
+                              </td>
+                              <td className="p-4 font-mono font-black text-xs text-slate-500">
+                                {u.aiUsage?.count || 0} / {isVipUser || isTrial ? '∞' : '10'}
+                              </td>
+                              <td className="p-4 pr-6 text-right space-x-2">
+                                <button
+                                  onClick={() => handleExtendVip(u.id, u.trial_until)}
+                                  className="px-2.5 py-1 bg-orange-50 hover:bg-orange-100 text-orange-600 text-xs font-black rounded-lg transition-all active:scale-95 shadow-sm"
+                                >
+                                  +30天試用
+                                </button>
+                                <button
+                                  onClick={() => handleSetPermanentVip(u.id)}
+                                  className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 text-xs font-black rounded-lg transition-all active:scale-95 shadow-sm"
+                                >
+                                  設為永久VIP
+                                </button>
+                                {(isPermanent || isTrial || isVipUser) && (
+                                  <button
+                                    onClick={() => handleResetToFree(u.id)}
+                                    className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-500 text-xs font-black rounded-lg transition-all active:scale-95 shadow-sm"
+                                  >
+                                    取消 VIP
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
