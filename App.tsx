@@ -1169,7 +1169,7 @@ const SubscriptionModal: React.FC<{
                     <span>✨</span> 無限食譜儲存 (∞)
                   </li>
                   <li className="flex items-center gap-2.5 text-sm font-black text-white">
-                    <span>✨</span> 無限 AI 智能力解析
+                    <span>✨</span> 無限 AI 智慧解析
                   </li>
                   <li className="flex items-center gap-2.5 text-sm font-black text-white">
                     <span>✨</span> 專業雙欄 PDF 導出
