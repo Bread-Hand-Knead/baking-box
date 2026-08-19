@@ -1661,6 +1661,7 @@ const App: React.FC = () => {
   const [aiQaLoading, setAiQaLoading] = useState(false);
   const [aiQaResult, setAiQaResult] = useState<{ answer: string; references: { type: '食譜' | '筆記'; id: string; title: string }[] } | null>(null);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [expandedNoteIds, setExpandedNoteIds] = useState<Record<string, boolean>>({});
   
   // Debounce for search
   useEffect(() => {
@@ -2747,6 +2748,13 @@ ${notesContext || '（目前沒有筆記）'}
     }
   };
 
+  const toggleNoteExpand = (id: string) => {
+    setExpandedNoteIds(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+
   const handleJumpToReference = (ref: { type: '食譜' | '筆記'; id: string }) => {
     if (ref.type === '食譜') {
       const found = recipes.find(r => r.id === ref.id);
@@ -2759,6 +2767,7 @@ ${notesContext || '（目前沒有筆記）'}
       }
     } else if (ref.type === '筆記') {
       setView(AppView.COLLECTION);
+      setExpandedNoteIds(prev => ({ ...prev, [ref.id]: true }));
       setTimeout(() => {
         const noteElement = document.getElementById(`note-${ref.id}`);
         if (noteElement) {
@@ -4046,50 +4055,75 @@ ${notesContext || '（目前沒有筆記）'}
                       <button onClick={() => setKnowledgeSearchQuery('')} className="text-xs text-orange-400 hover:text-orange-600 font-bold">清除</button>
                     )}
                   </div>
-                  {filteredKnowledge.map(kn => (
-                    <div id={`note-${kn.id}`} key={kn.id} className="p-5 bg-orange-50/20 rounded-2xl border border-orange-50 relative group transition-all hover:shadow-sm">
-                      <div className="absolute top-4 right-4 flex gap-2 text-xs opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10">
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            setNewNote({ title: kn.title, master: kn.master || '', content: kn.content });
-                            setEditingNoteId(kn.id);
-                            try {
-                              const formElement = document.getElementById('knowledge-form');
-                              if (formElement) {
-                                formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                              } else {
+                  {filteredKnowledge.map(kn => {
+                    const isExpanded = !!expandedNoteIds[kn.id];
+                    return (
+                      <div 
+                        id={`note-${kn.id}`} 
+                        key={kn.id} 
+                        onClick={() => toggleNoteExpand(kn.id)}
+                        className="p-5 bg-orange-50/20 rounded-2xl border border-orange-50 relative group transition-all hover:shadow-sm cursor-pointer select-none"
+                      >
+                        <div 
+                          className="absolute top-4 right-4 flex gap-2 text-xs opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              setNewNote({ title: kn.title, master: kn.master || '', content: kn.content });
+                              setEditingNoteId(kn.id);
+                              try {
+                                const formElement = document.getElementById('knowledge-form');
+                                if (formElement) {
+                                  formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                } else {
+                                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }
+                              } catch (e) {
                                 window.scrollTo({ top: 0, behavior: 'smooth' });
                               }
-                            } catch (e) {
-                              window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }
-                          }} 
-                          className="px-2.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-600 font-bold rounded-lg transition-all active:scale-95 shadow-sm"
-                        >
-                          編輯
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={() => triggerConfirm(() => {
-                            setKnowledge(knowledge.filter(k => k.id !== kn.id));
-                            if (editingNoteId === kn.id) {
-                              handleCancelEditNote();
-                            }
-                          })} 
-                          className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-500 font-bold rounded-lg transition-all active:scale-95 shadow-sm"
-                        >
-                          移除
-                        </button>
+                            }} 
+                            className="px-2.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-600 font-bold rounded-lg transition-all active:scale-95 shadow-sm"
+                          >
+                            編輯
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => triggerConfirm(() => {
+                              setKnowledge(knowledge.filter(k => k.id !== kn.id));
+                              if (editingNoteId === kn.id) {
+                                handleCancelEditNote();
+                              }
+                            })} 
+                            className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-500 font-bold rounded-lg transition-all active:scale-95 shadow-sm"
+                          >
+                            移除
+                          </button>
+                        </div>
+                        <div className="flex justify-between items-start mb-2 pr-12">
+                          <h4 className="font-bold text-slate-800 text-base flex-1 pr-2">{kn.title}</h4>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {kn.master && (
+                              <span className="text-xs text-orange-500 font-bold bg-white px-2.5 py-1 rounded-lg shadow-sm">
+                                {kn.master}
+                              </span>
+                            )}
+                            <span className="text-slate-400 text-xs font-bold w-4 h-4 flex items-center justify-center">
+                              {isExpanded ? '▼' : '▶'}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        {isExpanded && (
+                          <div className="mt-3 animate-in fade-in slide-in-from-top-1">
+                            <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">{kn.content}</p>
+                          </div>
+                        )}
+                        <div className="mt-3 text-xs text-orange-300">{new Date(kn.createdAt).toLocaleDateString('zh-TW')}</div>
                       </div>
-                      <div className="flex justify-between items-start mb-2 pr-12">
-                        <h4 className="font-bold text-slate-800 text-base">{kn.title}</h4>
-                        <span className="text-xs text-orange-500 font-bold bg-white px-2.5 py-1 rounded-lg shadow-sm">{kn.master}</span>
-                      </div>
-                      <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">{kn.content}</p>
-                      <div className="mt-3 text-xs text-orange-300">{new Date(kn.createdAt).toLocaleDateString('zh-TW')}</div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
