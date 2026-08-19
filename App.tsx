@@ -1560,6 +1560,7 @@ const App: React.FC = () => {
   const [subscriptionStatus, setSubscriptionStatus] = useState<'free' | 'active'>('free');
   const [subTypeLabel, setSubTypeLabel] = useState('一般用戶');
   const [aiUsage, setAiUsage] = useState({ date: '', count: 0 });
+  const [aiQaUsage, setAiQaUsage] = useState({ date: '', count: 0 });
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
 
   // 藍新金流付費跳轉處理
@@ -1656,6 +1657,9 @@ const App: React.FC = () => {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [knowledgeSearchQuery, setKnowledgeSearchQuery] = useState('');
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [isAiQaMode, setIsAiQaMode] = useState(false);
+  const [aiQaLoading, setAiQaLoading] = useState(false);
+  const [aiQaResult, setAiQaResult] = useState<{ answer: string; references: { type: '食譜' | '筆記'; id: string; title: string }[] } | null>(null);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   
   // Debounce for search
@@ -1795,6 +1799,8 @@ const App: React.FC = () => {
         if (localSteps) setCompletedSteps(JSON.parse(localSteps));
         const localUsage = localStorage.getItem('local_ai_usage');
         if (localUsage) setAiUsage(JSON.parse(localUsage));
+        const localQaUsage = localStorage.getItem('local_ai_qa_usage');
+        if (localQaUsage) setAiQaUsage(JSON.parse(localQaUsage));
         setIsSettingsReady(true);
       }
       return;
@@ -1840,6 +1846,7 @@ const App: React.FC = () => {
         if (data.knowledge) setKnowledge(data.knowledge);
         if (data.completedSteps) setCompletedSteps(data.completedSteps);
         if (data.aiUsage) setAiUsage(data.aiUsage);
+        if (data.aiQaUsage) setAiQaUsage(data.aiQaUsage);
         
         setIsCloudSyncEnabled(subStatus === 'active');
         setIsSettingsReady(true);
@@ -1853,6 +1860,7 @@ const App: React.FC = () => {
           is_vip: false,
           subscriptionStatus: 'free',
           is_cloud_sync_enabled: true,
+          aiQaUsage: { date: '', count: 0 },
           createdAt: Date.now()
         });
 
@@ -1925,6 +1933,15 @@ const App: React.FC = () => {
     }
   }, [completedSteps, user, isSettingsReady]);
 
+  useEffect(() => {
+    if (isSettingsReady) {
+      localStorage.setItem('local_ai_qa_usage', JSON.stringify(aiQaUsage));
+      if (user && !isSyncingFromCloud.current) {
+        saveUserSettings({ aiQaUsage });
+      }
+    }
+  }, [aiQaUsage, user, isSettingsReady]);
+
   const handleLogin = async () => {
     try {
       await signInWithPopup(auth, googleProvider);
@@ -1945,6 +1962,7 @@ const App: React.FC = () => {
       setKnowledge([]);
       setCompletedSteps({});
       setAiUsage({ date: '', count: 0 });
+      setAiQaUsage({ date: '', count: 0 });
       setHasSyncedCloud(false);
       
       // Clear local storage for privacy
@@ -1954,6 +1972,7 @@ const App: React.FC = () => {
       localStorage.removeItem(RESOURCE_STORAGE_KEY);
       localStorage.removeItem(COMPLETED_STEPS_KEY);
       localStorage.removeItem('local_ai_usage');
+      localStorage.removeItem('local_ai_qa_usage');
       
       setView(AppView.LIST);
     } catch (error) {
@@ -2614,6 +2633,147 @@ const App: React.FC = () => {
     return false;
   };
 
+  const parseAiQaResponse = (text: string) => {
+    const referenceRegex = /\[(食譜|筆記)\|([^|\]]+)\|([^\]]+)\]/g;
+    const refs: { type: '食譜' | '筆記'; id: string; title: string }[] = [];
+    let match;
+    while ((match = referenceRegex.exec(text)) !== null) {
+      refs.push({
+        type: match[1] as '食譜' | '筆記',
+        id: match[2],
+        title: match[3]
+      });
+    }
+    const cleanText = text.replace(/References:[\s\S]*$/i, '').trim();
+    return { cleanText, refs };
+  };
+
+  const handleAiAsk = async () => {
+    const q = searchQuery.trim();
+    if (!q) return;
+
+    if (!isPremiumUser) {
+      const today = getTodayString();
+      if (aiQaUsage.date === today && aiQaUsage.count >= 3) {
+        triggerUpgradePrompt(true, "您的免費 AI 問問次數已達今日上限 (3次)，升級 Premium 可解鎖無限次數與雲端備份！");
+        return;
+      }
+    }
+
+    setAiQaLoading(true);
+    setAiQaResult(null);
+
+    const apiKey = getApiKey(true);
+    if (!apiKey || apiKey === 'YOUR_API_KEY') {
+      showToast("請先設定 Gemini API 金鑰");
+      setAiQaLoading(false);
+      return;
+    }
+
+    try {
+      const client = new GoogleGenerativeAI(apiKey);
+      const model = client.getGenerativeModel({ model: "models/gemini-3-flash-preview" });
+
+      const recipesContext = recipes.map((r, index) => {
+        const ingredientsStr = r.ingredients.map(i => `${i.name}: ${i.amount}${i.unit}`).join(', ');
+        const instructionsStr = r.instructions.join('\n');
+        return `[食譜 #${index + 1}]
+名稱: ${r.title}
+老師/作者: ${r.master || '未註記'}
+分類: ${r.category} ${r.subcategory ? `> ${r.subcategory}` : ''}
+介紹: ${r.description || '無'}
+材料: ${ingredientsStr}
+步驟:
+${instructionsStr}
+備註: ${r.notes || '無'}
+標籤: ${r.tags ? r.tags.join(', ') : '無'}
+ID: ${r.id}`;
+      }).join('\n\n');
+
+      const notesContext = knowledge.map((k, index) => {
+        return `[筆記 #${index + 1}]
+名稱: ${k.title}
+老師/作者: ${k.master || '未註記'}
+內容: ${k.content}
+ID: ${k.id}`;
+      }).join('\n\n');
+
+      const prompt = `你是一個專業的個人烘焙助理。請依據下方提供的【使用者食譜】與【使用者筆記】來回答問題。
+
+【規則】：
+1. 你的回答必須【僅依據】下方提供的食譜與筆記資料進行統整回答，絕對不能胡言亂語或憑空捏造。
+2. 如果提供的資料中完全沒有相關資訊，請禮貌地回答：「目前您的食譜與筆記中沒有關於這方面的記錄喔。」
+3. 你的回答格式必須分成兩個部分：
+   第一部分：針對問題的回答內容（繁體中文）。
+   第二部分：在回答內容最下方，請另起新行並明確列出【參考資料】，格式如下（多個參考以逗號分隔）：
+   References: [卡片類型|ID|名稱]
+   
+   例如：
+   References: [食譜|rec-12345|起司蛋糕], [筆記|kn-67890|鹽可頌技巧]
+   請確保 references 格式正確，包含卡片類型（食譜或筆記）、ID 與名稱，不要加入額外符號。
+
+【使用者食譜】：
+${recipesContext || '（目前沒有食譜）'}
+
+【使用者筆記】：
+${notesContext || '（目前沒有筆記）'}
+
+問題：${q}`;
+
+      const response = await model.generateContent(prompt);
+      const replyText = response.response.text();
+
+      const { cleanText, refs } = parseAiQaResponse(replyText);
+
+      setAiQaResult({
+        answer: cleanText,
+        references: refs
+      });
+
+      const today = getTodayString();
+      const newUsage = aiQaUsage.date === today ? { ...aiQaUsage, count: aiQaUsage.count + 1 } : { date: today, count: 1 };
+      setAiQaUsage(newUsage);
+      if (!user) {
+        localStorage.setItem('local_ai_qa_usage', JSON.stringify(newUsage));
+      } else {
+        await saveUserSettings({ aiQaUsage: newUsage });
+      }
+
+    } catch (error) {
+      console.error("AI QA Error:", error);
+      showToast("AI 智慧問答失敗，請稍後再試");
+    } finally {
+      setAiQaLoading(false);
+    }
+  };
+
+  const handleJumpToReference = (ref: { type: '食譜' | '筆記'; id: string }) => {
+    if (ref.type === '食譜') {
+      const found = recipes.find(r => r.id === ref.id);
+      if (found) {
+        setSelectedRecipe(found);
+        setView(AppView.DETAIL);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        showToast("找不到該食譜");
+      }
+    } else if (ref.type === '筆記') {
+      setView(AppView.COLLECTION);
+      setTimeout(() => {
+        const noteElement = document.getElementById(`note-${ref.id}`);
+        if (noteElement) {
+          noteElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          noteElement.classList.add('ring-2', 'ring-orange-400');
+          setTimeout(() => {
+            noteElement.classList.remove('ring-2', 'ring-orange-400');
+          }, 3000);
+        } else {
+          showToast("找不到該筆記");
+        }
+      }, 300);
+    }
+  };
+
   const handleSmartPaste = async () => {
     if (!smartPasteText.trim()) return;
     
@@ -3214,42 +3374,124 @@ const App: React.FC = () => {
               </div>
             </div>
             <div className="space-y-4">
-              <div className="relative group">
-                <input 
-                  type="text" 
-                  placeholder="搜尋食譜標題、材料或輸入 #標籤..." 
-                  value={searchQuery || ''} 
-                  onChange={(e) => setSearchQuery(e.target.value)} 
-                  className="w-full pl-11 pr-12 py-3 bg-white border border-orange-100 rounded-2xl focus:ring-2 focus:ring-orange-400 outline-none shadow-sm text-sm transition-all" 
-                />
-                <span className="absolute left-4 top-3.5 text-orange-300 transition-colors group-focus-within:text-orange-500">🔍</span>
-                {searchQuery && (
-                  <button 
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-4 top-3 text-slate-300 hover:text-orange-500 transition-all"
-                  >
-                    <X size={18} />
-                  </button>
-                )}
+              <div className="flex gap-2 relative">
+                <div className="relative flex-1 group">
+                  <input 
+                    type="text" 
+                    placeholder={isAiQaMode ? "輸入問題，AI 將依據你的筆記與食譜統整回答..." : "搜尋食譜標題、材料或輸入 #標籤..."} 
+                    value={searchQuery || ''} 
+                    onChange={(e) => setSearchQuery(e.target.value)} 
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && isAiQaMode) {
+                        handleAiAsk();
+                      }
+                    }}
+                    className="w-full pl-11 pr-24 py-3 bg-white border border-orange-100 rounded-2xl focus:ring-2 focus:ring-orange-400 outline-none shadow-sm text-sm transition-all" 
+                  />
+                  <span className="absolute left-4 top-3.5 text-orange-300 transition-colors group-focus-within:text-orange-500">🔍</span>
+                  {searchQuery && (
+                    <button 
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-14 top-3.5 text-slate-300 hover:text-orange-500 transition-all"
+                    >
+                      <X size={18} />
+                    </button>
+                  )}
+                  {isAiQaMode && searchQuery && (
+                    <button 
+                      onClick={handleAiAsk}
+                      className="absolute right-3 top-2 bg-[#E67E22] hover:bg-orange-600 text-white rounded-xl px-3 py-1.5 text-xs font-bold transition-all active:scale-95"
+                    >
+                      問 AI
+                    </button>
+                  )}
 
-                {/* Hashtag Suggestion Menu */}
-                {searchQuery === '#' && (
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-orange-50 z-[1100] p-4 max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-1">可用標籤</p>
-                    <div className="flex flex-wrap gap-2">
-                      {allTags.length > 0 ? allTags.map(tag => (
-                        <button 
-                          key={`suggest-${tag}`} 
-                          onClick={() => setSearchQuery('#' + tag)}
-                          className="px-3 py-1.5 bg-orange-50 text-orange-600 rounded-xl text-xs font-black border border-orange-100 hover:bg-orange-100 transition-all"
-                        >
-                          #{tag}
-                        </button>
-                      )) : <p className="text-xs text-slate-400 italic px-1">目前還沒有任何標籤...</p>}
+                  {/* Hashtag Suggestion Menu */}
+                  {searchQuery === '#' && (
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-orange-50 z-[1100] p-4 max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-1">可用標籤</p>
+                      <div className="flex flex-wrap gap-2">
+                        {allTags.length > 0 ? allTags.map(tag => (
+                          <button 
+                            key={`suggest-${tag}`} 
+                            onClick={() => setSearchQuery('#' + tag)}
+                            className="px-3 py-1.5 bg-orange-50 text-orange-600 rounded-xl text-xs font-black border border-orange-100 hover:bg-orange-100 transition-all"
+                          >
+                            #{tag}
+                          </button>
+                        )) : <p className="text-xs text-slate-400 italic px-1">目前還沒有任何標籤...</p>}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
+                <button 
+                  onClick={() => {
+                    setIsAiQaMode(!isAiQaMode);
+                    setAiQaResult(null);
+                  }} 
+                  className={`px-4 py-3 rounded-2xl font-bold text-sm shadow-sm transition-all flex items-center gap-1.5 active:scale-95 shrink-0 ${
+                    isAiQaMode 
+                      ? 'bg-[#E67E22] text-white border border-orange-600' 
+                      : 'bg-white border border-orange-100 text-orange-600 hover:bg-orange-50'
+                  }`}
+                >
+                  <span>🤖</span>
+                  <span className="hidden sm:inline">AI 問答</span>
+                </button>
               </div>
+
+              {isAiQaMode && (aiQaLoading || aiQaResult) && (
+                <div className="bg-orange-50/10 border border-orange-100 rounded-3xl p-6 shadow-sm space-y-4 animate-in fade-in slide-in-from-top-4">
+                  <div className="flex justify-between items-center pb-3 border-b border-orange-100">
+                    <div className="flex items-center gap-2 font-black text-[#E67E22]">
+                      <span>🤖</span>
+                      <span>AI 知識庫智慧回答</span>
+                    </div>
+                    {(aiQaResult || !aiQaLoading) && (
+                      <button 
+                        onClick={() => {
+                          setAiQaResult(null);
+                          setAiQaLoading(false);
+                        }} 
+                        className="text-xs text-orange-400 hover:text-orange-600 font-bold"
+                      >
+                        關閉回答
+                      </button>
+                    )}
+                  </div>
+                  
+                  {aiQaLoading ? (
+                    <div className="py-8 flex flex-col items-center justify-center gap-3">
+                      <div className="w-8 h-8 border-4 border-[#E67E22] border-t-transparent rounded-full animate-spin"></div>
+                      <p className="text-xs text-orange-500 font-black animate-pulse">AI 正在翻閱您的所有食譜與筆記，請稍候...</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+                        {aiQaResult?.answer}
+                      </p>
+                      
+                      {aiQaResult?.references && aiQaResult.references.length > 0 && (
+                        <div className="pt-4 border-t border-orange-50 space-y-2">
+                          <p className="text-xs font-black text-slate-400">參考來源：</p>
+                          <div className="flex flex-wrap gap-2">
+                            {aiQaResult.references.map((ref, idx) => (
+                              <button
+                                key={`ref-${idx}`}
+                                onClick={() => handleJumpToReference(ref)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-orange-100 hover:border-orange-200 text-[#E67E22] text-xs font-bold rounded-xl shadow-sm transition-all active:scale-95"
+                              >
+                                <span>{ref.type === '食譜' ? '📖' : '📝'}</span>
+                                <span>{ref.title}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* 熱門標籤區塊 */}
               {hotTags.length > 0 && (
@@ -3805,7 +4047,7 @@ const App: React.FC = () => {
                     )}
                   </div>
                   {filteredKnowledge.map(kn => (
-                    <div key={kn.id} className="p-5 bg-orange-50/20 rounded-2xl border border-orange-50 relative group transition-all hover:shadow-sm">
+                    <div id={`note-${kn.id}`} key={kn.id} className="p-5 bg-orange-50/20 rounded-2xl border border-orange-50 relative group transition-all hover:shadow-sm">
                       <div className="absolute top-4 right-4 flex gap-2 text-xs opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10">
                         <button 
                           type="button"
