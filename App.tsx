@@ -3396,23 +3396,15 @@ ${notesContext || '（目前沒有筆記）'}
                         handleAiAsk();
                       }
                     }}
-                    className="w-full pl-11 pr-24 py-3 bg-white border border-orange-100 rounded-2xl focus:ring-2 focus:ring-orange-400 outline-none shadow-sm text-sm transition-all" 
+                    className="w-full pl-11 pr-12 py-3 bg-white border border-orange-100 rounded-2xl focus:ring-2 focus:ring-orange-400 outline-none shadow-sm text-sm transition-all" 
                   />
                   <span className="absolute left-4 top-3.5 text-orange-300 transition-colors group-focus-within:text-orange-500">🔍</span>
                   {searchQuery && (
                     <button 
                       onClick={() => setSearchQuery('')}
-                      className="absolute right-14 top-3.5 text-slate-300 hover:text-orange-500 transition-all"
+                      className="absolute right-4 top-3.5 text-slate-300 hover:text-orange-500 transition-all"
                     >
                       <X size={18} />
-                    </button>
-                  )}
-                  {isAiQaMode && searchQuery && (
-                    <button 
-                      onClick={handleAiAsk}
-                      className="absolute right-3 top-2 bg-[#E67E22] hover:bg-orange-600 text-white rounded-xl px-3 py-1.5 text-xs font-bold transition-all active:scale-95"
-                    >
-                      問 AI
                     </button>
                   )}
 
@@ -3436,8 +3428,12 @@ ${notesContext || '（目前沒有筆記）'}
                 </div>
                 <button 
                   onClick={() => {
-                    setIsAiQaMode(!isAiQaMode);
-                    setAiQaResult(null);
+                    if (isAiQaMode && searchQuery.trim()) {
+                      handleAiAsk();
+                    } else {
+                      setIsAiQaMode(!isAiQaMode);
+                      setAiQaResult(null);
+                    }
                   }} 
                   className={`px-4 py-3 rounded-2xl font-bold text-sm shadow-sm transition-all flex items-center gap-1.5 active:scale-95 shrink-0 ${
                     isAiQaMode 
@@ -3445,8 +3441,24 @@ ${notesContext || '（目前沒有筆記）'}
                       : 'bg-white border border-orange-100 text-orange-600 hover:bg-orange-50'
                   }`}
                 >
-                  <span>🤖</span>
-                  <span className="hidden sm:inline">AI 問答</span>
+                  {isAiQaMode ? (
+                    searchQuery.trim() ? (
+                      <>
+                        <span>🚀</span>
+                        <span>AI 發問</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>🤖</span>
+                        <span>關閉問答</span>
+                      </>
+                    )
+                  ) : (
+                    <>
+                      <span>🤖</span>
+                      <span>AI 問答</span>
+                    </>
+                  )}
                 </button>
               </div>
 
