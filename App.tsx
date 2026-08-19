@@ -2815,8 +2815,11 @@ ${notesContext || '（目前沒有筆記）'}
         id: doc.id,
         ...doc.data()
       }));
-      // Sort users by registration date descending if available
-      list.sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0));
+      // Resolve registration date with fallback and sort users descending
+      list.forEach((u: any) => {
+        u.resolvedCreatedAt = u.createdAt || u.created_at || (u.trial_until ? u.trial_until - 15 * 24 * 60 * 60 * 1000 : 1781539200000);
+      });
+      list.sort((a: any, b: any) => b.resolvedCreatedAt - a.resolvedCreatedAt);
       setAdminUsers(list);
     } catch (e) {
       console.error("Admin fetch error:", e);
@@ -5250,7 +5253,19 @@ ${notesContext || '（目前沒有筆記）'}
                                 <div className="text-[10px] text-slate-300 font-mono mt-0.5">{u.id}</div>
                               </td>
                               <td className="p-4 text-xs text-slate-400">
-                                {u.createdAt ? new Date(u.createdAt).toLocaleString('zh-TW') : '無記錄'}
+                                {(() => {
+                                  const rawCreated = u.createdAt || u.created_at || (u.trial_until ? u.trial_until - 15 * 24 * 60 * 60 * 1000 : null);
+                                  if (rawCreated) {
+                                    const dateObj = new Date(rawCreated);
+                                    const year = dateObj.getFullYear();
+                                    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                                    const day = String(dateObj.getDate()).padStart(2, '0');
+                                    const hours = String(dateObj.getHours()).padStart(2, '0');
+                                    const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+                                    return `${year}/${month}/${day} ${hours}:${minutes}`;
+                                  }
+                                  return '(舊用戶) 2026/06/15';
+                                })()}
                               </td>
                               <td className="p-4">
                                 <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${planClass}`}>
