@@ -2929,10 +2929,11 @@ ${notesContext || '（目前沒有筆記）'}
       const prompt = `你是一個專業的烘焙知識與筆記解析助手。
       請從下方的【筆記內容】中識別並提取重點，整理出標題、師傅/老師名稱以及重點內容和連結。
       
-      【核心目標】：
+      【核心目標與防篡改約束】：
       1. 標題 (title)：簡短精煉的重點主題，例如「鹽可頌滾圓手法」、「戚風蛋糕消泡原因分析」。如果文中沒有明確標題，請自行歸納出一個最合適的標題，不要空白。
-      2. 師傅/老師名稱 (master)：分享這個知識、技巧、配方的老師或師傅名稱。如果沒有提到，請填入空字串。
-      3. 重點內容和連結 (content)：詳細的技術重點、步驟、心得或技巧。如果內容中有 URL 網址連結，請務必原封不動且完整地保留在 content 中。內容請以易讀、分段清晰的方式整理。
+      2. 師傅/老師名稱 (master)：分享這個知識、技巧、配方的老師或師傅名稱。如果沒有提到，請填入空字串.
+      3. 重點內容和連結 (content)：詳細的技術重點、步驟、心得或技巧。
+         ⚠️【嚴格約束】：僅允許調整段落換行、標點符號與條列重點，絕對不可刪改、增添或自行擴寫原作者的教學內容與語句！必須保持原始烘焙觀念與專業名詞完全不變，原汁原味呈現！如果內容中有 URL 網址連結，請務必原封不動且完整地保留在 content 中。
       
       【筆記內容】：
       ${noteSmartPasteText}
@@ -4380,7 +4381,19 @@ ${notesContext || '（目前沒有筆記）'}
                         
                         {isExpanded && (
                           <div className="mt-3 animate-in fade-in slide-in-from-top-1">
-                            <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">{kn.content}</p>
+                            <div 
+                              className="text-sm text-slate-600 leading-relaxed space-y-2 prose max-w-none
+                                [&_h3]:text-sm [&_h3]:font-black [&_h3]:text-slate-800 [&_h3]:mt-3
+                                [&_strong]:font-black [&_strong]:text-slate-700
+                                [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1 [&_ul]:my-2
+                                [&_li]:text-xs [&_li]:text-slate-600
+                                [&_p]:text-sm [&_p]:leading-relaxed [&_p]:whitespace-pre-wrap"
+                              dangerouslySetInnerHTML={{ 
+                                __html: (typeof kn.content === 'string') 
+                                  ? marked.parse(kn.content.replace(/\\n/g, '\n')) as string 
+                                  : '' 
+                              }}
+                            />
                           </div>
                         )}
                         <div className="mt-3 text-xs text-orange-300">{new Date(kn.createdAt).toLocaleDateString('zh-TW')}</div>
