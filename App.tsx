@@ -158,7 +158,7 @@ export interface Ingredient { name: string; amount: string | number; unit: strin
 export interface FermentationStage { name: string; time: string; timeUnit?: '分鐘' | '小時'; temperature: string; humidity: string; note?: string; }
 export interface BakingStage { name: string; topHeat: string; bottomHeat: string; time: string; timeUnit?: '分鐘' | '小時'; note: string; }
 export interface ExecutionLog { id: string; date: string; rating: number; feedback: string; photoUrl?: string; }
-export interface Knowledge { id: string; title: string; content: string; master: string; createdAt: number; }
+export interface Knowledge { id: string; title: string; content: string; master: string; createdAt: number; image_url?: string; }
 export interface Resource { id: string; title: string; url: string; category: string; }
 
 export interface Recipe {
@@ -2100,6 +2100,7 @@ const App: React.FC = () => {
   const [reverseScalingBase, setReverseScalingBase] = useState<{ sectionKey: string; index: number } | null>(null);
   // const [isRecipeCardModalOpen, setIsRecipeCardModalOpen] = useState(false); // 已移除
   const [isMoldPanelOpen, setIsMoldPanelOpen] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   
   // Mold scaling states - split into two independent objects
   const [sourceMold, setSourceMold] = useState({ type: 'circular' as 'circular' | 'rectangular', diameter: 0, height: 0, length: 0, width: 0 });
@@ -2109,8 +2110,9 @@ const App: React.FC = () => {
   const [isAddingLog, setIsAddingLog] = useState(false);
   const [newLog, setNewLog] = useState<Partial<ExecutionLog>>({ date: getTodayString(), rating: 5, feedback: '', photoUrl: '' });
   const logPhotoInputRef = useRef<HTMLInputElement>(null);
+  const noteImageInputRef = useRef<HTMLInputElement>(null);
 
-  const [newNote, setNewNote] = useState({ title: '', content: '', master: '' });
+  const [newNote, setNewNote] = useState<{ title: string; content: string; master: string; image_url?: string }>({ title: '', content: '', master: '', image_url: '' });
   const [noteSmartPasteText, setNoteSmartPasteText] = useState('');
   const [isNoteAiParsing, setIsNoteAiParsing] = useState(false);
 
@@ -3450,21 +3452,62 @@ ${notesContext || '（目前沒有筆記）'}
   const handleAddNote = () => {
     if (!newNote.title || !newNote.content) return;
     setKnowledge(prev => [{ ...newNote, id: 'kn-' + Date.now(), createdAt: Date.now() }, ...prev]);
-    setNewNote({ title: '', content: '', master: '' });
+    setNewNote({ title: '', content: '', master: '', image_url: '' });
     showToast("筆記儲存成功！");
   };
 
   const handleSaveEditedNote = () => {
     if (!newNote.title || !newNote.content || !editingNoteId) return;
-    setKnowledge(prev => prev.map(k => k.id === editingNoteId ? { ...k, title: newNote.title, master: newNote.master, content: newNote.content } : k));
-    setNewNote({ title: '', content: '', master: '' });
+    setKnowledge(prev => prev.map(k => k.id === editingNoteId ? { ...k, title: newNote.title, master: newNote.master, content: newNote.content, image_url: newNote.image_url || '' } : k));
+    setNewNote({ title: '', content: '', master: '', image_url: '' });
     setEditingNoteId(null);
     showToast("修改儲存成功！");
   };
 
   const handleCancelEditNote = () => {
-    setNewNote({ title: '', content: '', master: '' });
+    setNewNote({ title: '', content: '', master: '', image_url: '' });
     setEditingNoteId(null);
+  };
+
+  const handleNoteFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      showToast("請上傳圖片檔案");
+      return;
+    }
+    try {
+      const compressed = await compressImage(file);
+      setNewNote(prev => ({ ...prev, image_url: compressed }));
+      showToast("圖片處理成功！");
+    } catch (err) {
+      console.error('Note image compression failed', err);
+      showToast("圖片上傳失敗");
+    }
+  };
+
+  const handleNoteImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await handleNoteFile(file);
+  };
+
+  const handleNoteDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleNoteDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      await handleNoteFile(file);
+    }
+  };
+
+  const handleNotePaste = async (e: React.ClipboardEvent) => {
+    const file = e.clipboardData.files?.[0];
+    if (file) {
+      e.preventDefault();
+      await handleNoteFile(file);
+    }
   };
 
   const handleDeleteRecipe = async () => {
@@ -3496,6 +3539,38 @@ ${notesContext || '（目前沒有筆記）'}
   return (
     <div className="min-h-screen bg-[#FFFBF7] text-slate-900 pb-28 print:bg-white print:pb-0 print:min-h-0">
       <InstructionsModal isOpen={isInstructionsOpen} onClose={() => setIsInstructionsOpen(false)} />
+      
+      {/* Lightbox Modal for High-Res Image View */}
+      <AnimatePresence>
+        {lightboxImage && (
+          <div 
+            onClick={() => setLightboxImage(null)}
+            className="fixed inset-0 bg-black/95 backdrop-blur-md z-[3000] flex flex-col items-center justify-center p-4 cursor-zoom-out"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative max-w-full max-h-full flex items-center justify-center cursor-default"
+            >
+              <img 
+                src={lightboxImage} 
+                alt="高清大圖" 
+                className="max-w-[95vw] max-h-[90vh] object-contain rounded-2xl shadow-2xl" 
+              />
+              <button 
+                onClick={() => setLightboxImage(null)}
+                className="absolute top-[-50px] right-0 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all active:scale-95 shadow-md flex items-center justify-center cursor-pointer"
+                title="關閉"
+              >
+                <X size={24} />
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <Sidebar 
         isOpen={isSidebarOpen} 
         onClose={() => setIsSidebarOpen(false)} 
@@ -4296,6 +4371,63 @@ ${notesContext || '（目前沒有筆記）'}
                   <input type="text" placeholder="標題 (例如：鹽可頌滾圓)" value={newNote.title || ''} onChange={e => setNewNote(p => ({ ...p, title: e.target.value }))} className="w-full px-4 py-2 bg-orange-50/30 rounded-xl text-sm outline-none border border-orange-50 focus:border-orange-200 transition-all" />
                   <input type="text" placeholder="師傅/老師名稱" value={newNote.master || ''} onChange={e => setNewNote(p => ({ ...p, master: e.target.value }))} className="w-full px-4 py-2 bg-orange-50/30 rounded-xl text-sm outline-none border border-orange-50 focus:border-orange-200 transition-all" />
                   <textarea placeholder="重點內容或連結..." value={newNote.content || ''} onChange={e => setNewNote(p => ({ ...p, content: e.target.value }))} className="w-full px-4 py-3 bg-orange-50/30 rounded-xl text-sm outline-none border border-orange-50 h-24 transition-all focus:border-orange-200" />
+                  
+                  {/* Image Attachment Section */}
+                  <div 
+                    onDragOver={handleNoteDragOver}
+                    onDrop={handleNoteDrop}
+                    onPaste={handleNotePaste}
+                    className="p-4 bg-orange-50/10 border border-dashed border-orange-100 rounded-2xl space-y-3"
+                  >
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button 
+                        type="button"
+                        onClick={() => noteImageInputRef.current?.click()}
+                        className="px-4 py-2 bg-white border border-orange-100 rounded-xl text-xs font-black text-orange-600 hover:bg-orange-50 shadow-sm transition-all flex items-center gap-2 active:scale-95"
+                      >
+                        <Camera size={14} />
+                        <span>上傳圖片</span>
+                      </button>
+                      <input 
+                        type="file" 
+                        ref={noteImageInputRef} 
+                        onChange={handleNoteImageUpload} 
+                        className="hidden" 
+                        accept="image/*" 
+                      />
+                      <span className="text-[10px] text-slate-400 font-bold">或將圖片檔案拖曳至此、於此區塊內貼上圖片</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400 font-bold shrink-0">圖片網址:</span>
+                      <input 
+                        type="text" 
+                        placeholder="可直接貼上或輸入外部圖片連結 (https://...)" 
+                        value={newNote.image_url || ''} 
+                        onChange={e => setNewNote(p => ({ ...p, image_url: e.target.value }))} 
+                        className="flex-grow px-3 py-1.5 bg-white border border-orange-50 rounded-xl text-xs outline-none focus:border-orange-200 transition-all"
+                      />
+                    </div>
+
+                    {newNote.image_url && (
+                      <div className="relative w-full max-h-[160px] overflow-hidden rounded-xl border border-orange-50 flex items-center justify-center bg-slate-50">
+                        <img 
+                          src={newNote.image_url} 
+                          alt="預覽圖片" 
+                          className="max-h-[160px] object-contain w-full"
+                        />
+                        <button 
+                          type="button"
+                          onClick={() => setNewNote(p => ({ ...p, image_url: '' }))}
+                          className="absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-black text-white rounded-full transition-all active:scale-95"
+                          title="移除圖片"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                   {editingNoteId ? (
                     <div className="flex gap-2">
                       <button onClick={handleSaveEditedNote} className="flex-1 py-3 bg-[#E67E22] text-white rounded-xl font-bold text-sm shadow-md active:scale-95 transition-all hover:bg-orange-600">儲存修改</button>
@@ -4335,7 +4467,7 @@ ${notesContext || '（目前沒有筆記）'}
                           <button 
                             type="button"
                             onClick={() => {
-                              setNewNote({ title: kn.title, master: kn.master || '', content: kn.content });
+                              setNewNote({ title: kn.title, master: kn.master || '', content: kn.content, image_url: kn.image_url || '' });
                               setEditingNoteId(kn.id);
                               try {
                                 const formElement = document.getElementById('knowledge-form');
@@ -4380,7 +4512,7 @@ ${notesContext || '（目前沒有筆記）'}
                         </div>
                         
                         {isExpanded && (
-                          <div className="mt-3 animate-in fade-in slide-in-from-top-1">
+                          <div className="mt-3 animate-in fade-in slide-in-from-top-1 space-y-4">
                             <div 
                               className="text-sm text-slate-600 leading-relaxed space-y-2 prose max-w-none
                                 [&_h3]:text-sm [&_h3]:font-black [&_h3]:text-slate-800 [&_h3]:mt-3
@@ -4394,6 +4526,26 @@ ${notesContext || '（目前沒有筆記）'}
                                   : '' 
                               }}
                             />
+                            {kn.image_url && (
+                              <div 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLightboxImage(kn.image_url!);
+                                }}
+                                className="relative rounded-2xl overflow-hidden border border-orange-50 max-h-[240px] w-full flex items-center justify-center bg-slate-50 shadow-sm cursor-zoom-in group"
+                              >
+                                <img 
+                                  src={kn.image_url} 
+                                  alt="筆記附圖" 
+                                  className="max-h-[240px] w-full object-cover group-hover:scale-105 transition-all duration-300"
+                                />
+                                <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                  <span className="bg-black/60 px-3 py-1.5 rounded-full text-white text-xs font-bold flex items-center gap-1.5">
+                                    🔍 點擊放大
+                                  </span>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                         <div className="mt-3 text-xs text-orange-300">{new Date(kn.createdAt).toLocaleDateString('zh-TW')}</div>
