@@ -131,6 +131,16 @@ const AI_MULTI_RECIPE_SCHEMA = {
   },
   required: ["recipes"]
 };
+
+const AI_NOTE_SCHEMA = {
+  type: "object",
+  properties: {
+    title: { type: "string" },
+    master: { type: "string" },
+    content: { type: "string" }
+  },
+  required: ["title", "master", "content"]
+};
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, Search, Book, Scale, Settings, LogOut, LogIn, User as UserIcon, 
@@ -2101,6 +2111,8 @@ const App: React.FC = () => {
   const logPhotoInputRef = useRef<HTMLInputElement>(null);
 
   const [newNote, setNewNote] = useState({ title: '', content: '', master: '' });
+  const [noteSmartPasteText, setNoteSmartPasteText] = useState('');
+  const [isNoteAiParsing, setIsNoteAiParsing] = useState(false);
 
   const toggleStepCompleted = (recipeId: string, stepIdx: number) => {
     setCompletedSteps(prev => {
@@ -2883,6 +2895,102 @@ ${notesContext || '（目前沒有筆記）'}
       fetchAdminData();
     }
   }, [view, isAdmin]);
+
+  const handleNoteSmartPaste = async () => {
+    if (!noteSmartPasteText.trim()) return;
+    
+    // AI 解析次數限制判斷 (非 Premium 用戶每月上限 10 次)
+    if (!isPremiumUser) {
+      const thisMonth = getThisMonthString();
+      if (aiUsage.date === thisMonth && aiUsage.count >= 10) {
+        triggerUpgradePrompt(true, "每月 AI 解析次數已達上限 (10次)，升級 Premium 可解鎖無限次數！");
+        return;
+      }
+    }
+    
+    setIsNoteAiParsing(true);
+    const apiKey = getApiKey(true);
+    
+    try {
+      if (!apiKey || apiKey === 'YOUR_API_KEY') {
+        console.error("Error: API Key is undefined or invalid. AI Note Parsing aborted.");
+        throw new Error("MISSING_API_KEY");
+      }
+      
+      const client = new GoogleGenerativeAI(apiKey);
+      const model = client.getGenerativeModel({ 
+        model: "gemini-3-flash-preview",
+        generationConfig: { 
+          responseMimeType: "application/json",
+          responseSchema: AI_NOTE_SCHEMA as any
+        }
+      });
+      
+      const prompt = `你是一個專業的烘焙知識與筆記解析助手。
+      請從下方的【筆記內容】中識別並提取重點，整理出標題、師傅/老師名稱以及重點內容和連結。
+      
+      【核心目標】：
+      1. 標題 (title)：簡短精煉的重點主題，例如「鹽可頌滾圓手法」、「戚風蛋糕消泡原因分析」。如果文中沒有明確標題，請自行歸納出一個最合適的標題，不要空白。
+      2. 師傅/老師名稱 (master)：分享這個知識、技巧、配方的老師或師傅名稱。如果沒有提到，請填入空字串。
+      3. 重點內容和連結 (content)：詳細的技術重點、步驟、心得或技巧。如果內容中有 URL 網址連結，請務必原封不動且完整地保留在 content 中。內容請以易讀、分段清晰的方式整理。
+      
+      【筆記內容】：
+      ${noteSmartPasteText}
+      `;
+      
+      const aiPromise = model.generateContent(prompt);
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("TIMEOUT")), 60000));
+      
+      const result = await Promise.race([aiPromise, timeoutPromise]) as any;
+      const response = await result.response;
+      const textOutput = response.text();
+      
+      if (!textOutput) throw new Error("EMPTY_API_RESPONSE");
+      
+      const parsed = JSON.parse(textOutput);
+      if (parsed) {
+        setNewNote({
+          title: parsed.title || '',
+          master: parsed.master || '',
+          content: parsed.content || ''
+        });
+        setNoteSmartPasteText('');
+        showToast("✨ 心得技巧解析完成，已為您自動填入！");
+        
+        // 解析成功後，更新次數 (所有用戶皆紀錄，不論是否為進階用戶)
+        const thisMonth = getThisMonthString();
+        const newUsage = aiUsage.date === thisMonth ? { ...aiUsage, count: aiUsage.count + 1 } : { date: thisMonth, count: 1 };
+        setAiUsage(newUsage);
+        
+        if (!user) {
+          localStorage.setItem('local_ai_usage', JSON.stringify(newUsage));
+        } else {
+          await saveUserSettings({ 
+            aiUsage: newUsage,
+            ai_parse_count: newUsage.count
+          });
+          try {
+            await setDoc(doc(db, 'user_usage', user.uid), {
+              ai_parse_count: newUsage.count,
+              last_parse_at: Date.now(),
+              email: user.email
+            }, { merge: true });
+          } catch (e) {
+            console.warn("user_usage sync failed", e);
+          }
+        }
+      }
+    } catch (error: any) {
+      console.error("AI Note Parse Error:", error);
+      if (error.message === "MISSING_API_KEY") {
+        showToast("請先設定 Gemini API Key");
+      } else {
+        showToast("AI 解析失敗，請稍後再試或手動輸入");
+      }
+    } finally {
+      setIsNoteAiParsing(false);
+    }
+  };
 
   const handleSmartPaste = async () => {
     if (!smartPasteText.trim()) return;
@@ -4143,6 +4251,44 @@ ${notesContext || '（目前沒有筆記）'}
           {view === AppView.COLLECTION && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 no-print">
               <h2 className="text-2xl font-black text-[#E67E22] flex items-center gap-2">烘焙知識庫</h2>
+
+              {/* AI 快速筆記助手 (Smart Paste) */}
+              <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-4">
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-xs font-black text-orange-600 uppercase tracking-widest flex items-center gap-2">
+                     ✨ AI 快速筆記助手
+                    {subscriptionStatus !== 'active' && !isAdmin && (
+                      <span className="bg-orange-100 text-[#E67E22] px-2 py-0.5 rounded-lg text-[10px] border border-orange-200">Premium</span>
+                    )}
+                  </label>
+                </div>
+                <div className="relative">
+                  <textarea 
+                    value={noteSmartPasteText}
+                    onChange={(e) => setNoteSmartPasteText(e.target.value)}
+                    placeholder="貼上亂糟糟的筆記（例如 Line 訊息、網頁複製內容）..."
+                    className="w-full h-32 px-4 py-4 bg-slate-50 border border-orange-100 rounded-2xl text-xs outline-none focus:bg-white focus:ring-2 focus:ring-orange-100 transition-all leading-relaxed"
+                  />
+                  <button 
+                    onClick={handleNoteSmartPaste}
+                    disabled={isNoteAiParsing || !noteSmartPasteText.trim()}
+                    className={`absolute bottom-4 right-4 px-6 py-2.5 rounded-xl font-black text-xs shadow-lg flex items-center gap-2 transition-all active:scale-95 ${(isNoteAiParsing || !noteSmartPasteText.trim()) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-[#E67E22] text-white hover:bg-orange-600'}`}
+                  >
+                    {isNoteAiParsing ? (
+                      <>
+                        <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>正在解析中...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>🚀 AI 即刻解析</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 font-bold ml-1">💡 貼入內容後點擊解析，AI 將自動填充標題、師傅名稱與重點內容。</p>
+              </div>
+
               <div id="knowledge-form" className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-6">
                 <div className="space-y-3">
                   <h3 className="text-sm font-black text-slate-700">{editingNoteId ? '✏️ 編輯心得或技巧' : '✍️ 新增心得或技巧'}</h3>
