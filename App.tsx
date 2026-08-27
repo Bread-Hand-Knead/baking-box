@@ -37,11 +37,19 @@ const getApiKey = (forcePrompt = false) => {
 
 const genAI = new GoogleGenerativeAI(getApiKey());
 
+const cleanTemp = (tempStr: string): string => {
+  if (!tempStr) return '';
+  const match = tempStr.match(/\d+/);
+  return match ? match[0] : '';
+};
+
 const sanitizeBakingStages = (stages: any[] | undefined): BakingStage[] => {
   if (!Array.isArray(stages)) return [];
-  return stages.map((s: any) => {
-    let top = String(s.topHeat || '').trim();
-    let bottom = String(s.bottomHeat || '').trim();
+  
+  // 1. 先清洗溫度數據
+  const cleaned = stages.map((s: any) => {
+    let top = cleanTemp(String(s.topHeat || '').trim());
+    let bottom = cleanTemp(String(s.bottomHeat || '').trim());
 
     // 如果其中一邊有設定溫度，但另一邊為空，則帶入相同溫度
     if (top && !bottom) {
@@ -58,6 +66,29 @@ const sanitizeBakingStages = (stages: any[] | undefined): BakingStage[] => {
       timeUnit: s.timeUnit || '分鐘'
     };
   });
+
+  // 2. 去重邏輯：若相鄰烘烤階段之名稱、溫度與時間完全一致，自動過濾合併為單一階段
+  const uniqueStages: BakingStage[] = [];
+  for (let i = 0; i < cleaned.length; i++) {
+    const current = cleaned[i];
+    if (i === 0) {
+      uniqueStages.push(current);
+    } else {
+      const prev = uniqueStages[uniqueStages.length - 1];
+      const isDuplicate = 
+        String(current.name || '').trim() === String(prev.name || '').trim() &&
+        String(current.topHeat || '').trim() === String(prev.topHeat || '').trim() &&
+        String(current.bottomHeat || '').trim() === String(prev.bottomHeat || '').trim() &&
+        String(current.time || '').trim() === String(prev.time || '').trim() &&
+        String(current.timeUnit || '') === String(prev.timeUnit || '');
+      
+      if (!isDuplicate) {
+        uniqueStages.push(current);
+      }
+    }
+  }
+
+  return uniqueStages;
 };
 
 const INGREDIENT_OBJECT_SCHEMA = {
@@ -88,8 +119,14 @@ const BAKING_STAGE_SCHEMA = {
   type: "object",
   properties: {
     name: { type: "string" },
-    topHeat: { type: "string" },
-    bottomHeat: { type: "string" },
+    topHeat: { 
+      type: "string", 
+      description: "上火溫度數值。僅能輸出乾淨數值（若無區分上下火則填入相同溫度數字，例如: \"170\"），嚴禁包含任何思考推理、思考過程說明文字（如 160_C_without_degree_symbol 類似樣板字串）、度數單位或說明文字。" 
+    },
+    bottomHeat: { 
+      type: "string", 
+      description: "下火溫度數值。僅能輸出乾淨數值（若無區分上下火則填入相同溫度數字，例如: \"170\"），嚴禁包含任何思考推理、思考過程說明文字（如 160_C_without_degree_symbol 類似樣板字串）、度數單位或說明文字。" 
+    },
     time: { type: "string" },
     timeUnit: { type: "string", enum: ["分鐘", "小時"] },
     note: { type: "string" }
@@ -2537,14 +2574,14 @@ const App: React.FC = () => {
 
         const client = new GoogleGenerativeAI(apiKey);
         const model = client.getGenerativeModel({ 
-          model: "gemini-2.5-flash",
+          model: "gemini-3-flash-preview",
           generationConfig: { 
             responseMimeType: "application/json",
             responseSchema: AI_MULTI_RECIPE_SCHEMA as any
           }
         });
 
-        console.log('[AI] Using model path: gemini-2.5-flash');
+        console.log('[AI] Using model path: gemini-3-flash-preview');
 
         const prompt = `你是一個專業且極具適應力的烘焙食譜解析助手。
         請從下方的【筆記內容】中識別並提取烘焙食譜資訊。
@@ -2557,6 +2594,8 @@ const App: React.FC = () => {
            - 仔細過濾筆記文字中的「烤溫/烘烤參數」（例如：上火 210°C / 下火 190°C、180度、烤 12 分鐘、烘焙時間等）與「發酵資訊」（例如：基本發酵 60 分鐘、最後發酵 50 分、冷藏發酵 12~16 小時等）。
            - 將這些數據精確填入 "bakingStages" 與 "fermentationStages" 中：
              - bakingStages 每個元素應為包含: "name" (例如: 烘烤, 預熱等), "topHeat" (僅數字、文字，不要包含°C字眼), "bottomHeat" (僅數字、文字，不要包含°C字眼), "time" (時間數值, 如: 12, 25), "timeUnit" ("分鐘" 或 "小時"), "note" 的物件。如果是單一溫度不分上下火，或只有一組溫度，請同時填入 topHeat 與 bottomHeat 或填入 note。
+             - ⚠️ 烤溫嚴格限制：topHeat 與 bottomHeat 欄位僅能輸出乾淨數值（若無區分上下火則填入相同溫度數字，例如: "170"），嚴禁包含任何思考推理、思考過程說明文字（如 160_C_without_degree_symbol 類似樣板字串）或度數單位。
+             - ⚠️ 烘烤去重規範：同一原料的預處理烘烤（如：烤鹹蛋黃、預烤堅果等）僅建立一個烘烤階段，嚴禁重複生成相同內容之步驟或烘烤卡片。
              - fermentationStages 每個元素應為包含: "name" (例如: 基本發酵, 最後發酵, 中間發酵, 冷藏發酵等), "time" (時間數值, 如: 60, 50, 12), "timeUnit" ("分鐘" 或 "小時"), "temperature" (溫度，如: 28, 32-35, 4), "humidity" (濕度，如: 75%, 85%), "note" 的物件。
            - ⚠️ 重要！關於發酵與冷藏的判斷規則：
              1) 只有明確提到「發酵」二字（如：冷藏發酵、室溫發酵、最後發酵）的步驟才可填入 fermentationStages。
@@ -4532,7 +4571,8 @@ ${notesContext || '（目前沒有筆記）'}
                                 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:space-y-2 [&_ol]:my-3
                                 [&_li]:text-[15px] [&_li]:text-slate-600 [&_li]:leading-[1.8]
                                 [&_p]:text-[16px] [&_p]:leading-[1.8] [&_p]:mb-[12px] [&_p]:whitespace-pre-wrap
-                                [&_blockquote]:border-l-4 [&_blockquote]:border-orange-300 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-slate-600 [&_blockquote]:bg-orange-50/20 [&_blockquote]:py-2.5 [&_blockquote]:rounded-r-lg [&_blockquote]:my-3 [&_blockquote]:text-[15px]"
+                                [&_blockquote]:border-l-4 [&_blockquote]:border-orange-300 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-slate-600 [&_blockquote]:bg-orange-50/20 [&_blockquote]:py-2.5 [&_blockquote]:rounded-r-lg [&_blockquote]:my-3 [&_blockquote]:text-[15px] whitespace-pre-wrap break-words"
+                              style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.8' }}
                               dangerouslySetInnerHTML={{ 
                                 __html: (typeof kn.content === 'string') 
                                   ? marked.parse(kn.content.replace(/\\n/g, '\n')) as string 
