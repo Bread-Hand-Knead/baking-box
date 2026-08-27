@@ -2933,9 +2933,20 @@ ${notesContext || '（目前沒有筆記）'}
       
       【核心目標與防篡改約束】：
       1. 標題 (title)：簡短精煉的重點主題，例如「鹽可頌滾圓手法」、「戚風蛋糕消泡原因分析」。如果文中沒有明確標題，請自行歸納出一個最合適的標題，不要空白。
-      2. 師傅/老師名稱 (master)：分享這個知識、技巧、配方的老師或師傅名稱。如果沒有提到，請填入空字串.
-      3. 重點內容和連結 (content)：詳細的技術重點、步驟、心得或技巧。
-         ⚠️【嚴格約束】：僅允許調整段落換行、標點符號與條列重點，絕對不可刪改、增添或自行擴寫原作者的教學內容與語句！必須保持原始烘焙觀念與專業名詞完全不變，原汁原味呈現！如果內容中有 URL 網址連結，請務必原封不動且完整地保留在 content 中。
+      2. 師傅/老師名稱 (master)：分享這個知識、技巧、配方的老師或師傅名稱。如果沒有提到，請填入空字串。
+      3. 重點內容和連結 (content)：
+         請將長篇純文字整理為易讀且具備豐富排版層次的 Markdown 結構。
+         【結構化排版規則】：
+         - 請將文章邏輯拆解為適當的子標題，例如：
+           - ### 💡 核心觀念
+           - ### 📝 條列重點
+           - ### 🛠️ 關鍵步驟與決策
+           - ### 📌 總結
+           (若不完全適用上述四項，請調整為合適的主題子標題，前面須以 ### 配合適當 Emoji 作為標題樣式)
+         - 引導性重點（如金句、重點提醒、警示規則）請使用引言格式（在該行開頭加上 > ，即 Markdown blockquote 格式，例如：> ⚠️ 攪拌時一定要注意麵糰溫度）。
+         - 條列項目（如步驟或重點）應加上序號或標記（例如：1. **攪拌程度**：... ），並對重點名詞/關鍵字使用 **粗體**。
+         - 對話或對答紀錄請加上適當的空行以利閱讀。
+         ⚠️【嚴格內容完整度約束】：僅允許調整段落換行、標點符號與條列重點，絕對不可刪改、增添或自行擴寫原作者的教學內容與語句！必須保持原始烘焙觀念與專業名詞完全不變，原汁原味呈現！如果內容中有 URL 網址連結，請務必原封不動且完整地保留在 content 中。
       
       【筆記內容】：
       ${noteSmartPasteText}
@@ -4514,12 +4525,14 @@ ${notesContext || '（目前沒有筆記）'}
                         {isExpanded && (
                           <div className="mt-3 animate-in fade-in slide-in-from-top-1 space-y-4">
                             <div 
-                              className="text-sm text-slate-600 leading-relaxed space-y-2 prose max-w-none
-                                [&_h3]:text-sm [&_h3]:font-black [&_h3]:text-slate-800 [&_h3]:mt-3
-                                [&_strong]:font-black [&_strong]:text-slate-700
-                                [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1 [&_ul]:my-2
-                                [&_li]:text-xs [&_li]:text-slate-600
-                                [&_p]:text-sm [&_p]:leading-relaxed [&_p]:whitespace-pre-wrap"
+                              className="text-[16px] text-slate-700 leading-[1.8] space-y-3 prose max-w-none
+                                [&_h3]:text-lg [&_h3]:font-black [&_h3]:text-slate-800 [&_h3]:mt-5 [&_h3]:mb-3
+                                [&_strong]:font-black [&_strong]:text-slate-800
+                                [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:space-y-2 [&_ul]:my-3
+                                [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:space-y-2 [&_ol]:my-3
+                                [&_li]:text-[15px] [&_li]:text-slate-600 [&_li]:leading-[1.8]
+                                [&_p]:text-[16px] [&_p]:leading-[1.8] [&_p]:mb-[12px] [&_p]:whitespace-pre-wrap
+                                [&_blockquote]:border-l-4 [&_blockquote]:border-orange-300 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-slate-600 [&_blockquote]:bg-orange-50/20 [&_blockquote]:py-2.5 [&_blockquote]:rounded-r-lg [&_blockquote]:my-3 [&_blockquote]:text-[15px]"
                               dangerouslySetInnerHTML={{ 
                                 __html: (typeof kn.content === 'string') 
                                   ? marked.parse(kn.content.replace(/\\n/g, '\n')) as string 
