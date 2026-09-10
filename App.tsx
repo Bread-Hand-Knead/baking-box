@@ -7,7 +7,7 @@ import {
   getDocFromServer, setPersistence, browserLocalPersistence, functions, httpsCallable
 } from './firebase';
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
-import { marked } from 'marked';
+import { marked, Marked } from 'marked';
 
 // Initialize Gemini AI with fallback support for different environment variable names
 const getApiKey = (forcePrompt = false) => {
@@ -36,6 +36,61 @@ const getApiKey = (forcePrompt = false) => {
 };
 
 const genAI = new GoogleGenerativeAI(getApiKey());
+
+// 專為 AI 知識庫智慧回答建立的 Markdown 解析器，支援內文來源超連結膠囊標籤
+const aiQaMarked = new Marked({
+  breaks: true,
+  gfm: true
+});
+
+aiQaMarked.use({
+  renderer: {
+    link(token: any) {
+      const href = String(token.href || '').trim();
+      const rawText = String(token.text || '').trim();
+
+      const isSourceLink = 
+        href.startsWith('source:') || 
+        href.startsWith('#note-') || 
+        href.startsWith('#recipe-') || 
+        href.startsWith('#kn-') || 
+        href.startsWith('#rec-') ||
+        rawText.includes('來源') ||
+        (href.startsWith('#') && href.length > 1 && !href.startsWith('#http'));
+
+      if (isSourceLink) {
+        let sourceType = '';
+        let sourceId = href;
+
+        if (sourceId.startsWith('source:recipe:')) {
+          sourceType = 'recipe';
+          sourceId = sourceId.replace('source:recipe:', '');
+        } else if (sourceId.startsWith('source:note:')) {
+          sourceType = 'note';
+          sourceId = sourceId.replace('source:note:', '');
+        } else if (sourceId.startsWith('source:')) {
+          sourceId = sourceId.replace('source:', '');
+        } else if (sourceId.startsWith('#recipe-')) {
+          sourceType = 'recipe';
+          sourceId = sourceId.replace('#recipe-', '');
+        } else if (sourceId.startsWith('#note-')) {
+          sourceType = 'note';
+          sourceId = sourceId.replace('#note-', '');
+        } else if (sourceId.startsWith('#')) {
+          sourceId = sourceId.replace('#', '');
+        }
+
+        // 清洗來源標題文字
+        let label = rawText.replace(/^\[?來源[:：]?\s*/, '').replace(/\]$/, '').trim();
+        if (!label) label = '查看來源';
+
+        return `<a href="#${sourceId}" data-source-id="${sourceId}" data-source-type="${sourceType}" class="ai-citation-badge inline-flex items-center gap-1 px-2.5 py-0.5 mx-1 my-0.5 rounded-full text-xs font-bold bg-orange-100 hover:bg-orange-200 text-orange-800 border border-orange-200 shadow-xs transition-all active:scale-95 cursor-pointer no-underline align-middle select-none hover:shadow-sm" title="點擊查看來源：${label}"><span class="text-[11px]">🏷️</span><span>${label}</span></a>`;
+      }
+
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-orange-600 hover:text-orange-700 underline font-medium">${rawText}</a>`;
+    }
+  }
+});
 
 const cleanTemp = (tempStr: string): string => {
   if (!tempStr) return '';
@@ -2716,10 +2771,32 @@ const App: React.FC = () => {
     while ((match = referenceRegex.exec(text)) !== null) {
       refs.push({
         type: match[1] as '食譜' | '筆記',
-        id: match[2],
-        title: match[3]
+        id: match[2].trim(),
+        title: match[3].trim()
       });
     }
+
+    // 也支援提取內文中的來源標記，例如 [來源: 標題](source:recipe:ID)
+    const inTextRegex = /\[(?:來源[:：]?\s*)?([^\]]+)\]\((?:source:(recipe|note):|source:|#(?:recipe|note)-|#)?([^)]+)\)/g;
+    let inTextMatch;
+    while ((inTextMatch = inTextRegex.exec(text)) !== null) {
+      const rawTitle = inTextMatch[1].trim();
+      const rawType = inTextMatch[2];
+      const rawId = inTextMatch[3].trim();
+
+      if (rawId.startsWith('http://') || rawId.startsWith('https://')) continue;
+
+      const type: '食譜' | '筆記' = (rawType === 'recipe' || rawId.startsWith('rec') || recipes.some(r => r.id === rawId)) ? '食譜' : '筆記';
+
+      if (!refs.some(r => r.id === rawId)) {
+        refs.push({
+          type,
+          id: rawId,
+          title: rawTitle
+        });
+      }
+    }
+
     const cleanText = text.replace(/References:[\s\S]*$/i, '').trim();
     return { cleanText, refs };
   };
@@ -2754,7 +2831,9 @@ const App: React.FC = () => {
         const ingredientsStr = r.ingredients.map(i => `${i.name}: ${i.amount}${i.unit}`).join(', ');
         const instructionsStr = r.instructions.join('\n');
         return `[食譜 #${index + 1}]
-名稱: ${r.title}
+ID: ${r.id}
+類型: 食譜
+標題: ${r.title}
 老師/作者: ${r.master || '未註記'}
 分類: ${r.category} ${r.subcategory ? `> ${r.subcategory}` : ''}
 介紹: ${r.description || '無'}
@@ -2762,31 +2841,39 @@ const App: React.FC = () => {
 步驟:
 ${instructionsStr}
 備註: ${r.notes || '無'}
-標籤: ${r.tags ? r.tags.join(', ') : '無'}
-ID: ${r.id}`;
+標籤: ${r.tags ? r.tags.join(', ') : '無'}`;
       }).join('\n\n');
 
       const notesContext = knowledge.map((k, index) => {
         return `[筆記 #${index + 1}]
-名稱: ${k.title}
+ID: ${k.id}
+類型: 筆記
+標題: ${k.title}
 老師/作者: ${k.master || '未註記'}
-內容: ${k.content}
-ID: ${k.id}`;
+內容: ${k.content}`;
       }).join('\n\n');
 
       const prompt = `你是一個專業的個人烘焙助理。請依據下方提供的【使用者食譜】與【使用者筆記】來回答問題。
 
-【規則】：
+【核心規則與來源標註要求】：
 1. 你的回答必須【僅依據】下方提供的食譜與筆記資料進行統整回答，絕對不能胡言亂語或憑空捏造。
 2. 如果提供的資料中完全沒有相關資訊，請禮貌地回答：「目前您的食譜與筆記中沒有關於這方面的記錄喔。」
-3. 你的回答格式必須分成兩個部分：
-   第一部分：針對問題的回答內容（繁體中文）。
-   第二部分：在回答內容最下方，請另起新行並明確列出【參考資料】，格式如下（多個參考以逗號分隔）：
+3. 📌【重要：句子/論點來源超連結標註 (In-text Citations)】：
+   - 當你在回答中引用特定食譜或筆記的內容、論點、步驟或技巧時，必須在該句句尾附帶來源超連結標籤。
+   - 標籤格式規定：
+     * 引用食譜時：[來源: 食譜標題](source:recipe:食譜ID) 或 [食譜標題](source:食譜ID)
+     * 引用筆記時：[來源: 筆記標題](source:note:筆記ID) 或 [筆記標題](source:筆記ID)
+     * 亦相容格式：[來源: 標題](#note-筆記ID) 或 [來源: 標題](#recipe-食譜ID)
+   - 若同一句綜合了多筆來源，請連續標註在句末（例如：「...能讓麵包內部組織更柔軟保濕[來源: 湯種製作法](source:note:kn-123) [來源: 鮮奶吐司](source:recipe:rec-456)。」）。
+   - 來源標籤中的名稱請寫入完整的食譜或筆記標題（例如：[來源: 呂昇達老師生吐司] 或 [來源: 戚風蛋糕消泡原因]），嚴禁使用隨機假名或非對應的 ID。
+4. 【回答格式結構】：
+   第一部分：針對問題的回答內容（繁體中文），並切實落實上述句尾來源標籤。
+   第二部分：在回答內容最下方，請另起新行並明確列出整體的【參考資料】，格式如下（多個參考以逗號分隔）：
    References: [卡片類型|ID|名稱]
    
    例如：
    References: [食譜|rec-12345|起司蛋糕], [筆記|kn-67890|鹽可頌技巧]
-   請確保 references 格式正確，包含卡片類型（食譜或筆記）、ID 與名稱，不要加入額外符號。
+   請確保 references 格式正確，包含卡片類型（食譜或筆記）、ID 與名稱。
 
 【使用者食譜】：
 ${recipesContext || '（目前沒有食譜）'}
@@ -2831,8 +2918,9 @@ ${notesContext || '（目前沒有筆記）'}
   };
 
   const handleJumpToReference = (ref: { type: '食譜' | '筆記'; id: string }) => {
+    const cleanId = String(ref.id || '').replace(/^note-/, '').replace(/^recipe-/, '');
     if (ref.type === '食譜') {
-      const found = recipes.find(r => r.id === ref.id);
+      const found = recipes.find(r => r.id === cleanId || r.id === ref.id);
       if (found) {
         setSelectedRecipe(found);
         setView(AppView.DETAIL);
@@ -2842,9 +2930,9 @@ ${notesContext || '（目前沒有筆記）'}
       }
     } else if (ref.type === '筆記') {
       setView(AppView.COLLECTION);
-      setExpandedNoteIds(prev => ({ ...prev, [ref.id]: true }));
+      setExpandedNoteIds(prev => ({ ...prev, [cleanId]: true, [ref.id]: true }));
       setTimeout(() => {
-        const noteElement = document.getElementById(`note-${ref.id}`);
+        const noteElement = document.getElementById(`note-${cleanId}`) || document.getElementById(`note-${ref.id}`);
         if (noteElement) {
           noteElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
           noteElement.classList.add('ring-2', 'ring-orange-400');
@@ -2856,6 +2944,60 @@ ${notesContext || '（目前沒有筆記）'}
         }
       }, 300);
     }
+  };
+
+  const handleCitationClick = (sourceId: string, sourceType?: string) => {
+    let cleanId = String(sourceId || '').trim();
+    if (cleanId.startsWith('#')) cleanId = cleanId.slice(1);
+    
+    let determinedType = sourceType;
+    if (!determinedType) {
+      if (cleanId.startsWith('recipe-') || cleanId.startsWith('rec-')) {
+        determinedType = 'recipe';
+        cleanId = cleanId.replace(/^recipe-/, '');
+      } else if (cleanId.startsWith('note-') || cleanId.startsWith('kn-')) {
+        determinedType = 'note';
+        cleanId = cleanId.replace(/^note-/, '');
+      }
+    }
+
+    if (determinedType === 'recipe' || determinedType === '食譜') {
+      handleJumpToReference({ type: '食譜', id: cleanId });
+      return;
+    }
+
+    if (determinedType === 'note' || determinedType === '筆記') {
+      handleJumpToReference({ type: '筆記', id: cleanId });
+      return;
+    }
+
+    // 自動搜尋比對
+    const foundRecipe = recipes.find(r => r.id === cleanId || r.id === `rec-${cleanId}`);
+    if (foundRecipe) {
+      handleJumpToReference({ type: '食譜', id: foundRecipe.id });
+      return;
+    }
+
+    const foundNote = knowledge.find(k => k.id === cleanId || k.id === `kn-${cleanId}`);
+    if (foundNote) {
+      handleJumpToReference({ type: '筆記', id: foundNote.id });
+      return;
+    }
+
+    const stripped = cleanId.replace(/^(note-|kn-|recipe-|rec-)/, '');
+    const fallbackRecipe = recipes.find(r => r.id.includes(stripped));
+    if (fallbackRecipe) {
+      handleJumpToReference({ type: '食譜', id: fallbackRecipe.id });
+      return;
+    }
+
+    const fallbackNote = knowledge.find(k => k.id.includes(stripped));
+    if (fallbackNote) {
+      handleJumpToReference({ type: '筆記', id: fallbackNote.id });
+      return;
+    }
+
+    showToast("找不到該參考來源");
   };
 
   const fetchAdminData = async () => {
@@ -3824,9 +3966,21 @@ ${notesContext || '（目前沒有筆記）'}
                   ) : (
                     <div className="space-y-4">
                       <div 
+                        onClick={(e) => {
+                          const target = (e.target as HTMLElement).closest('[data-source-id]');
+                          if (target) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const sourceId = target.getAttribute('data-source-id') || '';
+                            const sourceType = target.getAttribute('data-source-type') || undefined;
+                            if (sourceId) {
+                              handleCitationClick(sourceId, sourceType);
+                            }
+                          }
+                        }}
                         className="text-sm text-slate-700 leading-relaxed [&_h3]:text-base [&_h3]:font-black [&_h3]:text-slate-800 [&_h3]:mt-4 [&_h3]:mb-2 [&_h2]:text-lg [&_h2]:font-black [&_h2]:text-slate-900 [&_h2]:mt-5 [&_h2]:mb-2 [&_h1]:text-xl [&_h1]:font-black [&_h1]:text-slate-950 [&_h1]:mt-6 [&_h1]:mb-3 [&_ul]:list-disc [&_ul]:list-inside [&_ul]:ml-4 [&_ul]:space-y-1 [&_ul]:mb-3 [&_li]:text-slate-700 [&_li]:leading-relaxed [&_strong]:font-extrabold [&_strong]:text-slate-900 [&_p]:mb-3"
                         dangerouslySetInnerHTML={{ 
-                          __html: marked.parse(aiQaResult?.answer || '') as string
+                          __html: aiQaMarked.parse(aiQaResult?.answer || '') as string
                         }} 
                       />
                       
