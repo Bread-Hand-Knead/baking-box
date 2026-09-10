@@ -37,7 +37,7 @@ const getApiKey = (forcePrompt = false) => {
 
 const genAI = new GoogleGenerativeAI(getApiKey());
 
-// 專為 AI 知識庫智慧回答建立的 Markdown 解析器，支援內文來源超連結膠囊標籤
+// 專為 AI 知識庫智慧回答建立的 Markdown 解析器，支援內文極簡來源超連結圖示
 const aiQaMarked = new Marked({
   breaks: true,
   gfm: true
@@ -80,11 +80,14 @@ aiQaMarked.use({
           sourceId = sourceId.replace('#', '');
         }
 
-        // 清洗來源標題文字
+        // 清洗來源標題文字，作為懸停提示 (Tooltip)
         let label = rawText.replace(/^\[?來源[:：]?\s*/, '').replace(/\]$/, '').trim();
-        if (!label) label = '查看來源';
+        if (!label) label = '參考來源';
 
-        return `<a href="#${sourceId}" data-source-id="${sourceId}" data-source-type="${sourceType}" class="ai-citation-badge inline-flex items-center gap-1 px-2.5 py-0.5 mx-1 my-0.5 rounded-full text-xs font-bold bg-orange-100 hover:bg-orange-200 text-orange-800 border border-orange-200 shadow-xs transition-all active:scale-95 cursor-pointer no-underline align-middle select-none hover:shadow-sm" title="點擊查看來源：${label}"><span class="text-[11px]">🏷️</span><span>${label}</span></a>`;
+        // 極簡圖示：食譜顯示 📖，筆記顯示 📄
+        const icon = (sourceType === 'recipe' || sourceId.startsWith('rec')) ? '📖' : '📄';
+
+        return `<a href="#${sourceId}" data-source-id="${sourceId}" data-source-type="${sourceType}" class="ai-citation-icon inline-flex items-center justify-center text-[12px] text-orange-600 hover:text-orange-800 bg-orange-50 hover:bg-orange-100 border border-orange-200/80 rounded-md px-1 py-0.5 mx-0.5 -translate-y-0.5 align-baseline cursor-pointer transition-all shadow-2xs active:scale-90 select-none no-underline hover:shadow-xs" title="來源：${label} (點擊定位下方參考資料)"><span class="leading-none select-none">${icon}</span></a>`;
       }
 
       return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-orange-600 hover:text-orange-700 underline font-medium">${rawText}</a>`;
@@ -2859,13 +2862,13 @@ ID: ${k.id}
 1. 你的回答必須【僅依據】下方提供的食譜與筆記資料進行統整回答，絕對不能胡言亂語或憑空捏造。
 2. 如果提供的資料中完全沒有相關資訊，請禮貌地回答：「目前您的食譜與筆記中沒有關於這方面的記錄喔。」
 3. 📌【重要：句子/論點來源超連結標註 (In-text Citations)】：
-   - 當你在回答中引用特定食譜或筆記的內容、論點、步驟或技巧時，必須在該句句尾附帶來源超連結標籤。
+   - 當你在回答中引用特定食譜或筆記的內容、論點、步驟或技巧時，必須在該句句尾（句號前或緊接著句號）附帶來源標籤。
    - 標籤格式規定：
      * 引用食譜時：[來源: 食譜標題](source:recipe:食譜ID) 或 [食譜標題](source:食譜ID)
      * 引用筆記時：[來源: 筆記標題](source:note:筆記ID) 或 [筆記標題](source:筆記ID)
      * 亦相容格式：[來源: 標題](#note-筆記ID) 或 [來源: 標題](#recipe-食譜ID)
    - 若同一句綜合了多筆來源，請連續標註在句末（例如：「...能讓麵包內部組織更柔軟保濕[來源: 湯種製作法](source:note:kn-123) [來源: 鮮奶吐司](source:recipe:rec-456)。」）。
-   - 來源標籤中的名稱請寫入完整的食譜或筆記標題（例如：[來源: 呂昇達老師生吐司] 或 [來源: 戚風蛋糕消泡原因]），嚴禁使用隨機假名或非對應的 ID。
+   - 來源標籤中的名稱請寫入完整的食譜或筆記標題，前端會自動精簡為極簡行內圖示，並在滑鼠懸停時展示來源標題。
 4. 【回答格式結構】：
    第一部分：針對問題的回答內容（繁體中文），並切實落實上述句尾來源標籤。
    第二部分：在回答內容最下方，請另起新行並明確列出整體的【參考資料】，格式如下（多個參考以逗號分隔）：
@@ -2961,6 +2964,32 @@ ${notesContext || '（目前沒有筆記）'}
       }
     }
 
+    // 1. 優先嘗試平滑滾動並高亮底部對應的「參考來源」卡片
+    const unPrefixed = cleanId.replace(/^(note-|recipe-|kn-|rec-)/, '');
+    const refButton = (
+      document.getElementById(`ai-ref-card-${cleanId}`) ||
+      document.getElementById(`ai-ref-card-rec-${unPrefixed}`) ||
+      document.getElementById(`ai-ref-card-kn-${unPrefixed}`) ||
+      document.querySelector(`[data-ref-id="${cleanId}"]`) ||
+      document.querySelector(`[data-ref-id$="${unPrefixed}"]`)
+    ) as HTMLElement | null;
+
+    if (refButton) {
+      // 若該卡片已被高亮（代表使用者連續點擊），直接觸發跳轉開啟
+      if (refButton.classList.contains('ring-4')) {
+        refButton.click();
+        return;
+      }
+
+      refButton.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      refButton.classList.add('ring-4', 'ring-orange-400', 'bg-orange-100', 'scale-105');
+      setTimeout(() => {
+        refButton.classList.remove('ring-4', 'ring-orange-400', 'bg-orange-100', 'scale-105');
+      }, 2500);
+      return;
+    }
+
+    // 2. 若底部無對應卡片，直接開啟該筆食譜或筆記
     if (determinedType === 'recipe' || determinedType === '食譜') {
       handleJumpToReference({ type: '食譜', id: cleanId });
       return;
@@ -3991,6 +4020,8 @@ ${notesContext || '（目前沒有筆記）'}
                             {aiQaResult.references.map((ref, idx) => (
                               <button
                                 key={`ref-${idx}`}
+                                id={`ai-ref-card-${ref.id}`}
+                                data-ref-id={ref.id}
                                 onClick={() => handleJumpToReference(ref)}
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-orange-100 hover:border-orange-200 text-[#E67E22] text-xs font-bold rounded-xl shadow-sm transition-all active:scale-95"
                               >
