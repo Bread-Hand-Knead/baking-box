@@ -2967,25 +2967,18 @@ ${notesContext || '（目前沒有筆記）'}
         }
       });
       
-      const prompt = `你是一個專業的烘焙知識與筆記解析助手。
-      請從下方的【筆記內容】中識別並提取重點，整理出標題、師傅/老師名稱以及重點內容和連結。
+      const prompt = `你是一個極度忠於原文的烘焙筆記整理助手。
+      請從下方的【筆記內容】中提取標題、師傅/老師名稱，以及【100% 忠於原文】的重點內容和連結。
       
-      【核心目標與防篡改約束】：
-      1. 標題 (title)：簡短精煉的重點主題，例如「鹽可頌滾圓手法」、「戚風蛋糕消泡原因分析」。如果文中沒有明確標題，請自行歸納出一個最合適的標題，不要空白。
-      2. 師傅/老師名稱 (master)：分享這個知識、技巧、配方的老師或師傅名稱。如果沒有提到，請填入空字串。
+      【100% 忠於原文與嚴格防篡改規則】：
+      1. 標題 (title)：簡短精煉的重點主題，例如「發酵奶油與甜性奶油的差異與烘焙應用建議」。如果文中沒有明確標題，請提取最具代表性的短句作為標題，不要空白。
+      2. 師傅/老師名稱 (master)：分享這個知識、技巧的老師或師傅名稱（例如：呂昇達）。如果沒有提到，請填入空字串。
       3. 重點內容和連結 (content)：
-         請將長篇純文字整理為易讀且具備豐富排版層次的 Markdown 結構。
-         【結構化排版規則】：
-         - 請將文章邏輯拆解為適當的子標題，例如：
-           - ### 💡 核心觀念
-           - ### 📝 條列重點
-           - ### 🛠️ 關鍵步驟與決策
-           - ### 📌 總結
-           (若不完全適用上述四項，請調整為合適的主題子標題，前面須以 ### 配合適當 Emoji 作為標題樣式)
-         - 引導性重點（如金句、重點提醒、警示規則）請使用引言格式（在該行開頭加上 > ，即 Markdown blockquote 格式，例如：> ⚠️ 攪拌時一定要注意麵糰溫度）。
-         - 條列項目（如步驟或重點）應加上序號或標記（例如：1. **攪拌程度**：... ），並對重點名詞/關鍵字使用 **粗體**。
-         - 對話或對答紀錄請加上適當的空行以利閱讀。
-         ⚠️【嚴格內容完整度約束】：僅允許調整段落換行、標點符號與條列重點，絕對不可刪改、增添或自行擴寫原作者的教學內容與語句！必須保持原始烘焙觀念與專業名詞完全不變，原汁原味呈現！如果內容中有 URL 網址連結，請務必原封不動且完整地保留在 content 中。
+         - ⚠️【嚴禁添加非原文標籤】：絕對不可自行插入 "###"、"**" 粗體語法、"【核心觀念】" 或任何 AI 自創的分類小標題！
+         - ⚠️【嚴禁出現文字型態的 \\n】：段落換行請使用真實的換行字元 (Enter)，絕對不可以輸出字面上的 \\n 字元。
+         - ⚠️【100% 保持原作者字句與語氣】：保持原作者的說話語氣、口吻與段落，絕對不可進行任何語意改寫、摘要簡化、刪減或自行擴寫。
+         - ⚠️【100% 保留原文符號】：老師原文中的 Emoji（如 💡、🧈、✅）、標點符號與原始條列符號（如 1.、2.、-）必須 100% 原樣保留。
+         - ⚠️【保留連結與純淨換行】：內容中若有 URL 網址連結請完整保留。僅將原本的換行與空行保留為乾淨的標準段落換行，呈現與原始貼文完全一致的乾淨排版。
       
       【筆記內容】：
       ${noteSmartPasteText}
@@ -3002,10 +2995,16 @@ ${notesContext || '（目前沒有筆記）'}
       
       const parsed = JSON.parse(textOutput);
       if (parsed) {
+        let cleanContent = (parsed.content || '').replace(/\\n/g, '\n');
+        // Clean any hallucinatory ### or ** tags if present
+        cleanContent = cleanContent
+          .replace(/^###\s*/gm, '')
+          .replace(/\*\*(.*?)\*\*/g, '$1');
+
         setNewNote({
           title: parsed.title || '',
           master: parsed.master || '',
-          content: parsed.content || ''
+          content: cleanContent
         });
         setNoteSmartPasteText('');
         showToast("✨ 心得技巧解析完成，已為您自動填入！");
@@ -4393,7 +4392,8 @@ ${notesContext || '（目前沒有筆記）'}
                     value={noteSmartPasteText}
                     onChange={(e) => setNoteSmartPasteText(e.target.value)}
                     placeholder="貼上亂糟糟的筆記（例如 Line 訊息、網頁複製內容）..."
-                    className="w-full h-32 px-4 py-4 bg-slate-50 border border-orange-100 rounded-2xl text-xs outline-none focus:bg-white focus:ring-2 focus:ring-orange-100 transition-all leading-relaxed"
+                    className="w-full h-32 px-4 py-4 bg-slate-50 border border-orange-100 rounded-2xl text-xs outline-none focus:bg-white focus:ring-2 focus:ring-orange-100 transition-all leading-relaxed whitespace-pre-wrap break-words"
+                    style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
                   />
                   <button 
                     onClick={handleNoteSmartPaste}
@@ -4420,7 +4420,13 @@ ${notesContext || '（目前沒有筆記）'}
                   <h3 className="text-sm font-black text-slate-700">{editingNoteId ? '✏️ 編輯心得或技巧' : '✍️ 新增心得或技巧'}</h3>
                   <input type="text" placeholder="標題 (例如：鹽可頌滾圓)" value={newNote.title || ''} onChange={e => setNewNote(p => ({ ...p, title: e.target.value }))} className="w-full px-4 py-2 bg-orange-50/30 rounded-xl text-sm outline-none border border-orange-50 focus:border-orange-200 transition-all" />
                   <input type="text" placeholder="師傅/老師名稱" value={newNote.master || ''} onChange={e => setNewNote(p => ({ ...p, master: e.target.value }))} className="w-full px-4 py-2 bg-orange-50/30 rounded-xl text-sm outline-none border border-orange-50 focus:border-orange-200 transition-all" />
-                  <textarea placeholder="重點內容或連結..." value={newNote.content || ''} onChange={e => setNewNote(p => ({ ...p, content: e.target.value }))} className="w-full px-4 py-3 bg-orange-50/30 rounded-xl text-sm outline-none border border-orange-50 h-24 transition-all focus:border-orange-200" />
+                  <textarea 
+                    placeholder="重點內容或連結..." 
+                    value={newNote.content || ''} 
+                    onChange={e => setNewNote(p => ({ ...p, content: e.target.value }))} 
+                    className="w-full px-4 py-3 bg-orange-50/30 rounded-xl text-sm outline-none border border-orange-50 h-32 transition-all focus:border-orange-200 whitespace-pre-wrap break-words" 
+                    style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                  />
                   
                   {/* Image Attachment Section */}
                   <div 
@@ -4564,21 +4570,13 @@ ${notesContext || '（目前沒有筆記）'}
                         {isExpanded && (
                           <div className="mt-3 animate-in fade-in slide-in-from-top-1 space-y-4">
                             <div 
-                              className="text-[16px] text-slate-700 leading-[1.8] space-y-3 prose max-w-none
-                                [&_h3]:text-lg [&_h3]:font-black [&_h3]:text-slate-800 [&_h3]:mt-5 [&_h3]:mb-3
-                                [&_strong]:font-black [&_strong]:text-slate-800
-                                [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:space-y-2 [&_ul]:my-3
-                                [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:space-y-2 [&_ol]:my-3
-                                [&_li]:text-[15px] [&_li]:text-slate-600 [&_li]:leading-[1.8]
-                                [&_p]:text-[16px] [&_p]:leading-[1.8] [&_p]:mb-[12px] [&_p]:whitespace-pre-wrap
-                                [&_blockquote]:border-l-4 [&_blockquote]:border-orange-300 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-slate-600 [&_blockquote]:bg-orange-50/20 [&_blockquote]:py-2.5 [&_blockquote]:rounded-r-lg [&_blockquote]:my-3 [&_blockquote]:text-[15px] whitespace-pre-wrap break-words"
+                              className="text-[16px] text-slate-700 leading-[1.8] whitespace-pre-wrap break-words font-sans"
                               style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.8' }}
-                              dangerouslySetInnerHTML={{ 
-                                __html: (typeof kn.content === 'string') 
-                                  ? marked.parse(kn.content.replace(/\\n/g, '\n')) as string 
-                                  : '' 
-                              }}
-                            />
+                            >
+                              {(typeof kn.content === 'string') 
+                                ? kn.content.replace(/\\n/g, '\n') 
+                                : ''}
+                            </div>
                             {kn.image_url && (
                               <div 
                                 onClick={(e) => {
