@@ -11,17 +11,26 @@ import { marked, Marked } from 'marked';
 
 // Initialize Gemini AI with fallback support for different environment variable names
 const getApiKey = (forcePrompt = false) => {
-  // 優先順序：localStorage (除錯優先) -> Vite 環境變數
-  let key = localStorage.getItem('VITE_GEMINI_API_KEY') ||
-            (import.meta as any).env?.VITE_GEMINI_API_KEY || 
-            (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : null) ||
-            localStorage.getItem('gemini_api_key');
-  
+  // 1. 從 Local Storage 讀取（使用者手動輸入或自訂的金鑰優先）
+  let key = localStorage.getItem('user_gemini_api_key') ||
+            localStorage.getItem('gemini_api_key') ||
+            localStorage.getItem('VITE_GEMINI_API_KEY');
+
+  // 2. 僅在本機開發模式 (import.meta.env.DEV) 下，讀取本機 .env 檔案中的 VITE_GEMINI_API_KEY
+  // 線上部署版本 (PROD / GitHub Pages) 絕不打包或預設讀取 .env 金鑰
+  if (!key && (import.meta as any).env?.DEV) {
+    key = (import.meta as any).env?.VITE_GEMINI_API_KEY || 
+          (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : null);
+  }
+
+  // 3. 若線上版或缺乏金鑰且觸發 AI 操作時，彈窗請使用者輸入並存入 Local Storage
   if (forcePrompt && (!key || key === 'YOUR_API_KEY')) {
-    const userInput = window.prompt("線上版本未設定開發金鑰\n\n請輸入您的 Gemini API Key 以啟用「AI 快速筆記助手」：");
+    const userInput = window.prompt("線上版本未設定預設金鑰\n\n請輸入您的 Gemini API Key 以啟用「AI 食譜解析與智慧問答」：");
     if (userInput) {
-      localStorage.setItem("gemini_api_key", userInput.trim());
-      key = userInput.trim();
+      const trimmedKey = userInput.trim();
+      localStorage.setItem("user_gemini_api_key", trimmedKey);
+      localStorage.setItem("gemini_api_key", trimmedKey);
+      key = trimmedKey;
     }
   }
 
@@ -30,7 +39,7 @@ const getApiKey = (forcePrompt = false) => {
   console.log('[Auth] API Key status:', apiStatus);
 
   if (!key) {
-    console.error("Error: API Key is undefined (VITE_GEMINI_API_KEY not found)");
+    console.error("Error: API Key is undefined");
   }
   return key ? key.trim() : '';
 };
