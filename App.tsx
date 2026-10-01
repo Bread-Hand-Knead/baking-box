@@ -3063,51 +3063,38 @@ ${notesContext || '（目前沒有筆記）'}
   };
 
   const handleExtendVip = async (userId: string, currentTrialUntil: number) => {
-    const current = currentTrialUntil || Date.now();
-    const newUntil = Math.max(Date.now(), current) + 30 * 24 * 60 * 60 * 1000;
     try {
-      await updateDoc(doc(db, 'userSettings', userId), {
-        trial_until: newUntil,
-        is_permanent_vip: false,
-        subscriptionStatus: 'active',
-        updatedAt: Date.now()
-      });
+      const adminUpdateCall = httpsCallable(functions, 'adminUpdateUserVip');
+      await adminUpdateCall({ targetUserId: userId, action: 'extend_vip', customDays: 30 });
       showToast("成功延長 VIP 30 天！");
       fetchAdminData();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      showToast("操作失敗");
+      showToast("操作失敗: " + (e.message || '權限不足'));
     }
   };
 
   const handleSetPermanentVip = async (userId: string) => {
     try {
-      await updateDoc(doc(db, 'userSettings', userId), {
-        is_permanent_vip: true,
-        subscriptionStatus: 'active',
-        updatedAt: Date.now()
-      });
+      const adminUpdateCall = httpsCallable(functions, 'adminUpdateUserVip');
+      await adminUpdateCall({ targetUserId: userId, action: 'set_permanent_vip' });
       showToast("已設定為永久 VIP！");
       fetchAdminData();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      showToast("操作失敗");
+      showToast("操作失敗: " + (e.message || '權限不足'));
     }
   };
 
   const handleResetToFree = async (userId: string) => {
     try {
-      await updateDoc(doc(db, 'userSettings', userId), {
-        is_permanent_vip: false,
-        trial_until: Date.now() - 1000,
-        subscriptionStatus: 'free',
-        updatedAt: Date.now()
-      });
+      const adminUpdateCall = httpsCallable(functions, 'adminUpdateUserVip');
+      await adminUpdateCall({ targetUserId: userId, action: 'reset_to_free' });
       showToast("已重設為一般免費戶");
       fetchAdminData();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      showToast("操作失敗");
+      showToast("操作失敗: " + (e.message || '權限不足'));
     }
   };
 
@@ -3197,18 +3184,11 @@ ${notesContext || '（目前沒有筆記）'}
         if (!user) {
           localStorage.setItem('local_ai_usage', JSON.stringify(newUsage));
         } else {
-          await saveUserSettings({ 
-            aiUsage: newUsage,
-            ai_parse_count: newUsage.count
-          });
           try {
-            await setDoc(doc(db, 'user_usage', user.uid), {
-              ai_parse_count: newUsage.count,
-              last_parse_at: Date.now(),
-              email: user.email
-            }, { merge: true });
+            const recordUsageCall = httpsCallable(functions, 'recordAiUsage');
+            await recordUsageCall();
           } catch (e) {
-            console.warn("user_usage sync failed", e);
+            console.warn("recordAiUsage Cloud Function call failed, fallback locally", e);
           }
         }
       }
@@ -3250,21 +3230,12 @@ ${notesContext || '（目前沒有筆記）'}
         // 僅在未登入時寫入本地 localStorage，避免污染匿名狀態
         localStorage.setItem('local_ai_usage', JSON.stringify(newUsage));
       } else {
-        // [Sync] 更新資料庫並確保最新 (包含指定的 ai_parse_count 以供審核)
-        await saveUserSettings({ 
-          aiUsage: newUsage,
-          ai_parse_count: newUsage.count // 同步更新使用者要求的欄位
-        });
-
-        // [Sync] 同步更新 user_usage 集合（獨立資料表）
+        // [Sync] 呼叫後端 Cloud Function 安全紀錄次數
         try {
-          await setDoc(doc(db, 'user_usage', user.uid), {
-            ai_parse_count: newUsage.count,
-            last_parse_at: Date.now(),
-            email: user.email
-          }, { merge: true });
+          const recordUsageCall = httpsCallable(functions, 'recordAiUsage');
+          await recordUsageCall();
         } catch (e) {
-          console.warn("user_usage sync failed", e);
+          console.warn("recordAiUsage Cloud Function call failed", e);
         }
       }
     }

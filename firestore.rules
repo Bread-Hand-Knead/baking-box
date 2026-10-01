@@ -32,9 +32,17 @@ service cloud.firestore {
       );
     }
 
+    // 檢查資料庫寫入動作是否嘗試修改任何 VIP / 權限 / 方案敏感欄位
+    function touchesSensitiveFields(data) {
+      return data.keys().hasAny([
+        'plan', 'vipExpiresAt', 'trial_until', 'is_permanent_vip',
+        'subscriptionStatus', 'subscriptionType', 'role', 'is_vip',
+        'ai_parse_count', 'aiUsage'
+      ]);
+    }
+
     // Helper: Validate Identity in data
     function isInputOwner(data) {
-      // Handle potential nulls or missing fields by forcing a match against a non-matchable default if missing
       return (data.get('uid', '') == request.auth.uid) || 
              (data.get('author_id', '') == request.auth.uid);
     }
@@ -45,7 +53,7 @@ service cloud.firestore {
              (existing().get('author_id', '') == request.auth.uid);
     }
 
-    // Helper: Validate Recipe data shape (Pillar 2)
+    // Helper: Validate Recipe data shape
     function isValidRecipe(data) {
       return data.keys().hasAll(['title', 'category'])
         && data.title is string && data.title.size() <= 200
@@ -56,8 +64,17 @@ service cloud.firestore {
 
     // Match Blocks
     
+    // 1) userSettings: 使用者可讀取自己的設定。寫入時，一般使用者絕對禁止修改敏感欄位；僅管理員或 Cloud Functions (Admin SDK) 可更動。
     match /userSettings/{userId} {
-      allow read, write: if isOwner(userId) || isAdmin();
+      allow read: if isOwner(userId) || isAdmin();
+      allow create, update: if isAdmin() || (isOwner(userId) && !touchesSensitiveFields(incoming()));
+      allow delete: if isAdmin();
+    }
+
+    // 2) user_usage: 使用者只能讀取自己的用量紀錄。寫入一律鎖死，僅由 Cloud Functions Admin SDK 寫入
+    match /user_usage/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if false;
     }
 
     match /user_categories/{userId} {
@@ -65,10 +82,9 @@ service cloud.firestore {
     }
 
     match /recipes/{recipeId} {
-      // Pillar 8: Secure List Queries
       allow read: if isSignedIn() && (
         isAdmin() || 
-        (resource == null) || // For gets that don't exist
+        (resource == null) || 
         isDocOwner()
       );
 
@@ -79,7 +95,6 @@ service cloud.firestore {
       allow update: if isVerified() && isValidRecipe(incoming()) && (
         isAdmin() || (
           isDocOwner() && 
-          // Pillar 4 & 9: Immutable Identity (Allowed to set if currently empty/missing)
           (existing().get('uid', '') == '' || incoming().get('uid', '') == existing().get('uid', '')) &&
           (existing().get('author_id', '') == '' || incoming().get('author_id', '') == existing().get('author_id', ''))
         )
@@ -94,7 +109,6 @@ service cloud.firestore {
       allow read, write: if isOwner(userId) || isAdmin();
     }
 
-    // Interaction Collections (Pillar 1)
     match /user_knowledge/{knowledgeId} {
       allow read, write: if isSignedIn() && (isAdmin() || resource.data.uid == request.auth.uid || incoming().uid == request.auth.uid);
     }
