@@ -6,45 +6,10 @@ import {
   collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, updateDoc, deleteDoc,
   getDocFromServer, setPersistence, browserLocalPersistence, functions, httpsCallable
 } from './firebase';
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { marked, Marked } from 'marked';
 
-// Initialize Gemini AI with fallback support for different environment variable names
-const getApiKey = (forcePrompt = false) => {
-  // 1. 從 Local Storage 讀取（使用者手動輸入或自訂的金鑰優先）
-  let key = localStorage.getItem('user_gemini_api_key') ||
-            localStorage.getItem('gemini_api_key') ||
-            localStorage.getItem('VITE_GEMINI_API_KEY');
-
-  // 2. 僅在本機開發模式 (import.meta.env.DEV) 下，讀取本機 .env 檔案中的 VITE_GEMINI_API_KEY
-  // 線上部署版本 (PROD / GitHub Pages) 絕不打包或預設讀取 .env 金鑰
-  if (!key && (import.meta as any).env?.DEV) {
-    key = (import.meta as any).env?.VITE_GEMINI_API_KEY || 
-          (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : null);
-  }
-
-  // 3. 若線上版或缺乏金鑰且觸發 AI 操作時，彈窗請使用者輸入並存入 Local Storage
-  if (forcePrompt && (!key || key === 'YOUR_API_KEY')) {
-    const userInput = window.prompt("線上版本未設定預設金鑰\n\n請輸入您的 Gemini API Key 以啟用「AI 食譜解析與智慧問答」：");
-    if (userInput) {
-      const trimmedKey = userInput.trim();
-      localStorage.setItem("user_gemini_api_key", trimmedKey);
-      localStorage.setItem("gemini_api_key", trimmedKey);
-      key = trimmedKey;
-    }
-  }
-
-  // [Auth] API Key 診斷：僅告知狀態，不暴露私鑰
-  const apiStatus = !!key ? 'Detected' : 'Missing';
-  console.log('[Auth] API Key status:', apiStatus);
-
-  if (!key) {
-    console.error("Error: API Key is undefined");
-  }
-  return key ? key.trim() : '';
-};
-
-const genAI = new GoogleGenerativeAI(getApiKey());
+// AI 解析改由後端 (Cloud Functions) 呼叫 Gemini，金鑰只放在後端，使用者不需要輸入金鑰
+const aiGenerateCall = httpsCallable(functions, 'aiGenerate', { timeout: 300000 });
 
 // 專為 AI 知識庫智慧回答建立的 Markdown 解析器，支援內文極簡來源超連結圖示
 const aiQaMarked = new Marked({
@@ -158,93 +123,6 @@ const sanitizeBakingStages = (stages: any[] | undefined): BakingStage[] => {
   return uniqueStages;
 };
 
-const INGREDIENT_OBJECT_SCHEMA = {
-  type: "object",
-  properties: {
-    name: { type: "string" },
-    amount: { type: "string" },
-    unit: { type: "string" },
-    isFlour: { type: "boolean" }
-  },
-  required: ["name", "amount", "unit"]
-};
-
-const FERMENTATION_STAGE_SCHEMA = {
-  type: "object",
-  properties: {
-    name: { type: "string" },
-    time: { type: "string" },
-    timeUnit: { type: "string", enum: ["分鐘", "小時"] },
-    temperature: { type: "string" },
-    humidity: { type: "string" },
-    note: { type: "string" }
-  },
-  required: ["name", "time"]
-};
-
-const BAKING_STAGE_SCHEMA = {
-  type: "object",
-  properties: {
-    name: { type: "string" },
-    topHeat: { 
-      type: "string", 
-      description: "上火溫度數值。僅能輸出乾淨數值（若無區分上下火則填入相同溫度數字，例如: \"170\"），嚴禁包含任何思考推理、思考過程說明文字（如 160_C_without_degree_symbol 類似樣板字串）、度數單位或說明文字。" 
-    },
-    bottomHeat: { 
-      type: "string", 
-      description: "下火溫度數值。僅能輸出乾淨數值（若無區分上下火則填入相同溫度數字，例如: \"170\"），嚴禁包含任何思考推理、思考過程說明文字（如 160_C_without_degree_symbol 類似樣板字串）、度數單位或說明文字。" 
-    },
-    time: { type: "string" },
-    timeUnit: { type: "string", enum: ["分鐘", "小時"] },
-    note: { type: "string" }
-  },
-  required: ["name", "time"]
-};
-
-const AI_RECIPE_SCHEMA = {
-  type: "object",
-  properties: {
-    title: { type: "string" },
-    master: { type: "string" },
-    category: { type: "string" },
-    subcategory: { type: "string" },
-    description: { type: "string" },
-    ingredients: { type: "array", items: INGREDIENT_OBJECT_SCHEMA },
-    liquidStarterIngredients: { type: "array", items: INGREDIENT_OBJECT_SCHEMA },
-    fillingIngredients: { type: "array", items: INGREDIENT_OBJECT_SCHEMA },
-    decorationIngredients: { type: "array", items: INGREDIENT_OBJECT_SCHEMA },
-    customSectionIngredients: { type: "array", items: INGREDIENT_OBJECT_SCHEMA },
-    mainSectionName: { type: "string" },
-    liquidStarterName: { type: "string" },
-    fillingSectionName: { type: "string" },
-    decorationSectionName: { type: "string" },
-    customSectionName: { type: "string" },
-    fermentationStages: { type: "array", items: FERMENTATION_STAGE_SCHEMA },
-    bakingStages: { type: "array", items: BAKING_STAGE_SCHEMA },
-    instructions: { type: "array", items: { type: "string" } },
-    tags: { type: "array", items: { type: "string" } },
-    notes: { type: "string" }
-  },
-  required: ["title", "ingredients", "instructions"]
-};
-
-const AI_MULTI_RECIPE_SCHEMA = {
-  type: "object",
-  properties: {
-    recipes: { type: "array", items: AI_RECIPE_SCHEMA }
-  },
-  required: ["recipes"]
-};
-
-const AI_NOTE_SCHEMA = {
-  type: "object",
-  properties: {
-    title: { type: "string" },
-    master: { type: "string" },
-    content: { type: "string" }
-  },
-  required: ["title", "master", "content"]
-};
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, Search, Book, Scale, Settings, LogOut, LogIn, User as UserIcon, 
@@ -2626,154 +2504,66 @@ const App: React.FC = () => {
 
   const proceedWithAIParse = async () => {
     setIsAiParsing(true);
-    const apiKey = getApiKey(true);
-    console.log('[Auth] API Key status:', !!apiKey ? 'Detected' : 'Missing');
 
-    let lastError: any = null;
-    const maxRetries = 3;
+    try {
+      // 由後端呼叫 Gemini（金鑰在後端，會自動重試），並在成功後記錄次數
+      const response = await aiGenerateCall({ kind: 'recipe', text: smartPasteText });
+      const data = response.data as any;
+      if (data?.aiUsage) setAiUsage(data.aiUsage);
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        if (!apiKey || apiKey === 'YOUR_API_KEY') {
-          console.error("Error: API Key is undefined or invalid. AI Parsing aborted.");
-          throw new Error("MISSING_API_KEY");
-        }
+      const parsed = data?.result || {};
+      const recipesFound = (parsed.recipes || []).filter((r: any) => 
+        (r.ingredients?.length || 0) > 0 || 
+        (r.liquidStarterIngredients?.length || 0) > 0 ||
+        (r.fillingIngredients?.length || 0) > 0 ||
+        (r.decorationIngredients?.length || 0) > 0 ||
+        (r.customSectionIngredients?.length || 0) > 0
+      );
 
-        const client = new GoogleGenerativeAI(apiKey);
-        const model = client.getGenerativeModel({ 
-          model: "gemini-3-flash-preview",
-          generationConfig: { 
-            responseMimeType: "application/json",
-            responseSchema: AI_MULTI_RECIPE_SCHEMA as any
-          }
-        });
-
-        console.log('[AI] Using model path: gemini-3-flash-preview');
-
-        const prompt = `你是一個專業且極具適應力的烘焙食譜解析助手。
-        請從下方的【筆記內容】中識別並提取烘焙食譜資訊。
-        
-        【核心目標】：
-        1. 專注提取核心結構：『食譜名稱』、『材料』、『步驟』與『大師/師傅名稱』。
-           - ⚠️ 重要！單位標準化規則：
-             請將所有的重量與體積單位標準化。如果是「公克」、「克」、「G」，請一律將材料的 unit 填寫為小寫「g」。如果是「毫升」、「ML」、「C.C.」、「cc」，請一律填寫為小寫「ml」。如果是「公斤」、「KG」，請一律填寫為小寫「kg」。如果是「公升」、「L」，請一律填寫為大寫「L」。其餘非重量與體積單位（如：條、根、個、份、少許、適量）則原樣保留。
-        2. 烤溫與發酵資訊智慧識別與自動對應：
-           - 仔細過濾筆記文字中的「烤溫/烘烤參數」（例如：上火 210°C / 下火 190°C、180度、烤 12 分鐘、烘焙時間等）與「發酵資訊」（例如：基本發酵 60 分鐘、最後發酵 50 分、冷藏發酵 12~16 小時等）。
-           - 將這些數據精確填入 "bakingStages" 與 "fermentationStages" 中：
-             - bakingStages 每個元素應為包含: "name" (例如: 烘烤, 預熱等), "topHeat" (僅數字、文字，不要包含°C字眼), "bottomHeat" (僅數字、文字，不要包含°C字眼), "time" (時間數值, 如: 12, 25), "timeUnit" ("分鐘" 或 "小時"), "note" 的物件。如果是單一溫度不分上下火，或只有一組溫度，請同時填入 topHeat 與 bottomHeat 或填入 note。
-             - ⚠️ 烤溫嚴格限制：topHeat 與 bottomHeat 欄位僅能輸出乾淨數值（若無區分上下火則填入相同溫度數字，例如: "170"），嚴禁包含任何思考推理、思考過程說明文字（如 160_C_without_degree_symbol 類似樣板字串）或度數單位。
-             - ⚠️ 烘烤去重規範：同一原料的預處理烘烤（如：烤鹹蛋黃、預烤堅果等）僅建立一個烘烤階段，嚴禁重複生成相同內容之步驟或烘烤卡片。
-             - fermentationStages 每個元素應為包含: "name" (例如: 基本發酵, 最後發酵, 中間發酵, 冷藏發酵等), "time" (時間數值, 如: 60, 50, 12), "timeUnit" ("分鐘" 或 "小時"), "temperature" (溫度，如: 28, 32-35, 4), "humidity" (濕度，如: 75%, 85%), "note" 的物件。
-           - ⚠️ 重要！關於發酵與冷藏的判斷規則：
-             1) 只有明確提到「發酵」二字（如：冷藏發酵、室溫發酵、最後發酵）的步驟才可填入 fermentationStages。
-             2) 如果只是「冰箱冷藏定型」、「冷藏醒麵/鬆弛」或「放冷藏冷卻」（無提到發酵二字），這不是發酵，請「絕對不要」填入 fermentationStages。
-           - ⚠️ 重要！步驟完整性規則：
-             1) 請「絕對不要」從 instructions 步驟陣列中刪除或省略任何步驟。所有製作步驟（包括攪拌、整型、發酵、冷藏、烘烤等）都必須「完整、詳細地保留並填入 instructions 陣列中」，不得因為它們被提取為 fermentationStages 或 bakingStages 就將其從 instructions 中刪除！
-             2) 如果筆記內容的步驟有分段或有大標題（例如：① 製作餅乾底、② 製作乳酪餡 等），請在 instructions 陣列中將該標題前面加上 '[SECTION]' 作為獨立元素（例如："[SECTION]① 製作餅乾底"），以完美保留步驟的分段結構。
-        3. 數據清洗：請移除與食譜無關的個人心情、廣告文字、日期、無效標記或瑣碎碎念。
-        4. 解析韌性 (Resilience)：
-           - 若遇到格式模糊、沒有明確比例的配方，請優先以【總麵粉/粉類重量 = 100%】的烘焙百分比邏輯進行逆推計算。
-           - 任何包含「數字 + 單位（g, ml, %, 份）」的組合皆視為有效材料。
-        5. 區塊辨識：烘焙常包含中種、主麵糰、內餡、抹面等區塊，請分別提取。
-        6. 規格重量：若提到「麵糰/皮/主體」的單顆克數，存入 doughWeight；若提到「內餡/餡」的單顆克數，存入 fillingWeight。僅提取純數字。
-        
-        【筆記內容】：
-        ${smartPasteText}
-        
-        【輸出要求】：
-        - 必須回傳純 JSON 格式，根節點名為 "recipes" (陣列)。
-        - 每個物件包含: title, description, notes, master, category, subcategory, doughWeight, fillingWeight, ingredients (name, amount, unit), instructions (字串陣列), liquidStarterIngredients, fillingIngredients, decorationIngredients, customSectionIngredients, fermentationStages, bakingStages。
-        `;
-
-        // 實作超時保護 (60s)
-        const aiPromise = model.generateContent(prompt);
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("TIMEOUT")), 60000));
-        
-        console.log(`[AI] Parsing content (Attempt ${attempt})... waiting for response.`);
-        const result = await Promise.race([aiPromise, timeoutPromise]) as any;
-        const response = await result.response;
-        const textOutput = response.text();
-        
-        if (!textOutput) throw new Error("EMPTY_API_RESPONSE");
-        
-        let parsed;
-        try {
-          parsed = JSON.parse(textOutput);
-        } catch (parseErr) {
-          console.error('[AI] JSON Parse failed. Raw response:', textOutput);
-          throw new Error("JSON_PARSE_ERROR");
-        }
-
-        const recipesFound = (parsed.recipes || []).filter((r: any) => 
-          (r.ingredients?.length || 0) > 0 || 
-          (r.liquidStarterIngredients?.length || 0) > 0 ||
-          (r.fillingIngredients?.length || 0) > 0 ||
-          (r.decorationIngredients?.length || 0) > 0 ||
-          (r.customSectionIngredients?.length || 0) > 0
-        );
-
-        setIsAiParsing(false); // Move cleanup before returns
-
-        if (recipesFound.length === 0) {
-          console.warn('[AI] No recipes identified. Results:', parsed);
-          console.log('[AI] Raw Output for debugging:', textOutput);
-          showToast("未能識別出有效食譜，請確認內容是否包含材料量 (如 100g)");
-          return false;
-        } else {
-          console.log('[AI] Parsing Success');
-          if (recipesFound.length === 1) {
-            applyParsedRecipe(recipesFound[0]);
-          } else {
-            setAiPreviewData(recipesFound);
-          }
-          return true;
-        }
-      } catch (err: any) {
-        lastError = err;
-        const code = err?.message || "UNKNOWN_ERROR";
-        
-        // 更積極的重試策略：包含超時、網路錯誤與 429 高負載
-        if (attempt < maxRetries && (
-          code === "TIMEOUT" || 
-          code.includes("fetch") || 
-          code.includes("429") || 
-          code.includes("RESOURCE_EXHAUSTED") ||
-          err?.name === "AbortError" || 
-          code.includes("ECONNRESET")
-        )) {
-          console.warn(`[AI] Attempt ${attempt} failed (${code}), retrying...`);
-          await new Promise(res => setTimeout(res, 2000));
-          continue;
-        }
-        break;
+      if (recipesFound.length === 0) {
+        console.warn('[AI] No recipes identified. Results:', parsed);
+        showToast("未能識別出有效食譜，請確認內容是否包含材料量 (如 100g)");
+        return false;
       }
-    }
 
-    if (lastError) {
-      const codeValue = lastError?.message || "UNKNOWN_ERROR";
-      console.error(`[AI] Parsing Failed: ${codeValue}`, lastError);
-      
-      const errorMap: Record<string, string> = {
-        "TIMEOUT": "遠端連線較慢，請確認網路狀態後重試",
-        "MISSING_API_KEY": "未偵測到開發金鑰，請聯繫管理員",
-        "EMPTY_API_RESPONSE": "AI 回傳內容為空，請重試",
-        "JSON_PARSE_ERROR": "AI 回傳格式有誤，請再試一次或檢視 Console",
-        "Quota": "解析頻率過高，請稍候再試 (429)",
-        "AI_TIMEOUT": "遠端連線較慢，請確認網路狀態後重試",
-        "NOT_FOUND": "服務連線不穩，請確認網路與金鑰狀態",
-        "RESOURCE_EXHAUSTED": "模型目前負載較高，請稍候再試"
-      };
-      
-      let displayError = errorMap[codeValue] || `解析失敗: ${codeValue}`;
-      if (codeValue.includes('404') || codeValue.includes('429') || codeValue.includes('NOT_FOUND') || codeValue.includes('RESOURCE_EXHAUSTED')) {
-        displayError = "模型已更新至 2.0 版，若連線不穩請稍後重試";
+      console.log('[AI] Parsing Success');
+      if (recipesFound.length === 1) {
+        applyParsedRecipe(recipesFound[0]);
+      } else {
+        setAiPreviewData(recipesFound);
       }
-      
-      showToast(displayError);
+      return true;
+    } catch (err: any) {
+      console.error('[AI] Parsing Failed:', err);
+      handleAiError(err, "AI 解析失敗，請稍後再試");
+      return false;
+    } finally {
+      setIsAiParsing(false);
     }
+  };
 
-    setIsAiParsing(false);
-    return false;
+  // 統一處理 AI 錯誤訊息
+  const handleAiError = (err: any, fallback: string) => {
+    const code = String(err?.code || '');
+    const message = String(err?.message || '');
+    if (code.endsWith('resource-exhausted')) {
+      if (isPremiumUser) {
+        showToast(message || "本月 AI 次數已達上限");
+      } else {
+        triggerUpgradePrompt(true, message || "AI 次數已達上限，升級 Premium 可解鎖更多次數！");
+      }
+    } else if (code.endsWith('unauthenticated')) {
+      showToast("請先登入才能使用 AI 功能");
+    } else if (code.endsWith('not-found')) {
+      showToast("找不到 AI 服務，請確認後端已部署");
+    } else if (code.endsWith('deadline-exceeded')) {
+      showToast("AI 回應太慢，請稍後再試");
+    } else if (message && message !== 'internal' && /[一-鿿]/.test(message)) {
+      // 後端回傳的中文錯誤訊息直接顯示
+      showToast(message);
+    } else {
+      showToast(fallback);
+    }
   };
 
   const parseAiQaResponse = (text: string) => {
@@ -2828,17 +2618,7 @@ const App: React.FC = () => {
     setAiQaLoading(true);
     setAiQaResult(null);
 
-    const apiKey = getApiKey(true);
-    if (!apiKey || apiKey === 'YOUR_API_KEY') {
-      showToast("請先設定 Gemini API 金鑰");
-      setAiQaLoading(false);
-      return;
-    }
-
     try {
-      const client = new GoogleGenerativeAI(apiKey);
-      const model = client.getGenerativeModel({ model: "models/gemini-3-flash-preview" });
-
       const recipesContext = recipes.map((r, index) => {
         const ingredientsStr = r.ingredients.map(i => `${i.name}: ${i.amount}${i.unit}`).join(', ');
         const instructionsStr = r.instructions.join('\n');
@@ -2865,38 +2645,10 @@ ID: ${k.id}
 內容: ${k.content}`;
       }).join('\n\n');
 
-      const prompt = `你是一個專業的個人烘焙助理。請依據下方提供的【使用者食譜】與【使用者筆記】來回答問題。
-
-【核心規則與來源標註要求】：
-1. 你的回答必須【僅依據】下方提供的食譜與筆記資料進行統整回答，絕對不能胡言亂語或憑空捏造。
-2. 如果提供的資料中完全沒有相關資訊，請禮貌地回答：「目前您的食譜與筆記中沒有關於這方面的記錄喔。」
-3. 📌【重要：句子/論點來源超連結標註 (In-text Citations)】：
-   - 當你在回答中引用特定食譜或筆記的內容、論點、步驟或技巧時，必須在該句句尾（句號前或緊接著句號）附帶來源標籤。
-   - 標籤格式規定：
-     * 引用食譜時：[來源: 食譜標題](source:recipe:食譜ID) 或 [食譜標題](source:食譜ID)
-     * 引用筆記時：[來源: 筆記標題](source:note:筆記ID) 或 [筆記標題](source:筆記ID)
-     * 亦相容格式：[來源: 標題](#note-筆記ID) 或 [來源: 標題](#recipe-食譜ID)
-   - 若同一句綜合了多筆來源，請連續標註在句末（例如：「...能讓麵包內部組織更柔軟保濕[來源: 湯種製作法](source:note:kn-123) [來源: 鮮奶吐司](source:recipe:rec-456)。」）。
-   - 來源標籤中的名稱請寫入完整的食譜或筆記標題，前端會自動精簡為極簡行內圖示，並在滑鼠懸停時展示來源標題。
-4. 【回答格式結構】：
-   第一部分：針對問題的回答內容（繁體中文），並切實落實上述句尾來源標籤。
-   第二部分：在回答內容最下方，請另起新行並明確列出整體的【參考資料】，格式如下（多個參考以逗號分隔）：
-   References: [卡片類型|ID|名稱]
-   
-   例如：
-   References: [食譜|rec-12345|起司蛋糕], [筆記|kn-67890|鹽可頌技巧]
-   請確保 references 格式正確，包含卡片類型（食譜或筆記）、ID 與名稱。
-
-【使用者食譜】：
-${recipesContext || '（目前沒有食譜）'}
-
-【使用者筆記】：
-${notesContext || '（目前沒有筆記）'}
-
-問題：${q}`;
-
-      const response = await model.generateContent(prompt);
-      const replyText = response.response.text();
+      // 由後端呼叫 Gemini（金鑰在後端），並在成功後記錄次數
+      const response = await aiGenerateCall({ kind: 'qa', question: q, recipesContext, notesContext });
+      const data = response.data as any;
+      const replyText = String(data?.text || '');
 
       const { cleanText, refs } = parseAiQaResponse(replyText);
 
@@ -2905,18 +2657,11 @@ ${notesContext || '（目前沒有筆記）'}
         references: refs
       });
 
-      const today = getTodayString();
-      const newUsage = aiQaUsage.date === today ? { ...aiQaUsage, count: aiQaUsage.count + 1 } : { date: today, count: 1 };
-      setAiQaUsage(newUsage);
-      if (!user) {
-        localStorage.setItem('local_ai_qa_usage', JSON.stringify(newUsage));
-      } else {
-        await saveUserSettings({ aiQaUsage: newUsage });
-      }
+      if (data?.aiQaUsage) setAiQaUsage(data.aiQaUsage);
 
     } catch (error) {
       console.error("AI QA Error:", error);
-      showToast("AI 智慧問答失敗，請稍後再試");
+      handleAiError(error, "AI 智慧問答失敗，請稍後再試");
     } finally {
       setAiQaLoading(false);
     }
@@ -3107,7 +2852,7 @@ ${notesContext || '（目前沒有筆記）'}
   const handleNoteSmartPaste = async () => {
     if (!noteSmartPasteText.trim()) return;
     
-    // AI 解析次數限制判斷 (非 Premium 用戶每月上限 10 次)
+    // AI 解析次數限制判斷 (非 Premium 用戶每月上限 10 次；後端也會再檢查一次)
     if (!isPremiumUser) {
       const thisMonth = getThisMonthString();
       if (aiUsage.date === thisMonth && aiUsage.count >= 10) {
@@ -3117,50 +2862,14 @@ ${notesContext || '（目前沒有筆記）'}
     }
     
     setIsNoteAiParsing(true);
-    const apiKey = getApiKey(true);
     
     try {
-      if (!apiKey || apiKey === 'YOUR_API_KEY') {
-        console.error("Error: API Key is undefined or invalid. AI Note Parsing aborted.");
-        throw new Error("MISSING_API_KEY");
-      }
-      
-      const client = new GoogleGenerativeAI(apiKey);
-      const model = client.getGenerativeModel({ 
-        model: "gemini-3-flash-preview",
-        generationConfig: { 
-          responseMimeType: "application/json",
-          responseSchema: AI_NOTE_SCHEMA as any
-        }
-      });
-      
-      const prompt = `你是一個極度忠於原文的烘焙筆記整理助手。
-      請從下方的【筆記內容】中提取標題、師傅/老師名稱，以及【100% 忠於原文】的重點內容和連結。
-      
-      【100% 忠於原文與嚴格防篡改規則】：
-      1. 標題 (title)：簡短精煉的重點主題，例如「發酵奶油與甜性奶油的差異與烘焙應用建議」。如果文中沒有明確標題，請提取最具代表性的短句作為標題，不要空白。
-      2. 師傅/老師名稱 (master)：分享這個知識、技巧的老師或師傅名稱（例如：呂昇達）。如果沒有提到，請填入空字串。
-      3. 重點內容和連結 (content)：
-         - ⚠️【嚴禁添加非原文標籤】：絕對不可自行插入 "###"、"**" 粗體語法、"【核心觀念】" 或任何 AI 自創的分類小標題！
-         - ⚠️【嚴禁出現文字型態的 \\n】：段落換行請使用真實的換行字元 (Enter)，絕對不可以輸出字面上的 \\n 字元。
-         - ⚠️【100% 保持原作者字句與語氣】：保持原作者的說話語氣、口吻與段落，絕對不可進行任何語意改寫、摘要簡化、刪減或自行擴寫。
-         - ⚠️【100% 保留原文符號】：老師原文中的 Emoji（如 💡、🧈、✅）、標點符號與原始條列符號（如 1.、2.、-）必須 100% 原樣保留。
-         - ⚠️【保留連結與純淨換行】：內容中若有 URL 網址連結請完整保留。僅將原本的換行與空行保留為乾淨的標準段落換行，呈現與原始貼文完全一致的乾淨排版。
-      
-      【筆記內容】：
-      ${noteSmartPasteText}
-      `;
-      
-      const aiPromise = model.generateContent(prompt);
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("TIMEOUT")), 60000));
-      
-      const result = await Promise.race([aiPromise, timeoutPromise]) as any;
-      const response = await result.response;
-      const textOutput = response.text();
-      
-      if (!textOutput) throw new Error("EMPTY_API_RESPONSE");
-      
-      const parsed = JSON.parse(textOutput);
+      // 由後端呼叫 Gemini（金鑰在後端），並在成功後記錄次數
+      const response = await aiGenerateCall({ kind: 'note', text: noteSmartPasteText });
+      const data = response.data as any;
+      if (data?.aiUsage) setAiUsage(data.aiUsage);
+
+      const parsed = data?.result;
       if (parsed) {
         let cleanContent = (parsed.content || '').replace(/\\n/g, '\n');
         // Clean any hallucinatory ### or ** tags if present
@@ -3175,30 +2884,10 @@ ${notesContext || '（目前沒有筆記）'}
         });
         setNoteSmartPasteText('');
         showToast("✨ 心得技巧解析完成，已為您自動填入！");
-        
-        // 解析成功後，更新次數 (所有用戶皆紀錄，不論是否為進階用戶)
-        const thisMonth = getThisMonthString();
-        const newUsage = aiUsage.date === thisMonth ? { ...aiUsage, count: aiUsage.count + 1 } : { date: thisMonth, count: 1 };
-        setAiUsage(newUsage);
-        
-        if (!user) {
-          localStorage.setItem('local_ai_usage', JSON.stringify(newUsage));
-        } else {
-          try {
-            const recordUsageCall = httpsCallable(functions, 'recordAiUsage');
-            await recordUsageCall();
-          } catch (e) {
-            console.warn("recordAiUsage Cloud Function call failed, fallback locally", e);
-          }
-        }
       }
     } catch (error: any) {
       console.error("AI Note Parse Error:", error);
-      if (error.message === "MISSING_API_KEY") {
-        showToast("請先設定 Gemini API Key");
-      } else {
-        showToast("AI 解析失敗，請稍後再試或手動輸入");
-      }
+      handleAiError(error, "AI 解析失敗，請稍後再試或手動輸入");
     } finally {
       setIsNoteAiParsing(false);
     }
@@ -3207,7 +2896,7 @@ ${notesContext || '（目前沒有筆記）'}
   const handleSmartPaste = async () => {
     if (!smartPasteText.trim()) return;
     
-    // AI 解析次數限制判斷 (非 Premium 用戶每月上限 10 次)
+    // AI 解析次數限制判斷 (非 Premium 用戶每月上限 10 次；後端也會再檢查一次)
     if (!isPremiumUser) {
       const thisMonth = getThisMonthString();
       if (aiUsage.date === thisMonth && aiUsage.count >= 10) {
@@ -3216,29 +2905,8 @@ ${notesContext || '（目前沒有筆記）'}
       }
     }
     
-    const success = await proceedWithAIParse();
-    
-    // 解析成功後，更新次數 (所有用戶皆紀錄，不論是否為進階用戶)
-    if (success) {
-      const thisMonth = getThisMonthString();
-      const newUsage = aiUsage.date === thisMonth ? { ...aiUsage, count: aiUsage.count + 1 } : { date: thisMonth, count: 1 };
-      
-      // [Sync] 立即更新本地狀態
-      setAiUsage(newUsage);
-      
-      if (!user) {
-        // 僅在未登入時寫入本地 localStorage，避免污染匿名狀態
-        localStorage.setItem('local_ai_usage', JSON.stringify(newUsage));
-      } else {
-        // [Sync] 呼叫後端 Cloud Function 安全紀錄次數
-        try {
-          const recordUsageCall = httpsCallable(functions, 'recordAiUsage');
-          await recordUsageCall();
-        } catch (e) {
-          console.warn("recordAiUsage Cloud Function call failed", e);
-        }
-      }
-    }
+    // 次數由後端在解析成功後自動記錄
+    await proceedWithAIParse();
   };
 
   const applyParsedRecipe = (parsed: Partial<Recipe>) => {
