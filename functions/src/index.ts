@@ -257,54 +257,6 @@ export const newebpayWebhook = onRequest(async (req, res) => {
 });
 
 /**
- * 安全記錄 AI 使用次數 (Callable Function)
- * 由後端 Admin SDK 處理 user_usage 與 userSettings 用量更新，防止前端竄改
- */
-export const recordAiUsage = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "使用者必須登入才能記錄 AI 使用次數。");
-  }
-
-  const uid = request.auth.uid;
-  const email = request.auth.token.email || "";
-  const now = Date.now();
-  const dateObj = new Date(now);
-  const monthStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, "0")}`;
-
-  const userUsageRef = db.collection("user_usage").doc(uid);
-  const userSettingsRef = db.collection("userSettings").doc(uid);
-
-  const usageSnap = await userUsageRef.get();
-  let currentCount = 0;
-
-  if (usageSnap.exists) {
-    const data = usageSnap.data();
-    if (data?.month === monthStr) {
-      currentCount = Number(data.ai_parse_count || 0);
-    }
-  }
-
-  const newCount = currentCount + 1;
-
-  await userUsageRef.set({
-    uid,
-    email,
-    month: monthStr,
-    ai_parse_count: newCount,
-    last_parse_at: now,
-    updatedAt: now,
-  }, { merge: true });
-
-  await userSettingsRef.set({
-    ai_parse_count: newCount,
-    aiUsage: { date: monthStr, count: newCount },
-    updatedAt: now,
-  }, { merge: true });
-
-  return { success: true, ai_parse_count: newCount, month: monthStr };
-});
-
-/**
  * 管理員修改使用者 VIP 權限 (Callable Function)
  * 僅限指定管理員呼叫，繞過前端修改敏感欄位的限制
  */

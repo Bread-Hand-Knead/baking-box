@@ -4,9 +4,14 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { 
   auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged, User,
   collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, updateDoc, deleteDoc,
-  getDocFromServer, setPersistence, browserLocalPersistence, functions, httpsCallable
+  functions, httpsCallable
 } from './firebase';
-import { marked, Marked } from 'marked';
+import { Marked } from 'marked';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  LogOut, LogIn, User as UserIcon, Trash2, Edit2, X, Tag,
+  Camera, Image as ImageIcon, Cloud, CloudOff, Menu, CreditCard
+} from 'lucide-react';
 
 // AI 解析改由後端 (Cloud Functions) 呼叫 Gemini，金鑰只放在後端，使用者不需要輸入金鑰
 const aiGenerateCall = httpsCallable(functions, 'aiGenerate', { timeout: 300000 });
@@ -123,17 +128,7 @@ const sanitizeBakingStages = (stages: any[] | undefined): BakingStage[] => {
   return uniqueStages;
 };
 
-import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Plus, Search, Book, Scale, Settings, LogOut, LogIn, User as UserIcon, 
-  ChevronRight, Trash2, Edit2, Edit3, Share2, Printer, Save, X, RotateCcw,
-  Clock, Thermometer, Droplets, Tag, BookOpen, ExternalLink, Calendar,
-  ChevronUp, ChevronDown, Camera, Image as ImageIcon, CheckCircle2, AlertCircle,
-  Cloud, CloudOff, Smartphone, Crown, Menu, Mail, CreditCard
-} from 'lucide-react';
-
 // --- 1. 類型定義 (原 types.ts 內容) ---
-const COPYRIGHT_TEXT = "© 2026 Linda's Recipe Box. All rights reserved.";
 export enum AppView { LIST, CREATE, EDIT, DETAIL, SCALING, COLLECTION, MANAGE_CATEGORIES, ADMIN }
 
 export interface Ingredient { name: string; amount: string | number; unit: string; isFlour: boolean; percentage?: number | string; }
@@ -1562,7 +1557,6 @@ const App: React.FC = () => {
   const [knowledge, setKnowledge] = useState<Knowledge[]>(DEFAULT_KNOWLEDGE);
   const [resources, setResources] = useState<Resource[]>([]);
   
-  const [storageUsage, setStorageUsage] = useState(0);
   const [isVip, setIsVip] = useState(false);
   const [subscriptionStatus, setSubscriptionStatus] = useState<'free' | 'active'>('free');
   const [subTypeLabel, setSubTypeLabel] = useState('一般用戶');
@@ -1621,7 +1615,6 @@ const App: React.FC = () => {
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
   const [subscriptionModalMessage, setSubscriptionModalMessage] = useState<string | undefined>(undefined);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [showUserStatus, setShowUserStatus] = useState(false);
   const [isInstructionsOpen, setIsInstructionsOpen] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [suppressUpgradeModal, setSuppressUpgradeModal] = useState(false);
@@ -2080,7 +2073,6 @@ const App: React.FC = () => {
   const [scalingRecipeId, setScalingRecipeId] = useState<string>('');
   const [targetQuantity, setTargetQuantity] = useState<number>(1);
   const [reverseScalingBase, setReverseScalingBase] = useState<{ sectionKey: string; index: number } | null>(null);
-  // const [isRecipeCardModalOpen, setIsRecipeCardModalOpen] = useState(false); // 已移除
   const [isMoldPanelOpen, setIsMoldPanelOpen] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   
@@ -2188,68 +2180,6 @@ const App: React.FC = () => {
       window.removeEventListener('resize', handleScroll);
     };
   }, [view, recipes.length, categories.length, knowledge.length, resources.length]);
-
-  useEffect(() => {
-    // 全局資料遷移：標準化時間格式與單位
-    const migrateData = () => {
-      let hasChanged = false;
-      const migrated = recipes.map(r => {
-        let recipeChanged = false;
-        
-        const newFermentationStages = r.fermentationStages?.map(s => {
-          const rawTime = String(s.time || '');
-          const cleanedTime = rawTime
-            .replace(/mins?\.?/gi, '分鐘')
-            .replace(/hrs?\.?/gi, '小時');
-          
-          if (cleanedTime !== s.time || !s.timeUnit) {
-            recipeChanged = true;
-            return { ...s, time: cleanedTime, timeUnit: s.timeUnit || '分鐘' };
-          }
-          return s;
-        });
-
-        const newBakingStages = r.bakingStages?.map(s => {
-          const rawTime = String(s.time || '');
-          const cleanedTime = rawTime
-            .replace(/mins?\.?/gi, '分鐘')
-            .replace(/hrs?\.?/gi, '小時');
-          
-          if (cleanedTime !== s.time || !s.timeUnit) {
-            recipeChanged = true;
-            return { ...s, time: cleanedTime, timeUnit: s.timeUnit || '分鐘' };
-          }
-          return s;
-        });
-
-        if (recipeChanged) {
-          hasChanged = true;
-          return { 
-            ...r, 
-            fermentationStages: newFermentationStages, 
-            bakingStages: newBakingStages 
-          };
-        }
-        return r;
-      });
-
-      if (hasChanged) {
-        setRecipes(migrated);
-      }
-    };
-
-    migrateData();
-  }, []);
-
-  useEffect(() => {
-    const calculateUsage = () => {
-      // 根據是否為進階用戶設定上限：免費版 10 份，Premium 1000 份
-      const limit = isPremiumUser ? 1000 : 10; 
-      const percentage = (recipes.length / limit) * 100;
-      setStorageUsage(percentage);
-    };
-    calculateUsage();
-  }, [recipes, isPremiumUser, user]);
 
   const extractHashtags = (text: any): string[] => {
     const safeText = String(text || '');
@@ -2364,27 +2294,6 @@ const App: React.FC = () => {
     const qtyRatio = targetQuantity / scalingRecipe.quantity;
     return qtyRatio * calculatedMoldFactor;
   }, [scalingRecipe, targetQuantity, calculatedMoldFactor]);
-
-  const totalScaledWeight = useMemo(() => {
-    if (!scalingRecipe) return 0;
-    let total = 0;
-    const allSections = [
-      scalingRecipe.ingredients,
-      scalingRecipe.liquidStarterIngredients,
-      scalingRecipe.fillingIngredients,
-      scalingRecipe.decorationIngredients,
-      scalingRecipe.customSectionIngredients
-    ];
-    allSections.forEach(section => {
-      (section || []).forEach(ing => {
-        const amt = typeof ing.amount === 'number' ? ing.amount : parseFloat(ing.amount as string) || 0;
-        if (ing.unit === 'g' || ing.unit === '克') {
-          total += amt * scalingFactor;
-        }
-      });
-    });
-    return total;
-  }, [scalingRecipe, scalingFactor]);
 
   const handleReverseScale = (sectionKey: string, index: number, newAmount: number) => {
     if (!scalingRecipe) return;
@@ -5998,7 +5907,7 @@ ID: ${k.id}
                       </button>
                     )}
                   </div>
-                  <div className="space-y-8 print:space-y-1 print:print-steps-compact">
+                  <div className="space-y-8 print:space-y-1 print-steps-compact">
                     {(() => {
                       let stepNumber = 0;
                       const currentCompleted = selectedRecipe ? (completedSteps[selectedRecipe.id] || []) : [];
@@ -6255,7 +6164,6 @@ ID: ${k.id}
         onImportAll={handleImportAllParsedRecipes}
       />
       
-      {/* 臨時配方卡 Modal 已移除 */}
 
       <ConfirmDialog 
         isOpen={confirmConfig?.isOpen || false}

@@ -1,20 +1,30 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# 烘焙靈感箱 Baking Box
 
-# Run and deploy your AI Studio app
+個人烘焙食譜整理 App：記錄食譜、配方換算、心得筆記，並用 AI 自動解析貼上的食譜。
 
-This contains everything you need to run your app locally.
+- 網站：https://bread-hand-knead.github.io/baking-box/
+- 前端：React + Vite，推送到 `main` 後由 GitHub Actions 自動發布到 GitHub Pages
+- 後端：Firebase（登入、Firestore 資料庫、Cloud Functions）
 
-View your app in AI Studio: https://ai.studio/apps/94083e6a-9c2f-4dd1-8189-a5b2087ed826
+## AI 功能
 
-## Run Locally
+AI 解析由後端 Cloud Function `aiGenerate`（asia-east1）呼叫 Gemini，金鑰只存在 Firebase Secret Manager，前端不需要也看不到金鑰。
 
-**Prerequisites:**  Node.js
+更換金鑰：
 
+```
+firebase functions:secrets:set GEMINI_API_KEY --project gen-lang-client-0977550961
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+部署後端：
+
+```
+firebase deploy --only functions:aiGenerate --project gen-lang-client-0977550961
+```
+
+## 本機開發
+
+```
+npm install
+npm run dev
+```

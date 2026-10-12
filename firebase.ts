@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User, setPersistence, browserLocalPersistence } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, updateDoc, deleteDoc, Timestamp, addDoc, getDocFromServer, enableMultiTabIndexedDbPersistence } from 'firebase/firestore';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { getFirestore, collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, updateDoc, deleteDoc, enableMultiTabIndexedDbPersistence } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import firebaseConfig from './firebase-applet-config.json';
 
@@ -22,5 +22,5 @@ if (typeof window !== 'undefined') {
 
 export const googleProvider = new GoogleAuthProvider();
 
-export { signInWithPopup, signOut, onAuthStateChanged, collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, updateDoc, deleteDoc, Timestamp, addDoc, getDocFromServer, setPersistence, browserLocalPersistence, httpsCallable };
+export { signInWithPopup, signOut, onAuthStateChanged, collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, updateDoc, deleteDoc, httpsCallable };
 export type { User };
