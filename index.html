@@ -98,7 +98,7 @@
         white-space: nowrap !important;
       }
       /* 確保內容區塊不會被隨意分頁，且移除冗餘高度 */
-      .bg-white, .rounded-\[32px\], .rounded-\[40px\], .recipe-card {
+      .bg-white, .rounded-\[32px\], .rounded-\[40px\] {
         height: auto !important;
         min-height: auto !important;
         page-break-inside: avoid;
@@ -122,21 +122,9 @@
         height: auto !important;
         overflow: visible !important;
       }
-      /* 防止網址溢出並隱藏拉桿 */
-      .print-nowrap-to-wrap {
-        white-space: pre-wrap !important;
-        word-break: break-all !important;
-        overflow: visible !important;
-      }
       a[href] {
         word-break: break-all !important;
         white-space: pre-wrap !important;
-      }
-      /* 緊湊化食材表格 */
-      .print-grid-2 {
-        display: grid !important;
-        grid-template-columns: 1fr 1fr !important;
-        gap: 0.15rem 1.5rem !important;
       }
       /* 列印表格樣式 */
       .print-table {
