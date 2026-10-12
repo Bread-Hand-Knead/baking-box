@@ -1,6 +1,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import * as admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
 
 /**
  * AI 解析 (Callable Function)
@@ -24,6 +25,9 @@ const FREE_DAILY_QA_LIMIT = 3;
 const MAX_PASTE_CHARS = 50000;
 const MAX_QA_QUESTION_CHARS = 2000;
 const MAX_QA_CONTEXT_CHARS = 400000;
+
+// 與前端 firebase-applet-config.json 的 firestoreDatabaseId 相同
+export const FIRESTORE_DATABASE_ID = "ai-studio-94083e6a-9c2f-4dd1-8189-a5b2087ed826";
 
 const ADMIN_EMAILS = ["linda6623@gmail.com", "linda6623@gamil.com"];
 
@@ -314,7 +318,8 @@ export const aiGenerate = onCall(
     const email = String(request.auth.token.email || "");
     const kind = request.data?.kind;
 
-    const db = admin.firestore();
+    // App 使用的是具名資料庫（不是預設資料庫），必須指定名稱
+    const db = getFirestore(FIRESTORE_DATABASE_ID);
     const userSettingsRef = db.collection("userSettings").doc(uid);
     const userUsageRef = db.collection("user_usage").doc(uid);
 

@@ -1,12 +1,15 @@
 import { onRequest, onCall, HttpsError } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import * as crypto from "crypto";
+import { getFirestore } from "firebase-admin/firestore";
+import { FIRESTORE_DATABASE_ID } from "./ai";
 
 admin.initializeApp();
 
 // AI 解析（金鑰放在後端）
 export { aiGenerate } from "./ai";
-const db = admin.firestore();
+// App 使用的是具名資料庫（不是預設資料庫），必須指定名稱
+const db = getFirestore(FIRESTORE_DATABASE_ID);
 
 // 藍新金流方案價格設定 (新台幣)
 const PLAN_PRICES = {
