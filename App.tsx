@@ -5782,7 +5782,7 @@ const App: React.FC = () => {
                             type="text" 
                             value={newSubCatInputs[cat.id] || ''} 
                             onChange={(e) => setNewSubCatInputs(prev => ({ ...prev, [cat.id]: e.target.value }))}
-                            className="flex-grow px-3 py-1.5 bg-white border border-orange-50 rounded-xl text-[11px] outline-none focus:border-orange-200 transition-all" 
+                            className="flex-grow px-4 py-3 bg-white border border-orange-100 rounded-2xl text-base font-bold outline-none focus:border-orange-300 transition-all" 
                             placeholder="新子分類名稱..." 
                           />
                           <button 
@@ -5808,16 +5808,17 @@ const App: React.FC = () => {
                               setNewSubCatInputs(prev => ({ ...prev, [cat.id]: '' }));
                               showToast("子分類新增成功");
                             }}
-                            className="px-3 py-1.5 bg-orange-200 text-orange-700 rounded-xl text-[10px] font-black hover:bg-orange-300 transition-all"
+                            className="px-5 py-3 bg-orange-200 text-orange-700 rounded-2xl text-sm font-black hover:bg-orange-300 transition-all shrink-0"
                           >
                             新增
                           </button>
                         </div>
                         
                         {(cat.subcategories || []).sort((a,b) => a.order - b.order).map((sub, sIdx) => (
-                          <div key={sub.id} className="flex items-center justify-between group/sub bg-white/50 px-3 py-2 rounded-xl border border-transparent hover:border-orange-100 transition-all">
-                            <span className="text-[11px] font-bold text-slate-500">└ {sub.name}</span>
-                            <div className="flex items-center gap-1 opacity-0 group-hover/sub:opacity-100 transition-opacity">
+                          <div key={sub.id} className="flex items-center justify-between group/sub bg-white/70 px-4 py-3 rounded-2xl border border-orange-50 hover:border-orange-200 transition-all">
+                            <span className="text-base font-bold text-slate-600">└ {sub.name}</span>
+                            {/* 手機沒有滑鼠移上去的動作，所以按鈕一直顯示；電腦上滑過時顏色更明顯 */}
+                            <div className="flex items-center gap-2 opacity-60 group-hover/sub:opacity-100 transition-opacity">
                               <button 
                                 onClick={() => {
                                   const updatedCats = categories.map(c => {
@@ -5834,7 +5835,7 @@ const App: React.FC = () => {
                                   syncCategoriesToCloud(updatedCats);
                                 }}
                                 disabled={sIdx === 0}
-                                className="text-[10px] p-0.5 text-orange-300 hover:text-orange-500 disabled:opacity-0"
+                                className="text-sm w-8 h-8 rounded-lg text-orange-400 hover:text-orange-600 hover:bg-orange-50 disabled:opacity-0"
                               >
                                 ▲
                               </button>
@@ -5854,7 +5855,7 @@ const App: React.FC = () => {
                                   syncCategoriesToCloud(updatedCats);
                                 }}
                                 disabled={sIdx === (cat.subcategories?.length || 0) - 1}
-                                className="text-[10px] p-0.5 text-orange-300 hover:text-orange-500 disabled:opacity-0"
+                                className="text-sm w-8 h-8 rounded-lg text-orange-400 hover:text-orange-600 hover:bg-orange-50 disabled:opacity-0"
                               >
                                 ▼
                               </button>
@@ -5872,7 +5873,7 @@ const App: React.FC = () => {
                                     showToast("子分類已移除");
                                   }, `確定要移除子分類「${sub.name}」嗎？`);
                                 }}
-                                className="text-[10px] p-0.5 text-red-200 hover:text-red-400"
+                                className="text-base w-8 h-8 rounded-lg text-red-300 hover:text-red-500 hover:bg-red-50"
                               >
                                 🗑️
                               </button>
