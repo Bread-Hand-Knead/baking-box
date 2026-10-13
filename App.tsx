@@ -1888,6 +1888,16 @@ const PageHelpModal: React.FC<{ view: AppView; onClose: () => void }> = ({ view,
   );
 };
 
+
+// 雲端存檔失敗時，依原因給出看得懂的提示
+const cloudSaveErrorMessage = (error: any, fallback: string): string => {
+  const text = String(error?.message || error?.code || '');
+  if (/maximum allowed size|exceeds|too large|1048576/i.test(text)) return '食譜資料太大（多半是照片太多或太大），請刪除部分照片後再存';
+  if (/permission|insufficient/i.test(text)) return '沒有存檔權限，請重新登入後再試';
+  if (/unavailable|offline|network/i.test(text)) return '網路連線不穩，請確認網路後再存一次';
+  return fallback;
+};
+
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -3339,16 +3349,16 @@ const App: React.FC = () => {
       notes: parsed.notes || prev.notes,
       doughWeight: parsed.doughWeight || prev.doughWeight,
       fillingWeight: parsed.fillingWeight || prev.fillingWeight,
-      doughWeightName: parsed.doughWeight ? (parsed.doughWeightName || '') : prev.doughWeightName,
-      fillingWeightName: parsed.fillingWeight ? (parsed.fillingWeightName || '') : prev.fillingWeightName,
-      extraDoughWeights: parsed.doughWeight ? normalizeSplitWeights(parsed.extraDoughWeights) : prev.extraDoughWeights,
-      extraFillingWeights: parsed.fillingWeight ? normalizeSplitWeights(parsed.extraFillingWeights) : prev.extraFillingWeights,
+      doughWeightName: parsed.doughWeight ? (parsed.doughWeightName || '') : (prev.doughWeightName || ''),
+      fillingWeightName: parsed.fillingWeight ? (parsed.fillingWeightName || '') : (prev.fillingWeightName || ''),
+      extraDoughWeights: parsed.doughWeight ? normalizeSplitWeights(parsed.extraDoughWeights) : (prev.extraDoughWeights || []),
+      extraFillingWeights: parsed.fillingWeight ? normalizeSplitWeights(parsed.extraFillingWeights) : (prev.extraFillingWeights || []),
       crustWeight: parsed.crustWeight || prev.crustWeight,
       oilPasteWeight: parsed.oilPasteWeight || prev.oilPasteWeight,
-      crustWeightName: parsed.crustWeight ? (parsed.crustWeightName || '') : prev.crustWeightName,
-      oilPasteWeightName: parsed.oilPasteWeight ? (parsed.oilPasteWeightName || '') : prev.oilPasteWeightName,
-      extraCrustWeights: parsed.crustWeight ? normalizeSplitWeights(parsed.extraCrustWeights) : prev.extraCrustWeights,
-      extraOilPasteWeights: parsed.oilPasteWeight ? normalizeSplitWeights(parsed.extraOilPasteWeights) : prev.extraOilPasteWeights,
+      crustWeightName: parsed.crustWeight ? (parsed.crustWeightName || '') : (prev.crustWeightName || ''),
+      oilPasteWeightName: parsed.oilPasteWeight ? (parsed.oilPasteWeightName || '') : (prev.oilPasteWeightName || ''),
+      extraCrustWeights: parsed.crustWeight ? normalizeSplitWeights(parsed.extraCrustWeights) : (prev.extraCrustWeights || []),
+      extraOilPasteWeights: parsed.oilPasteWeight ? normalizeSplitWeights(parsed.extraOilPasteWeights) : (prev.extraOilPasteWeights || []),
       ingredients: parsed.ingredients?.length ? parsed.ingredients : prev.ingredients,
       liquidStarterIngredients: parsed.liquidStarterIngredients || [],
       fillingIngredients: parsed.fillingIngredients || [],
@@ -3394,12 +3404,12 @@ const App: React.FC = () => {
       description: aiPreviewData.map(r => r.description).filter(Boolean).join('\n'),
       master: aiPreviewData.find(r => r.master)?.master || '',
       imageUrl: aiPreviewData.find(r => r.imageUrl)?.imageUrl || '',
-      doughWeight: aiPreviewData.find(r => r.doughWeight)?.doughWeight,
-      fillingWeight: aiPreviewData.find(r => r.fillingWeight)?.fillingWeight,
-      doughWeightName: aiPreviewData.find(r => r.doughWeight)?.doughWeightName,
-      fillingWeightName: aiPreviewData.find(r => r.fillingWeight)?.fillingWeightName,
-      extraDoughWeights: aiPreviewData.find(r => r.doughWeight)?.extraDoughWeights,
-      extraFillingWeights: aiPreviewData.find(r => r.fillingWeight)?.extraFillingWeights
+      doughWeight: aiPreviewData.find(r => r.doughWeight)?.doughWeight || '',
+      fillingWeight: aiPreviewData.find(r => r.fillingWeight)?.fillingWeight || '',
+      doughWeightName: aiPreviewData.find(r => r.doughWeight)?.doughWeightName || '',
+      fillingWeightName: aiPreviewData.find(r => r.fillingWeight)?.fillingWeightName || '',
+      extraDoughWeights: aiPreviewData.find(r => r.doughWeight)?.extraDoughWeights || [],
+      extraFillingWeights: aiPreviewData.find(r => r.fillingWeight)?.extraFillingWeights || []
     };
     applyParsedRecipe(merged);
   };
@@ -5582,7 +5592,7 @@ const App: React.FC = () => {
                             await setDoc(doc(db, 'recipes', newId), newRecipe);
                           } catch (error) {
                             console.error("Error creating recipe:", error);
-                            showToast("雲端儲存失敗");
+                            showToast(cloudSaveErrorMessage(error, "雲端儲存失敗，請稍後再試"));
                             return;
                           }
                         } else {
@@ -5596,7 +5606,7 @@ const App: React.FC = () => {
                             await setDoc(doc(db, 'recipes', updatedRecipe.id), updatedRecipe);
                           } catch (error) {
                             console.error("Error updating recipe:", error);
-                            showToast("雲端更新失敗");
+                            showToast(cloudSaveErrorMessage(error, "雲端更新失敗，請稍後再試"));
                             return;
                           }
                         } else {
