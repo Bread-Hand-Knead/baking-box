@@ -103,6 +103,18 @@ const AI_RECIPE_SCHEMA = {
     instructions: { type: "array", items: { type: "string" } },
     tags: { type: "array", items: { type: "string" } },
     notes: { type: "string" },
+    // 照片解析時：成品照片在第幾張、哪個位置（給前端裁切成食譜封面）
+    productPhoto: {
+      type: "object",
+      properties: {
+        imageIndex: { type: "integer", description: "成品照片在第幾張上傳的照片，從 0 開始" },
+        box: {
+          type: "array",
+          items: { type: "number" },
+          description: "成品照片的位置 [ymin, xmin, ymax, xmax]，0~1000 的相對座標",
+        },
+      },
+    },
   },
   required: ["title", "ingredients", "instructions"],
 };
@@ -169,7 +181,9 @@ const buildImageRecipePrompt = (imageCount: number, extraText: string) =>
     `若多張照片屬於同一份食譜的不同頁面，請依序合併成一份完整食譜，不要拆成多份；若明顯是不同食譜，才分開輸出。` +
     `表格中的「配方百分比」是烘焙百分比，請以實際重量 (g) 填入 amount。` +
     `若同一份食譜有多個麵團（例如黑色、藍色麵團），請分別放入不同的材料區塊，並用 mainSectionName、customSectionName 等欄位標示麵團名稱。` +
-    `請忽略浮水印、頁碼、課程平台標誌與廣告文字。若照片上有老師/師傅名字，請填入 master。）` +
+    `請忽略浮水印、頁碼、課程平台標誌與廣告文字。若照片上有老師/師傅名字，請填入 master。` +
+    `若照片中有這份食譜的「成品實拍照」（麵包、蛋糕、點心本身的照片，不是文字或表格），請在 productPhoto 填入 imageIndex（第幾張照片，從 0 開始）` +
+    `與 box [ymin, xmin, ymax, xmax]（0~1000 的相對座標），只框住成品照片本身，不要包含周圍的文字、標題或邊框；沒有成品照片就不要填 productPhoto。）` +
     (extraText.trim() ? `\n\n使用者補充說明：\n${extraText}` : "")
   );
 
