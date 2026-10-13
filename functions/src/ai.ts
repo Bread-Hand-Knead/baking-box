@@ -105,6 +105,18 @@ const AI_RECIPE_SCHEMA = {
     notes: { type: "string" },
     doughWeight: { type: "number", description: "分割後一個麵團／麵糊的重量（克），只填數字" },
     fillingWeight: { type: "number", description: "分割後一個內餡／餡料的重量（克），只填數字" },
+    doughWeightName: { type: "string", description: "有多種麵團各自分割時，第一種麵團的名稱（例如：藍色麵團）；只有一種就留空" },
+    extraDoughWeights: {
+      type: "array",
+      description: "第二種以後的麵團分割重量",
+      items: { type: "object", properties: { name: { type: "string" }, weight: { type: "number" } }, required: ["name", "weight"] },
+    },
+    fillingWeightName: { type: "string", description: "有多種內餡各自分割時，第一種內餡的名稱；只有一種就留空" },
+    extraFillingWeights: {
+      type: "array",
+      description: "第二種以後的內餡分割重量",
+      items: { type: "object", properties: { name: { type: "string" }, weight: { type: "number" } }, required: ["name", "weight"] },
+    },
     crustWeight: { type: "number", description: "中式點心：分割後一個油皮的重量（克），只填數字" },
     oilPasteWeight: { type: "number", description: "中式點心：分割後一個油酥的重量（克），只填數字" },
     // 照片解析時：成品照片在第幾張、哪個位置（給前端裁切成食譜封面）
@@ -174,7 +186,8 @@ const buildRecipePrompt = (smartPasteText: string) => `你是一個專業且極�
            - 分割後一個「麵團／麵糊／蛋糕糊」的重量 → doughWeight（例如「分割 60g」「每顆 55 克」「分割藍色55」）。
            - 分割後一個「內餡／餡料」的重量 → fillingWeight（例如「包餡 30g」「內餡每顆 25 克」）。
            - 中式點心若有「油皮」「油酥」的分割重量 → 分別填入 crustWeight、oilPasteWeight。
-           - 若同一份食譜有兩種麵團各自分割（例如藍色 55、巧克力 61），doughWeight 請填兩者合計（例如 116），並在 notes 註明各自的重量。
+           - 若同一份食譜有多種麵團各自分割（例如藍色 55、巧克力 61）：第一種填 doughWeight（55）與 doughWeightName（例如「藍色麵團」），其餘每一種依序放入 extraDoughWeights（例如 {name: "巧克力麵團", weight: 61}）。不要加總。
+           - 多種內餡各自分割時同理：第一種填 fillingWeight 與 fillingWeightName，其餘放入 extraFillingWeights。只有一種時，名稱欄位留空、extra 清單不要填。
            - 原文沒有提到分割重量就不要填，不要自己推算。
         
         【筆記內容】：
