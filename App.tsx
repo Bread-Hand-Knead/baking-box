@@ -5666,7 +5666,7 @@ const App: React.FC = () => {
             <div className="max-w-2xl mx-auto bg-white p-8 rounded-[40px] shadow-sm border border-orange-50 animate-in zoom-in-95">
               <h2 className="text-xl font-black text-[#E67E22] mb-6">分類管理與排序</h2>
               <div className="flex gap-2 mb-8">
-                <input type="text" value={newCatName || ''} onChange={(e) => setNewCatName(e.target.value)} className="flex-grow px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-50 outline-none text-sm focus:border-orange-200 transition-all" placeholder="增加新分類，例如：甜點、抹醬..." />
+                <input type="text" value={newCatName || ''} onChange={(e) => setNewCatName(e.target.value)} className="flex-1 min-w-0 px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-50 outline-none text-sm focus:border-orange-200 transition-all" placeholder="增加新分類，例如：甜點、抹醬..." />
                 <button 
                   onClick={() => { 
                     if(!newCatName.trim()) return; 
@@ -5681,7 +5681,7 @@ const App: React.FC = () => {
                     setNewCatName(''); 
                     showToast("分類新增成功！"); 
                   }} 
-                  className="bg-[#E67E22] text-white px-6 py-2 rounded-2xl font-black text-sm shadow-md active:scale-95"
+                  className="bg-[#E67E22] text-white px-5 py-2 rounded-2xl font-black text-sm shadow-md active:scale-95 shrink-0 whitespace-nowrap"
                 >
                   新增
                 </button>
@@ -5776,13 +5776,13 @@ const App: React.FC = () => {
                       </div>
 
                       {/* 子分類管理區塊 */}
-                      <div className="mt-4 pl-7 pt-4 border-t border-orange-100/30 space-y-3">
+                      <div className="mt-4 pl-2 sm:pl-7 pt-4 border-t border-orange-100/30 space-y-3">
                         <div className="flex items-center gap-2 mb-2">
                           <input 
                             type="text" 
                             value={newSubCatInputs[cat.id] || ''} 
                             onChange={(e) => setNewSubCatInputs(prev => ({ ...prev, [cat.id]: e.target.value }))}
-                            className="flex-grow px-4 py-3 bg-white border border-orange-100 rounded-2xl text-base font-bold outline-none focus:border-orange-300 transition-all" 
+                            className="flex-1 min-w-0 px-4 py-3 bg-white border border-orange-100 rounded-2xl text-base font-bold outline-none focus:border-orange-300 transition-all" 
                             placeholder="新子分類名稱..." 
                           />
                           <button 
@@ -5808,7 +5808,7 @@ const App: React.FC = () => {
                               setNewSubCatInputs(prev => ({ ...prev, [cat.id]: '' }));
                               showToast("子分類新增成功");
                             }}
-                            className="px-5 py-3 bg-orange-200 text-orange-700 rounded-2xl text-sm font-black hover:bg-orange-300 transition-all shrink-0"
+                            className="px-4 sm:px-5 py-3 bg-orange-200 text-orange-700 rounded-2xl text-sm font-black hover:bg-orange-300 transition-all shrink-0 whitespace-nowrap"
                           >
                             新增
                           </button>
