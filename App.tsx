@@ -6124,8 +6124,9 @@ const App: React.FC = () => {
 
               {/* PDF 專用區塊 (螢幕上顯示為 no-print，但在列印時會顯示這個原本的佈局) */}
               <div className="hidden print:block space-y-4">
-                <div className="relative aspect-square rounded-2xl overflow-hidden print-float-img">
-                  <img src={selectedRecipe.imageUrl || 'https://picsum.photos/800/450?random=' + selectedRecipe.id} className="w-full h-full object-cover" alt={selectedRecipe.title} />
+                {/* 列印照片：放在正方形範圍內，完整顯示不裁切（長方形照片會等比例縮小） */}
+                <div className="relative aspect-square flex items-center justify-center print-float-img">
+                  <img src={selectedRecipe.imageUrl || 'https://picsum.photos/800/450?random=' + selectedRecipe.id} className="max-w-full max-h-full object-contain rounded-2xl" alt={selectedRecipe.title} />
                 </div>
                 <div className="space-y-2">
                   <h2 className="text-2xl font-black text-slate-800 leading-tight mb-2 whitespace-pre-wrap">{selectedRecipe.title}</h2>
