@@ -3206,7 +3206,9 @@ const App: React.FC = () => {
       notes: aiPreviewData.map(r => r.notes).filter(Boolean).join('\n---\n'),
       description: aiPreviewData.map(r => r.description).filter(Boolean).join('\n'),
       master: aiPreviewData.find(r => r.master)?.master || '',
-      imageUrl: aiPreviewData.find(r => r.imageUrl)?.imageUrl || ''
+      imageUrl: aiPreviewData.find(r => r.imageUrl)?.imageUrl || '',
+      doughWeight: aiPreviewData.find(r => r.doughWeight)?.doughWeight,
+      fillingWeight: aiPreviewData.find(r => r.fillingWeight)?.fillingWeight
     };
     applyParsedRecipe(merged);
   };
