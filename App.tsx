@@ -4467,13 +4467,13 @@ const App: React.FC = () => {
               {scalingRecipe && (
                 <div className="pt-6 border-t border-orange-50">
                   {/* 列印專用標題 */}
-                  <div className="hidden print:block mb-8 border-b-2 border-orange-200 pb-4">
-                    <h1 className="text-3xl font-black text-slate-800">{scalingRecipe.title} (換算後)</h1>
-                    <p className="text-orange-600 font-bold mt-2">換算倍率: {scalingFactor.toFixed(2)}x</p>
+                  <div className="hidden print:block mb-8 print:mb-3 border-b-2 border-orange-200 pb-4 print:pb-2">
+                    <h1 className="text-3xl font-black text-slate-800">{scalingRecipe.title}</h1>
+                    <p className="text-orange-600 font-bold mt-2">換算後｜換算倍率: {scalingFactor.toFixed(2)}x</p>
                   </div>
 
                   {/* 換算後摘要資訊 */}
-                  <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm flex flex-wrap gap-y-6 items-center justify-around text-center mb-8">
+                  <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm flex flex-wrap gap-y-6 items-center justify-around text-center mb-8 print:p-2 print:mb-3">
                     {(() => {
                       const items = [];
                       const isPineappleCake = scalingRecipe.subcategory === '鳳梨酥';
@@ -4585,7 +4585,7 @@ const App: React.FC = () => {
                       </button>
                     </div>
                   </div>
-                  <div className="bg-orange-50/20 px-4 py-8 sm:p-8 rounded-[40px] border border-orange-50 print:bg-white print:border-none print:p-0 max-w-3xl mx-auto">
+                  <div className="bg-orange-50/20 px-4 py-8 sm:p-8 rounded-[40px] border border-orange-50 print:bg-white print:border-none print:p-0 max-w-3xl mx-auto print:max-w-none print:flex print:flex-wrap print:justify-between print:gap-y-3 print-flow">
                     {scalingRecipe.sectionsOrder?.map(secKey => {
                        const sectionIngredients = 
                          secKey === 'ingredients' ? scalingRecipe.ingredients :
