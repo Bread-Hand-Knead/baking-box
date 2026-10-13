@@ -119,6 +119,10 @@ const AI_RECIPE_SCHEMA = {
     },
     crustWeight: { type: "number", description: "中式點心：分割後一個油皮的重量（克），只填數字" },
     oilPasteWeight: { type: "number", description: "中式點心：分割後一個油酥的重量（克），只填數字" },
+    crustWeightName: { type: "string", description: "有多種顏色／重量的油皮時，第一種油皮的名稱；只有一種就留空" },
+    extraCrustWeights: { type: "array", description: "第二種以後的油皮分割重量", items: { type: "object", properties: { name: { type: "string" }, weight: { type: "number" } }, required: ["name", "weight"] } },
+    oilPasteWeightName: { type: "string", description: "有多種顏色／重量的油酥時，第一種油酥的名稱；只有一種就留空" },
+    extraOilPasteWeights: { type: "array", description: "第二種以後的油酥分割重量", items: { type: "object", properties: { name: { type: "string" }, weight: { type: "number" } }, required: ["name", "weight"] } },
     // 照片解析時：成品照片在第幾張、哪個位置（給前端裁切成食譜封面）
     productPhoto: {
       type: "object",
@@ -188,6 +192,7 @@ const buildRecipePrompt = (smartPasteText: string) => `你是一個專業且極�
            - 中式點心若有「油皮」「油酥」的分割重量 → 分別填入 crustWeight、oilPasteWeight。
            - 若同一份食譜有多種麵團各自分割（例如藍色 55、巧克力 61）：第一種填 doughWeight（55）與 doughWeightName（例如「藍色麵團」），其餘每一種依序放入 extraDoughWeights（例如 {name: "巧克力麵團", weight: 61}）。不要加總。
            - 多種內餡各自分割時同理：第一種填 fillingWeight 與 fillingWeightName，其餘放入 extraFillingWeights。只有一種時，名稱欄位留空、extra 清單不要填。
+           - 中式點心（例如彩色月餅、酥皮點心）若有多種顏色／重量的油皮或油酥：第一種填 crustWeight＋crustWeightName（或 oilPasteWeight＋oilPasteWeightName），其餘依序放入 extraCrustWeights（或 extraOilPasteWeights）。
            - 原文沒有提到分割重量就不要填，不要自己推算。
         
         【筆記內容】：

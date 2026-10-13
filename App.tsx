@@ -154,6 +154,8 @@ export interface Recipe {
   // 多種麵團／內餡的分割重量：第一種用 doughWeight / fillingWeight（可取名），其他的放在 extra 清單
   doughWeightName?: string; fillingWeightName?: string;
   extraDoughWeights?: SplitWeight[]; extraFillingWeights?: SplitWeight[];
+  crustWeightName?: string; oilPasteWeightName?: string;
+  extraCrustWeights?: SplitWeight[]; extraOilPasteWeights?: SplitWeight[];
   relatedRecipeIds?: string[];
   quantity?: number; shelfLife?: string; totalDuration?: string; createdAt: number; updatedAt?: number; executionLogs?: ExecutionLog[];
   uid?: string;
@@ -1719,7 +1721,14 @@ const Sidebar: React.FC<{
 
 
 // ---------------- 分割重量：支援多種麵團／內餡 ----------------
-type SplitWeightKind = 'dough' | 'filling';
+type SplitWeightKind = 'dough' | 'filling' | 'crust' | 'oilPaste';
+
+const SPLIT_WEIGHT_FIELDS: Record<SplitWeightKind, { weight: keyof Recipe; name: keyof Recipe; extras: keyof Recipe }> = {
+  dough: { weight: 'doughWeight', name: 'doughWeightName', extras: 'extraDoughWeights' },
+  filling: { weight: 'fillingWeight', name: 'fillingWeightName', extras: 'extraFillingWeights' },
+  crust: { weight: 'crustWeight', name: 'crustWeightName', extras: 'extraCrustWeights' },
+  oilPaste: { weight: 'oilPasteWeight', name: 'oilPasteWeightName', extras: 'extraOilPasteWeights' },
+};
 
 const normalizeSplitWeights = (list: any): SplitWeight[] =>
   Array.isArray(list)
@@ -1730,10 +1739,9 @@ const normalizeSplitWeights = (list: any): SplitWeight[] =>
 
 // 取出要顯示的所有重量（第一種 + 其他），只留有填數字的
 const getSplitWeightEntries = (r: Partial<Recipe>, kind: SplitWeightKind): SplitWeight[] => {
-  const primary: SplitWeight = kind === 'dough'
-    ? { name: String(r.doughWeightName || ''), weight: String(r.doughWeight ?? '') }
-    : { name: String(r.fillingWeightName || ''), weight: String(r.fillingWeight ?? '') };
-  const extras = kind === 'dough' ? (r.extraDoughWeights || []) : (r.extraFillingWeights || []);
+  const f = SPLIT_WEIGHT_FIELDS[kind];
+  const primary: SplitWeight = { name: String((r as any)[f.name] || ''), weight: String((r as any)[f.weight] ?? '') };
+  const extras: SplitWeight[] = (r as any)[f.extras] || [];
   return [primary, ...extras].filter(w => w.weight !== '' && Number(w.weight) > 0);
 };
 
@@ -3231,6 +3239,12 @@ const App: React.FC = () => {
       fillingWeightName: parsed.fillingWeight ? (parsed.fillingWeightName || '') : prev.fillingWeightName,
       extraDoughWeights: parsed.doughWeight ? normalizeSplitWeights(parsed.extraDoughWeights) : prev.extraDoughWeights,
       extraFillingWeights: parsed.fillingWeight ? normalizeSplitWeights(parsed.extraFillingWeights) : prev.extraFillingWeights,
+      crustWeight: parsed.crustWeight || prev.crustWeight,
+      oilPasteWeight: parsed.oilPasteWeight || prev.oilPasteWeight,
+      crustWeightName: parsed.crustWeight ? (parsed.crustWeightName || '') : prev.crustWeightName,
+      oilPasteWeightName: parsed.oilPasteWeight ? (parsed.oilPasteWeightName || '') : prev.oilPasteWeightName,
+      extraCrustWeights: parsed.crustWeight ? normalizeSplitWeights(parsed.extraCrustWeights) : prev.extraCrustWeights,
+      extraOilPasteWeights: parsed.oilPasteWeight ? normalizeSplitWeights(parsed.extraOilPasteWeights) : prev.extraOilPasteWeights,
       ingredients: parsed.ingredients?.length ? parsed.ingredients : prev.ingredients,
       liquidStarterIngredients: parsed.liquidStarterIngredients || [],
       fillingIngredients: parsed.fillingIngredients || [],
@@ -4360,39 +4374,30 @@ const App: React.FC = () => {
                       const items = [];
                       const isPineappleCake = scalingRecipe.subcategory === '鳳梨酥';
                       if (scalingRecipe.category === '中式點心' && !isPineappleCake) {
-                        if (scalingRecipe.crustWeight && Number(scalingRecipe.crustWeight) > 0) {
+                        getSplitWeightEntries(scalingRecipe, 'crust').forEach((w, wi) => {
                           items.push(
-                            <div key="crust_scale" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
-                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">⚖️ 分割後一個<br/>油皮重 (克)</div>
-                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">
-                                {Number(scalingRecipe.crustWeight).toFixed(1).replace(/\.0$/, '')}
-                                <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
-                              </div>
+                            <div key={`crust_scale_${wi}`} className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
+                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">⚖️ {w.name ? <>{w.name}<br/>分割重 (克)</> : <>分割後一個<br/>油皮重 (克)</>}</div>
+                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">{Number(w.weight).toFixed(1).replace(/\.0$/, '')}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div>
                             </div>
                           );
-                        }
-                        if (scalingRecipe.oilPasteWeight && Number(scalingRecipe.oilPasteWeight) > 0) {
+                        });
+                        getSplitWeightEntries(scalingRecipe, 'oilPaste').forEach((w, wi) => {
                           items.push(
-                            <div key="oilPaste_scale" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
-                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🧈 分割後一個<br/>油酥重 (克)</div>
-                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">
-                                {Number(scalingRecipe.oilPasteWeight).toFixed(1).replace(/\.0$/, '')}
-                                <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
-                              </div>
+                            <div key={`oilPaste_scale_${wi}`} className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
+                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🧈 {w.name ? <>{w.name}<br/>分割重 (克)</> : <>分割後一個<br/>油酥重 (克)</>}</div>
+                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">{Number(w.weight).toFixed(1).replace(/\.0$/, '')}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div>
                             </div>
                           );
-                        }
-                        if (scalingRecipe.fillingWeight && Number(scalingRecipe.fillingWeight) > 0) {
+                        });
+                        getSplitWeightEntries(scalingRecipe, 'filling').forEach((w, wi) => {
                           items.push(
-                            <div key="filling_pastry_scale" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
-                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🌰 分割後一個<br/>餡料重 (克)</div>
-                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">
-                                {Number(scalingRecipe.fillingWeight).toFixed(1).replace(/\.0$/, '')}
-                                <span className="text-sm font-bold text-slate-400 ml-0.5">g</span>
-                              </div>
+                            <div key={`filling_pastry_scale_${wi}`} className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
+                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🌰 {w.name ? <>{w.name}<br/>分割重 (克)</> : <>分割後一個<br/>餡料重 (克)</>}</div>
+                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">{Number(w.weight).toFixed(1).replace(/\.0$/, '')}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div>
                             </div>
                           );
-                        }
+                        });
                         items.push(
                           <div key="quantity_pastry_scale" className="flex-1 min-w-[80px] space-y-1.5">
                             <div className="text-xs font-black text-slate-400 uppercase">🔢 份數</div>
@@ -4931,18 +4936,39 @@ const App: React.FC = () => {
                     <div className={`transition-all duration-500 ease-in-out overflow-hidden ${(['餡料', '果醬', '抹醬/其他'].includes(formRecipe.category || '')) ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-[2000px] opacity-100'}`}>
                       {formRecipe.category === '中式點心' && formRecipe.subcategory !== '鳳梨酥' ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                          <div className="relative">
-                            <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">⚖️ 分割後一個油皮重 (克)</label>
-                            <input type="text" value={formRecipe.crustWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, crustWeight: e.target.value }))} placeholder="克數" className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold text-center" />
-                          </div>
-                          <div className="relative">
-                            <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">🧈 分割後一個油酥重 (克)</label>
-                            <input type="text" value={formRecipe.oilPasteWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, oilPasteWeight: e.target.value }))} placeholder="克數" className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold text-center" />
-                          </div>
-                          <div className="relative">
-                            <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">🌰 分割後一個餡料重 (克)</label>
-                            <input type="text" value={formRecipe.fillingWeight ?? ''} onChange={e => setFormRecipe(p => ({ ...p, fillingWeight: e.target.value }))} placeholder="克數" className="w-full px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold text-center" />
-                          </div>
+                          <SplitWeightEditor
+                            label="⚖️ 分割後一個油皮重 (克)"
+                            addLabel="新增不同顏色／重量的油皮"
+                            namePlaceholder="名稱，例如：紫色油皮"
+                            primaryWeight={formRecipe.crustWeight}
+                            primaryName={formRecipe.crustWeightName}
+                            extras={formRecipe.extraCrustWeights}
+                            onPrimaryWeight={v => setFormRecipe(p => ({ ...p, crustWeight: v }))}
+                            onPrimaryName={v => setFormRecipe(p => ({ ...p, crustWeightName: v }))}
+                            onExtras={list => setFormRecipe(p => ({ ...p, extraCrustWeights: list }))}
+                          />
+                          <SplitWeightEditor
+                            label="🧈 分割後一個油酥重 (克)"
+                            addLabel="新增不同顏色／重量的油酥"
+                            namePlaceholder="名稱，例如：紫色油酥"
+                            primaryWeight={formRecipe.oilPasteWeight}
+                            primaryName={formRecipe.oilPasteWeightName}
+                            extras={formRecipe.extraOilPasteWeights}
+                            onPrimaryWeight={v => setFormRecipe(p => ({ ...p, oilPasteWeight: v }))}
+                            onPrimaryName={v => setFormRecipe(p => ({ ...p, oilPasteWeightName: v }))}
+                            onExtras={list => setFormRecipe(p => ({ ...p, extraOilPasteWeights: list }))}
+                          />
+                          <SplitWeightEditor
+                            label="🌰 分割後一個餡料重 (克)"
+                            addLabel="新增不同重量的餡料"
+                            namePlaceholder="名稱，例如：芋泥餡"
+                            primaryWeight={formRecipe.fillingWeight}
+                            primaryName={formRecipe.fillingWeightName}
+                            extras={formRecipe.extraFillingWeights}
+                            onPrimaryWeight={v => setFormRecipe(p => ({ ...p, fillingWeight: v }))}
+                            onPrimaryName={v => setFormRecipe(p => ({ ...p, fillingWeightName: v }))}
+                            onExtras={list => setFormRecipe(p => ({ ...p, extraFillingWeights: list }))}
+                          />
                         </div>
                       ) : formRecipe.subcategory === '鳳梨酥' ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -5991,7 +6017,7 @@ const App: React.FC = () => {
               </div>
 
               {/* 規格卡片區塊：在觀看模式最上方顯示 (在 PDF 中隱藏) */}
-              {(selectedRecipe.doughWeight || selectedRecipe.fillingWeight || selectedRecipe.extraDoughWeights?.length || selectedRecipe.extraFillingWeights?.length || selectedRecipe.crustWeight || selectedRecipe.oilPasteWeight || selectedRecipe.moldName) && (
+              {(selectedRecipe.doughWeight || selectedRecipe.fillingWeight || selectedRecipe.extraDoughWeights?.length || selectedRecipe.extraFillingWeights?.length || selectedRecipe.extraCrustWeights?.length || selectedRecipe.extraOilPasteWeights?.length || selectedRecipe.crustWeight || selectedRecipe.oilPasteWeight || selectedRecipe.moldName) && (
                 <div className="space-y-4 print:hidden">
                   <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm flex flex-wrap gap-y-6 items-center justify-around text-center">
                     {(() => {
@@ -6000,30 +6026,30 @@ const App: React.FC = () => {
                       const isPineappleCake = selectedRecipe.subcategory === '鳳梨酥';
                       if (selectedRecipe.category === '中式點心' && !isPineappleCake) {
                         // 中式點心模式的欄位 (非鳳梨酥)
-                        if (selectedRecipe.crustWeight && Number(selectedRecipe.crustWeight) > 0) {
+                        getSplitWeightEntries(selectedRecipe, 'crust').forEach((w, wi) => {
                           weightItems.push(
-                            <div key="crust" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
-                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">⚖️ 分割後一個<br/>油皮重 (克)</div>
-                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">{selectedRecipe.crustWeight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div>
+                            <div key={`crust_${wi}`} className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
+                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">⚖️ {w.name ? <>{w.name}<br/>分割重 (克)</> : <>分割後一個<br/>油皮重 (克)</>}</div>
+                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">{w.weight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div>
                             </div>
                           );
-                        }
-                        if (selectedRecipe.oilPasteWeight && Number(selectedRecipe.oilPasteWeight) > 0) {
+                        });
+                        getSplitWeightEntries(selectedRecipe, 'oilPaste').forEach((w, wi) => {
                           weightItems.push(
-                            <div key="oilPaste" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
-                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🧈 分割後一個<br/>油酥重 (克)</div>
-                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">{selectedRecipe.oilPasteWeight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div>
+                            <div key={`oilPaste_${wi}`} className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
+                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🧈 {w.name ? <>{w.name}<br/>分割重 (克)</> : <>分割後一個<br/>油酥重 (克)</>}</div>
+                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">{w.weight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div>
                             </div>
                           );
-                        }
-                        if (selectedRecipe.fillingWeight && Number(selectedRecipe.fillingWeight) > 0) {
+                        });
+                        getSplitWeightEntries(selectedRecipe, 'filling').forEach((w, wi) => {
                           weightItems.push(
-                            <div key="filling_pastry" className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
-                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🌰 分割後一個<br/>餡料重 (克)</div>
-                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">{selectedRecipe.fillingWeight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div>
+                            <div key={`filling_pastry_${wi}`} className="flex-1 min-w-[140px] sm:min-w-[160px] space-y-2">
+                              <div className="text-xs sm:text-sm font-black text-slate-400 uppercase leading-tight">🌰 {w.name ? <>{w.name}<br/>分割重 (克)</> : <>分割後一個<br/>餡料重 (克)</>}</div>
+                              <div className="text-2xl sm:text-3xl font-black text-slate-700 tabular-nums">{w.weight}<span className="text-sm font-bold text-slate-400 ml-0.5">g</span></div>
                             </div>
                           );
-                        }
+                        });
                         // 份數 (通常會有值)
                         weightItems.push(
                           <div key="quantity_pastry" className="flex-1 min-w-[80px] space-y-1.5">
@@ -6094,15 +6120,15 @@ const App: React.FC = () => {
 
               <div className="space-y-4">
                 {/* PDF 專用：大型橫向規格資訊列 */}
-                {(selectedRecipe.doughWeight || selectedRecipe.fillingWeight || selectedRecipe.extraDoughWeights?.length || selectedRecipe.extraFillingWeights?.length || selectedRecipe.crustWeight || selectedRecipe.oilPasteWeight || selectedRecipe.moldName) && (
+                {(selectedRecipe.doughWeight || selectedRecipe.fillingWeight || selectedRecipe.extraDoughWeights?.length || selectedRecipe.extraFillingWeights?.length || selectedRecipe.extraCrustWeights?.length || selectedRecipe.extraOilPasteWeights?.length || selectedRecipe.crustWeight || selectedRecipe.oilPasteWeight || selectedRecipe.moldName) && (
                   <div className="hidden print:flex items-center justify-around bg-orange-50/20 border border-orange-100 p-4 rounded-2xl gap-4 my-4">
                     {(() => {
                       const pdfSpecs = [];
                       const isPineappleCake = selectedRecipe.subcategory === '鳳梨酥';
                       if (selectedRecipe.category === '中式點心' && !isPineappleCake) {
-                        if (selectedRecipe.crustWeight && Number(selectedRecipe.crustWeight) > 0) pdfSpecs.push(<div key="cr" className="flex items-center gap-2 text-base font-black text-slate-800">⚖️ 油皮：{selectedRecipe.crustWeight}g</div>);
-                        if (selectedRecipe.oilPasteWeight && Number(selectedRecipe.oilPasteWeight) > 0) pdfSpecs.push(<div key="op" className="flex items-center gap-2 text-base font-black text-slate-800">🧈 油酥：{selectedRecipe.oilPasteWeight}g</div>);
-                        if (selectedRecipe.fillingWeight && Number(selectedRecipe.fillingWeight) > 0) pdfSpecs.push(<div key="fi" className="flex items-center gap-2 text-base font-black text-slate-800">🌰 內餡：{selectedRecipe.fillingWeight}g</div>);
+                        getSplitWeightEntries(selectedRecipe, 'crust').forEach((w, wi) => pdfSpecs.push(<div key={`cr_${wi}`} className="flex items-center gap-2 text-base font-black text-slate-800">⚖️ {w.name || '油皮'}：{w.weight}g</div>));
+                        getSplitWeightEntries(selectedRecipe, 'oilPaste').forEach((w, wi) => pdfSpecs.push(<div key={`op_${wi}`} className="flex items-center gap-2 text-base font-black text-slate-800">🧈 {w.name || '油酥'}：{w.weight}g</div>));
+                        getSplitWeightEntries(selectedRecipe, 'filling').forEach((w, wi) => pdfSpecs.push(<div key={`fi_${wi}`} className="flex items-center gap-2 text-base font-black text-slate-800">🌰 {w.name || '內餡'}：{w.weight}g</div>));
                         pdfSpecs.push(<div key="qt" className="flex items-center gap-2 text-base font-black text-slate-800">🔢 份數：{selectedRecipe.quantity || 1}顆</div>);
                       } else {
                         getSplitWeightEntries(selectedRecipe, 'dough').forEach((w, wi) => pdfSpecs.push(<div key={`dw_${wi}`} className="flex items-center gap-2 text-base font-black text-slate-800">⚖️ {w.name || (isPineappleCake ? '麵團' : '分割重量')}：{w.weight}g</div>));
