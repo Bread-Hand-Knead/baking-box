@@ -103,6 +103,10 @@ const AI_RECIPE_SCHEMA = {
     instructions: { type: "array", items: { type: "string" } },
     tags: { type: "array", items: { type: "string" } },
     notes: { type: "string" },
+    doughWeight: { type: "number", description: "分割後一個麵團／麵糊的重量（克），只填數字" },
+    fillingWeight: { type: "number", description: "分割後一個內餡／餡料的重量（克），只填數字" },
+    crustWeight: { type: "number", description: "中式點心：分割後一個油皮的重量（克），只填數字" },
+    oilPasteWeight: { type: "number", description: "中式點心：分割後一個油酥的重量（克），只填數字" },
     // 照片解析時：成品照片在第幾張、哪個位置（給前端裁切成食譜封面）
     productPhoto: {
       type: "object",
@@ -153,9 +157,11 @@ const buildRecipePrompt = (smartPasteText: string) => `你是一個專業且極�
              - ⚠️ 烤溫嚴格限制：topHeat 與 bottomHeat 欄位僅能輸出乾淨數值（若無區分上下火則填入相同溫度數字，例如: "170"），嚴禁包含任何思考推理、思考過程說明文字（如 160_C_without_degree_symbol 類似樣板字串）或度數單位。
              - ⚠️ 烘烤去重規範：同一原料的預處理烘烤（如：烤鹹蛋黃、預烤堅果等）僅建立一個烘烤階段，嚴禁重複生成相同內容之步驟或烘烤卡片。
              - fermentationStages 每個元素應為包含: "name" (例如: 基本發酵, 最後發酵, 中間發酵, 冷藏發酵等), "time" (時間數值, 如: 60, 50, 12), "timeUnit" ("分鐘" 或 "小時"), "temperature" (溫度，如: 28, 32-35, 4), "humidity" (濕度，如: 75%, 85%), "note" 的物件。
-           - ⚠️ 重要！關於發酵與冷藏的判斷規則：
-             1) 只有明確提到「發酵」二字（如：冷藏發酵、室溫發酵、最後發酵）的步驟才可填入 fermentationStages。
-             2) 如果只是「冰箱冷藏定型」、「冷藏醒麵/鬆弛」或「放冷藏冷卻」（無提到發酵二字），這不是發酵，請「絕對不要」填入 fermentationStages。
+           - ⚠️ 重要！關於發酵、鬆弛與冷藏的判斷規則：
+             1) 提到「發酵」的步驟（如：基本發酵、中間發酵、最後發酵、冷藏發酵、室溫發酵）填入 fermentationStages。
+             2) 提到「鬆弛」或「醒麵／醒麵團」的步驟（如：滾圓鬆弛 25 分、中間鬆弛 15 分鐘、醒麵 20 分）也要填入 fermentationStages，name 請寫原文的名稱（例如「滾圓鬆弛」「中間鬆弛」「醒麵」），time 與 timeUnit 照原文；有溫度、濕度就一併填入，沒有就留空。
+             3) 如果只是「冰箱冷藏定型」或「放冷藏冷卻」（沒有提到發酵、鬆弛或醒麵），這不是發酵，請「絕對不要」填入 fermentationStages。
+             4) fermentationStages 請依照製作流程的先後順序排列。
            - ⚠️ 重要！步驟完整性規則：
              1) 請「絕對不要」從 instructions 步驟陣列中刪除或省略任何步驟。所有製作步驟（包括攪拌、整型、發酵、冷藏、烘烤等）都必須「完整、詳細地保留並填入 instructions 陣列中」，不得因為它們被提取為 fermentationStages 或 bakingStages 就將其從 instructions 中刪除！
              2) 如果筆記內容的步驟有分段或有大標題（例如：① 製作餅乾底、② 製作乳酪餡 等），請在 instructions 陣列中將該標題前面加上 '[SECTION]' 作為獨立元素（例如："[SECTION]① 製作餅乾底"），以完美保留步驟的分段結構。
@@ -164,7 +170,12 @@ const buildRecipePrompt = (smartPasteText: string) => `你是一個專業且極�
            - 若遇到格式模糊、沒有明確比例的配方，請優先以【總麵粉/粉類重量 = 100%】的烘焙百分比邏輯進行逆推計算。
            - 任何包含「數字 + 單位（g, ml, %, 份）」的組合皆視為有效材料。
         5. 區塊辨識：烘焙常包含中種、主麵糰、內餡、抹面等區塊，請分別提取。
-        6. 規格重量：若提到「麵糰/皮/主體」的單顆克數，存入 doughWeight；若提到「內餡/餡」的單顆克數，存入 fillingWeight。僅提取純數字。
+        6. 分割重量（只填純數字，單位為克）：
+           - 分割後一個「麵團／麵糊／蛋糕糊」的重量 → doughWeight（例如「分割 60g」「每顆 55 克」「分割藍色55」）。
+           - 分割後一個「內餡／餡料」的重量 → fillingWeight（例如「包餡 30g」「內餡每顆 25 克」）。
+           - 中式點心若有「油皮」「油酥」的分割重量 → 分別填入 crustWeight、oilPasteWeight。
+           - 若同一份食譜有兩種麵團各自分割（例如藍色 55、巧克力 61），doughWeight 請填兩者合計（例如 116），並在 notes 註明各自的重量。
+           - 原文沒有提到分割重量就不要填，不要自己推算。
         
         【筆記內容】：
         ${smartPasteText}
