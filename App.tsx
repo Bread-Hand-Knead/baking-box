@@ -6124,7 +6124,7 @@ const App: React.FC = () => {
 
               {/* PDF 專用區塊 (螢幕上顯示為 no-print，但在列印時會顯示這個原本的佈局) */}
               <div className="hidden print:block space-y-4">
-                <div className="relative aspect-video rounded-2xl overflow-hidden print-float-img">
+                <div className="relative aspect-square rounded-2xl overflow-hidden print-float-img">
                   <img src={selectedRecipe.imageUrl || 'https://picsum.photos/800/450?random=' + selectedRecipe.id} className="w-full h-full object-cover" alt={selectedRecipe.title} />
                 </div>
                 <div className="space-y-2">
