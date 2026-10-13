@@ -23,6 +23,12 @@ const FREE_DAILY_QA_LIMIT = 3;
 
 // 單次輸入長度上限（避免被拿來塞超大內容）
 const MAX_PASTE_CHARS = 50000;
+// 照片解析：一次最多幾張、每張大小上限（base64 字元數，約 3MB 圖片）
+const MAX_IMAGES = 8;
+const MAX_IMAGE_BASE64_CHARS = 4_000_000;
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+type InlineImage = { mimeType: string; data: string };
 const MAX_QA_QUESTION_CHARS = 2000;
 const MAX_QA_CONTEXT_CHARS = 400000;
 
@@ -155,6 +161,17 @@ const buildRecipePrompt = (smartPasteText: string) => `你是一個專業且極�
         - 每個物件包含: title, description, notes, master, category, subcategory, doughWeight, fillingWeight, ingredients (name, amount, unit), instructions (字串陣列), liquidStarterIngredients, fillingIngredients, decorationIngredients, customSectionIngredients, fermentationStages, bakingStages。
         `;
 
+// 照片解析：沿用文字解析的所有規則，只把「筆記內容」換成照片
+const buildImageRecipePrompt = (imageCount: number, extraText: string) =>
+  buildRecipePrompt(
+    `（請解析上方附上的 ${imageCount} 張食譜照片。照片可能是線上課程講義、食譜書頁面或手機截圖。` +
+    `若多張照片屬於同一份食譜的不同頁面，請依序合併成一份完整食譜，不要拆成多份；若明顯是不同食譜，才分開輸出。` +
+    `表格中的「配方百分比」是烘焙百分比，請以實際重量 (g) 填入 amount。` +
+    `若同一份食譜有多個麵團（例如黑色、藍色麵團），請分別放入不同的材料區塊，並用 mainSectionName、customSectionName 等欄位標示麵團名稱。` +
+    `請忽略浮水印、頁碼、課程平台標誌與廣告文字。若照片上有老師/師傅名字，請填入 master。）` +
+    (extraText.trim() ? `\n\n使用者補充說明：\n${extraText}` : "")
+  );
+
 const buildNotePrompt = (noteSmartPasteText: string) => `你是一個極度忠於原文的烘焙筆記整理助手。
       請從下方的【筆記內容】中提取標題、師傅/老師名稱，以及【100% 忠於原文】的重點內容和連結。
       
@@ -217,6 +234,25 @@ function isPremium(data: admin.firestore.DocumentData | undefined, email: string
   return data.subscriptionStatus === "active" || data.is_vip === true || isTrialActive || data.is_permanent_vip === true;
 }
 
+function readImages(value: unknown): InlineImage[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw new HttpsError("invalid-argument", "照片格式錯誤。");
+  if (value.length > MAX_IMAGES) {
+    throw new HttpsError("invalid-argument", `一次最多上傳 ${MAX_IMAGES} 張照片。`);
+  }
+  return value.map((img: any) => {
+    const mimeType = String(img?.mimeType || "");
+    const data = String(img?.data || "");
+    if (!ALLOWED_IMAGE_TYPES.includes(mimeType) || !data) {
+      throw new HttpsError("invalid-argument", "照片格式錯誤，請使用 JPG 或 PNG。");
+    }
+    if (data.length > MAX_IMAGE_BASE64_CHARS) {
+      throw new HttpsError("invalid-argument", "照片檔案太大，請換一張較小的照片。");
+    }
+    return { mimeType, data };
+  });
+}
+
 function requireText(value: unknown, field: string, maxChars: number): string {
   if (typeof value !== "string" || !value.trim()) {
     throw new HttpsError("invalid-argument", `缺少內容：${field}`);
@@ -237,10 +273,16 @@ function optionalText(value: unknown, maxChars: number): string {
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
 // 呼叫 Gemini（遇到忙碌或連線問題時自動重試，最多 3 次）
-async function callGemini(prompt: string, responseSchema?: object): Promise<string> {
+async function callGemini(prompt: string, responseSchema?: object, images: InlineImage[] = []): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
   const body: Record<string, unknown> = {
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    contents: [{
+      role: "user",
+      parts: [
+        ...images.map((img) => ({ inline_data: { mime_type: img.mimeType, data: img.data } })),
+        { text: prompt },
+      ],
+    }],
   };
   if (responseSchema) {
     body.generationConfig = { responseMimeType: "application/json", responseSchema };
@@ -356,7 +398,11 @@ export const aiGenerate = onCall(
 
     /* ----- 食譜解析 / 心得筆記解析 ----- */
     if (kind === "recipe" || kind === "note") {
-      const text = requireText(request.data?.text, "筆記內容", MAX_PASTE_CHARS);
+      const images = kind === "recipe" ? readImages(request.data?.images) : [];
+      // 有照片時，文字可以留白（當作補充說明）
+      const text = images.length > 0
+        ? optionalText(request.data?.text, MAX_PASTE_CHARS)
+        : requireText(request.data?.text, "筆記內容", MAX_PASTE_CHARS);
 
       const month = getThisMonthString();
       const currentCount = usageData.month === month ? Number(usageData.ai_parse_count || 0) : 0;
@@ -371,7 +417,11 @@ export const aiGenerate = onCall(
       }
 
       const output = kind === "recipe"
-        ? await callGemini(buildRecipePrompt(text), AI_MULTI_RECIPE_SCHEMA)
+        ? await callGemini(
+          images.length > 0 ? buildImageRecipePrompt(images.length, text) : buildRecipePrompt(text),
+          AI_MULTI_RECIPE_SCHEMA,
+          images
+        )
         : await callGemini(buildNotePrompt(text), AI_NOTE_SCHEMA);
       const parsed = parseJson(output);
 
