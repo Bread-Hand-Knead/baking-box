@@ -687,6 +687,175 @@ const MOLD_PRESETS = [
 const getTodayString = () => new Date().toISOString().split('T')[0];
 const getThisMonthString = () => new Date().toISOString().substring(0, 7);
 
+// ---------------- AI 問答：挑出相關的食譜與筆記 ----------------
+// 每次問答只把最相關的幾份完整內容送給 AI，其餘只送標題清單，
+// 這樣不管存了幾百份食譜，每次問答的費用都差不多。
+const AI_QA_MAX_FULL_RECIPES = 8;
+const AI_QA_MAX_FULL_NOTES = 6;
+const AI_QA_FULL_RECIPES_CHAR_BUDGET = 24000;
+const AI_QA_FULL_NOTES_CHAR_BUDGET = 12000;
+const AI_QA_INDEX_CHAR_BUDGET = 20000;
+
+// 問題裡常見、但跟內容無關的字詞，不拿來比對
+const AI_QA_STOP_PHRASES = [
+  '為什麼', '是不是', '有沒有', '可不可以', '能不能', '請問', '怎麼', '如何', '什麼', '哪些', '哪個', '哪一',
+  '可以', '一下', '幫我', '告訴', '推薦', '比較', '差別', '差異', '不同', '我的', '我有', '食譜', '筆記', '老師',
+  '一個', '一些', '應該', '需要', '要用', '用什麼', '的話', '還是', '或是', '以及', '還有'
+];
+
+const toAiQaTerms = (text: string): string[] => {
+  let t = String(text || '').toLowerCase();
+  AI_QA_STOP_PHRASES.forEach(w => { t = t.split(w).join(' '); });
+  const terms = new Set<string>();
+  // 英文與數字：整個字 (例如 tangzhong、65)
+  (t.match(/[a-z0-9]+/g) || []).forEach(w => { if (w.length >= 2) terms.add(w); });
+  // 中文：兩個字一組 (例如「蝶豆花」→「蝶豆」「豆花」)
+  (t.match(/[一-鿿]+/g) || []).forEach(seg => {
+    if (seg.length === 1) return;
+    for (let i = 0; i < seg.length - 1; i++) {
+      const pair = seg.slice(i, i + 2);
+      // 含有「的、是、嗎…」這類虛詞的組合沒有意義，略過
+      if (!/[的了嗎呢吧是要在和與跟就也都很]/.test(pair)) terms.add(pair);
+    }
+  });
+  return Array.from(terms);
+};
+
+const allRecipeIngredients = (r: Recipe): Ingredient[] => [
+  ...(r.ingredients || []),
+  ...(r.liquidStarterIngredients || []),
+  ...(r.fillingIngredients || []),
+  ...(r.decorationIngredients || []),
+  ...(r.customSectionIngredients || []),
+];
+
+const scoreByTerms = (terms: string[], weightedFields: [string, number][]): number => {
+  let score = 0;
+  for (const term of terms) {
+    for (const [field, weight] of weightedFields) {
+      if (field && field.includes(term)) score += weight;
+    }
+  }
+  return score;
+};
+
+const formatRecipeForAi = (r: Recipe): string => {
+  const sections: [string, Ingredient[] | undefined][] = [
+    [r.mainSectionName || '主麵團', r.ingredients],
+    [r.liquidStarterName || '液種/中種', r.liquidStarterIngredients],
+    [r.fillingSectionName || '內餡', r.fillingIngredients],
+    [r.decorationSectionName || '裝飾', r.decorationIngredients],
+    [r.customSectionName || '其他', r.customSectionIngredients],
+  ];
+  const ingredientLines = sections
+    .filter(([, list]) => list && list.length > 0)
+    .map(([name, list]) => `${name}: ${(list || []).map(i => `${i.name} ${i.amount}${i.unit}`).join(', ')}`)
+    .join('\n');
+  const ferment = (r.fermentationStages || [])
+    .map(s => `${s.name} ${s.time}${s.timeUnit || ''}${s.temperature ? ` ${s.temperature}°C` : ''}${s.humidity ? ` 濕度${s.humidity}` : ''}`)
+    .join('；');
+  const bake = (r.bakingStages || [])
+    .map(s => `${s.name} 上火${s.topHeat}/下火${s.bottomHeat} ${s.time}${s.timeUnit || ''}`)
+    .join('；');
+  return `ID: ${r.id}
+類型: 食譜
+標題: ${r.title}
+老師/作者: ${r.master || '未註記'}
+分類: ${r.category || ''}${r.subcategory ? ` > ${r.subcategory}` : ''}
+介紹: ${r.description || '無'}
+材料:
+${ingredientLines || '無'}
+${ferment ? `發酵: ${ferment}\n` : ''}${bake ? `烘烤: ${bake}\n` : ''}步驟:
+${(r.instructions || []).join('\n')}
+備註: ${r.notes || '無'}
+標籤: ${r.tags && r.tags.length ? r.tags.join(', ') : '無'}`;
+};
+
+const buildAiQaContext = (question: string, recipes: Recipe[], notes: Knowledge[]) => {
+  const terms = toAiQaTerms(question);
+
+  const rankedRecipes = recipes
+    .map(r => ({
+      item: r,
+      score: scoreByTerms(terms, [
+        [String(r.title || '').toLowerCase(), 6],
+        [[(r.tags || []).join(' '), r.category, r.subcategory, r.master].join(' ').toLowerCase(), 3],
+        [allRecipeIngredients(r).map(i => i.name).join(' ').toLowerCase(), 2],
+        [[r.description, r.notes, (r.instructions || []).join(' ')].join(' ').toLowerCase(), 1],
+      ])
+    }))
+    .sort((a, b) => b.score - a.score || (b.item.updatedAt || b.item.createdAt || 0) - (a.item.updatedAt || a.item.createdAt || 0));
+
+  const rankedNotes = notes
+    .map(k => ({
+      item: k,
+      score: scoreByTerms(terms, [
+        [String(k.title || '').toLowerCase(), 6],
+        [String(k.master || '').toLowerCase(), 3],
+        [String(k.content || '').toLowerCase(), 1],
+      ])
+    }))
+    .sort((a, b) => b.score - a.score || (b.item.createdAt || 0) - (a.item.createdAt || 0));
+
+  // 有相關的就挑相關的；完全沒有相關（例如「推薦一個簡單的」）就挑最近的幾份
+  const anyRecipeMatch = rankedRecipes.some(x => x.score > 0);
+  const anyNoteMatch = rankedNotes.some(x => x.score > 0);
+  const nothingMatched = !anyRecipeMatch && !anyNoteMatch;
+  const recipeCandidates = anyRecipeMatch ? rankedRecipes.filter(x => x.score > 0) : (nothingMatched ? rankedRecipes.slice(0, 3) : []);
+  const noteCandidates = anyNoteMatch ? rankedNotes.filter(x => x.score > 0) : (nothingMatched ? rankedNotes.slice(0, 2) : []);
+
+  const fullRecipeTexts: string[] = [];
+  const fullRecipeIds = new Set<string>();
+  let used = 0;
+  for (const { item } of recipeCandidates) {
+    if (fullRecipeTexts.length >= AI_QA_MAX_FULL_RECIPES) break;
+    const text = formatRecipeForAi(item);
+    if (used + text.length > AI_QA_FULL_RECIPES_CHAR_BUDGET && fullRecipeTexts.length > 0) break;
+    fullRecipeTexts.push(`[食譜 #${fullRecipeTexts.length + 1}]\n${text}`);
+    fullRecipeIds.add(item.id);
+    used += text.length;
+  }
+
+  const fullNoteTexts: string[] = [];
+  const fullNoteIds = new Set<string>();
+  used = 0;
+  for (const { item } of noteCandidates) {
+    if (fullNoteTexts.length >= AI_QA_MAX_FULL_NOTES) break;
+    const text = `ID: ${item.id}\n類型: 筆記\n標題: ${item.title}\n老師/作者: ${item.master || '未註記'}\n內容: ${item.content}`;
+    if (used + text.length > AI_QA_FULL_NOTES_CHAR_BUDGET && fullNoteTexts.length > 0) break;
+    fullNoteTexts.push(`[筆記 #${fullNoteTexts.length + 1}]\n${text}`);
+    fullNoteIds.add(item.id);
+    used += text.length;
+  }
+
+  // 其他食譜與筆記只送標題，讓 AI 知道還有哪些可以推薦
+  const indexLines: string[] = [];
+  let indexUsed = 0;
+  for (const { item } of rankedRecipes) {
+    if (fullRecipeIds.has(item.id)) continue;
+    const line = `- [食譜] ID: ${item.id}｜${item.title}｜${item.category || ''}${item.subcategory ? `>${item.subcategory}` : ''}｜${item.master || ''}`;
+    if (indexUsed + line.length > AI_QA_INDEX_CHAR_BUDGET) break;
+    indexLines.push(line);
+    indexUsed += line.length;
+  }
+  for (const { item } of rankedNotes) {
+    if (fullNoteIds.has(item.id)) continue;
+    const line = `- [筆記] ID: ${item.id}｜${item.title}｜${item.master || ''}`;
+    if (indexUsed + line.length > AI_QA_INDEX_CHAR_BUDGET) break;
+    indexLines.push(line);
+    indexUsed += line.length;
+  }
+
+  const indexBlock = indexLines.length > 0
+    ? `\n\n【其他食譜與筆記（只有標題，沒有內容；可以推薦使用者打開查看，但不可以猜測其中的材料或做法）】\n${indexLines.join('\n')}`
+    : '';
+
+  return {
+    recipesContext: fullRecipeTexts.join('\n\n') + indexBlock,
+    notesContext: fullNoteTexts.join('\n\n'),
+  };
+};
+
 const formatTimeWithUnit = (time: string, unit?: string) => {
   if (!time) return '--';
   const str = time.toString().trim();
@@ -2537,31 +2706,8 @@ const App: React.FC = () => {
     setAiQaResult(null);
 
     try {
-      const recipesContext = recipes.map((r, index) => {
-        const ingredientsStr = r.ingredients.map(i => `${i.name}: ${i.amount}${i.unit}`).join(', ');
-        const instructionsStr = r.instructions.join('\n');
-        return `[食譜 #${index + 1}]
-ID: ${r.id}
-類型: 食譜
-標題: ${r.title}
-老師/作者: ${r.master || '未註記'}
-分類: ${r.category} ${r.subcategory ? `> ${r.subcategory}` : ''}
-介紹: ${r.description || '無'}
-材料: ${ingredientsStr}
-步驟:
-${instructionsStr}
-備註: ${r.notes || '無'}
-標籤: ${r.tags ? r.tags.join(', ') : '無'}`;
-      }).join('\n\n');
-
-      const notesContext = knowledge.map((k, index) => {
-        return `[筆記 #${index + 1}]
-ID: ${k.id}
-類型: 筆記
-標題: ${k.title}
-老師/作者: ${k.master || '未註記'}
-內容: ${k.content}`;
-      }).join('\n\n');
+      // 只把跟問題最相關的幾份食譜／筆記完整送給 AI，其他只附標題清單，控制每次問答的費用
+      const { recipesContext, notesContext } = buildAiQaContext(q, recipes, knowledge);
 
       // 由後端呼叫 Gemini（金鑰在後端），並在成功後記錄次數
       const response = await aiGenerateCall({ kind: 'qa', question: q, recipesContext, notesContext });
