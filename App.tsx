@@ -1685,6 +1685,10 @@ const App: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [isAiParsing, setIsAiParsing] = useState(false);
   const [smartPasteText, setSmartPasteText] = useState('');
+  // 照片解析：使用者選的食譜照片（已壓縮的 JPEG data URL）
+  const [pasteImages, setPasteImages] = useState<{ id: string; dataUrl: string }[]>([]);
+  const [isPreparingImages, setIsPreparingImages] = useState(false);
+  const pasteImageInputRef = useRef<HTMLInputElement>(null);
 
   const [completedSteps, setCompletedSteps] = useState<Record<string, number[]>>({});
 
@@ -2416,7 +2420,11 @@ const App: React.FC = () => {
 
     try {
       // 由後端呼叫 Gemini（金鑰在後端，會自動重試），並在成功後記錄次數
-      const response = await aiGenerateCall({ kind: 'recipe', text: smartPasteText });
+      const images = pasteImages.map(img => ({
+        mimeType: 'image/jpeg',
+        data: img.dataUrl.split(',')[1] || ''
+      }));
+      const response = await aiGenerateCall({ kind: 'recipe', text: smartPasteText, images });
       const data = response.data as any;
       if (data?.aiUsage) setAiUsage(data.aiUsage);
 
@@ -2436,6 +2444,7 @@ const App: React.FC = () => {
       }
 
       console.log('[AI] Parsing Success');
+      setPasteImages([]);
       if (recipesFound.length === 1) {
         applyParsedRecipe(recipesFound[0]);
       } else {
@@ -2802,8 +2811,76 @@ ID: ${k.id}
     }
   };
 
+  // 照片解析用的壓縮：保留足夠解析度讓 AI 看得清楚小字（長邊最多 2000px）
+  const compressImageForAi = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const maxDimension = 2000;
+        const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        URL.revokeObjectURL(url);
+        if (!ctx) {
+          reject(new Error('Canvas context not found'));
+          return;
+        }
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.82));
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Image load failed'));
+      };
+      img.src = url;
+    });
+  };
+
+  const MAX_PASTE_IMAGES = 8;
+
+  const handlePasteImagesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files: File[] = (Array.from(e.target.files || []) as File[]).filter(f => f.type.startsWith('image/'));
+    e.target.value = '';
+    if (files.length === 0) return;
+
+    const room = MAX_PASTE_IMAGES - pasteImages.length;
+    if (room <= 0) {
+      showToast(`一次最多 ${MAX_PASTE_IMAGES} 張照片`);
+      return;
+    }
+    if (files.length > room) {
+      showToast(`一次最多 ${MAX_PASTE_IMAGES} 張照片，只加入前 ${room} 張`);
+    }
+
+    setIsPreparingImages(true);
+    try {
+      const added: { id: string; dataUrl: string }[] = [];
+      for (const file of files.slice(0, room)) {
+        try {
+          const dataUrl = await compressImageForAi(file);
+          added.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, dataUrl });
+        } catch (err) {
+          console.error('Photo compression failed', err);
+          showToast('有照片無法讀取，請換一張試試');
+        }
+      }
+      setPasteImages(prev => [...prev, ...added]);
+    } finally {
+      setIsPreparingImages(false);
+    }
+  };
+
+  const removePasteImage = (id: string) => {
+    setPasteImages(prev => prev.filter(img => img.id !== id));
+  };
+
   const handleSmartPaste = async () => {
-    if (!smartPasteText.trim()) return;
+    if (!smartPasteText.trim() && pasteImages.length === 0) return;
     
     // AI 解析次數限制判斷 (非 Premium 用戶每月上限 10 次；後端也會再檢查一次)
     if (!isPremiumUser) {
@@ -4396,18 +4473,18 @@ ID: ${k.id}
                     <textarea 
                       value={smartPasteText}
                       onChange={(e) => setSmartPasteText(e.target.value)}
-                      placeholder="貼上亂糟糟的筆記（例如 Line 訊息、網頁複製內容）..."
+                      placeholder={pasteImages.length > 0 ? "（可留白）也可以補充說明，例如：只要第二個麵團、模具是 12 兩吐司模..." : "貼上亂糟糟的筆記（例如 Line 訊息、網頁複製內容）..."}
                       className="w-full h-32 px-4 py-4 bg-slate-50 border border-orange-100 rounded-2xl text-xs outline-none focus:bg-white focus:ring-2 focus:ring-orange-100 transition-all leading-relaxed"
                     />
                     <button 
                       onClick={handleSmartPaste}
-                      disabled={isAiParsing || !smartPasteText.trim()}
-                      className={`absolute bottom-4 right-4 px-6 py-2.5 rounded-xl font-black text-xs shadow-lg flex items-center gap-2 transition-all active:scale-95 ${(isAiParsing || !smartPasteText.trim()) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-[#E67E22] text-white hover:bg-orange-600'}`}
+                      disabled={isAiParsing || isPreparingImages || (!smartPasteText.trim() && pasteImages.length === 0)}
+                      className={`absolute bottom-4 right-4 px-6 py-2.5 rounded-xl font-black text-xs shadow-lg flex items-center gap-2 transition-all active:scale-95 ${(isAiParsing || isPreparingImages || (!smartPasteText.trim() && pasteImages.length === 0)) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-[#E67E22] text-white hover:bg-orange-600'}`}
                     >
                       {isAiParsing ? (
                         <>
                           <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          <span>正在解析中...</span>
+                          <span>{pasteImages.length > 0 ? '正在讀取照片...' : '正在解析中...'}</span>
                         </>
                       ) : (
                         <>
@@ -4416,7 +4493,45 @@ ID: ${k.id}
                       )}
                     </button>
                   </div>
-                  <p className="text-[10px] text-slate-400 font-bold ml-1">💡 貼入內容後點擊解析，AI 將自動填充材料、重量與步驟。</p>
+
+                  {/* 照片解析：上傳食譜照片（講義、食譜書、截圖），可一次多張 */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => pasteImageInputRef.current?.click()}
+                        disabled={isAiParsing || isPreparingImages || pasteImages.length >= MAX_PASTE_IMAGES}
+                        className={`px-4 py-2 rounded-xl font-black text-xs border flex items-center gap-2 transition-all active:scale-95 ${(isAiParsing || isPreparingImages || pasteImages.length >= MAX_PASTE_IMAGES) ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100'}`}
+                      >
+                        <Camera size={14} />
+                        <span>{isPreparingImages ? '處理照片中...' : '上傳食譜照片'}</span>
+                      </button>
+                      <span className="text-[10px] text-slate-400 font-bold">
+                        {pasteImages.length > 0 ? `已選 ${pasteImages.length} 張（最多 ${MAX_PASTE_IMAGES} 張），同一份食譜的多頁會自動合併` : '講義、食譜書、截圖都可以，可一次選多張'}
+                      </span>
+                    </div>
+                    {pasteImages.length > 0 && (
+                      <div className="flex gap-2 overflow-x-auto pb-1">
+                        {pasteImages.map((img, idx) => (
+                          <div key={img.id} className="relative shrink-0">
+                            <img src={img.dataUrl} alt={`食譜照片 ${idx + 1}`} className="w-16 h-16 object-cover rounded-xl border border-orange-100" />
+                            <span className="absolute bottom-0.5 left-0.5 bg-black/50 text-white text-[9px] font-black px-1 rounded">{idx + 1}</span>
+                            <button
+                              type="button"
+                              onClick={() => removePasteImage(img.id)}
+                              disabled={isAiParsing}
+                              className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-white border border-slate-200 rounded-full text-slate-500 flex items-center justify-center shadow-sm hover:text-red-500"
+                              aria-label="移除這張照片"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <input type="file" ref={pasteImageInputRef} onChange={handlePasteImagesSelected} className="hidden" accept="image/*" multiple />
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-bold ml-1">💡 貼入文字或上傳照片後點擊解析，AI 將自動填充材料、重量與步驟。</p>
                 </div>
 
                 <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-6">
