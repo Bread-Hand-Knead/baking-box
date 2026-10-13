@@ -1785,6 +1785,109 @@ const SplitWeightEditor: React.FC<{
   );
 };
 
+
+// ---------------- 各頁的「？」使用說明 ----------------
+type PageHelpTip = { icon: string; title: string; text: string };
+const PAGE_HELP: Partial<Record<AppView, { title: string; tips: PageHelpTip[] }>> = {
+  [AppView.LIST]: {
+    title: '首頁怎麼用',
+    tips: [
+      { icon: '🔍', title: '搜尋食譜', text: '輸入食譜名稱或材料（例如「奶油」）。輸入「#」加標籤名稱可以依標籤找，也可以直接點下方的熱門標籤。' },
+      { icon: '🤖', title: 'AI 問答', text: '在搜尋框打一個問題，再按「AI 問答」，AI 會依照你的食譜和筆記回答，並附上參考來源，點一下就能打開。問得越具體越準，例如「蝶豆花吐司的烤溫」。' },
+      { icon: '📂', title: '分類與排序', text: '用分類按鈕篩選食譜，「⏳ 待嘗試」可以看還沒做過的。排序可以依建立日期、最後修改、分類或標題。' },
+      { icon: '💾', title: '備份', text: '看到「已安全備份至雲端」代表登入後會自動同步。「匯出備份」可以把所有食譜存成檔案，「匯入備份」可以從檔案還原。' },
+      { icon: '☰', title: '選單', text: '左上角的選單可以登入／登出、查看會員方案和本月 AI 使用次數。' },
+    ],
+  },
+  [AppView.CREATE]: {
+    title: '新增食譜怎麼用',
+    tips: [
+      { icon: '✨', title: 'AI 自動填寫', text: '在「AI 快速筆記助手」貼上文字，或按「上傳照片或 PDF」（一次最多 8 張／頁），再按「AI 即刻解析」，材料、步驟、發酵和烤溫會自動填好。照片裡有成品照的話，也會自動裁成封面。' },
+      { icon: '✅', title: '存檔前核對', text: 'AI 偶爾會看錯數字，存檔前請檢查材料重量、小數點、烤溫和時間。' },
+      { icon: '⚖️', title: '分割重量', text: '填分割後一個麵團或內餡的重量。按「＋ 新增」可以填好幾種，例如雙色麵團、彩色月餅的不同油皮。' },
+      { icon: '⏲️', title: '發酵與烤溫', text: '「發酵時序」可以新增多個階段（鬆弛也放這裡），「烤溫設定」可以填上下火和時間。' },
+      { icon: '🕒', title: '草稿', text: '編輯時會自動存草稿，不小心離開的話，按「還原最近草稿」就能找回來。' },
+      { icon: '⚙️', title: '分類管理', text: '右上角的「分類管理」可以新增分類、子分類，並調整順序。' },
+    ],
+  },
+  [AppView.DETAIL]: {
+    title: '食譜頁怎麼用',
+    tips: [
+      { icon: '✔️', title: '勾選步驟', text: '製作時點一下步驟就能打勾，方便追蹤做到哪裡。做完按「重置進度」可以清除勾選。' },
+      { icon: '📝', title: '實作紀錄', text: '每次做完可以按「＋ 新增紀錄」，記下日期、評分、心得和成品照，下次調整配方時很好用。' },
+      { icon: '🖨️', title: '列印／存 PDF', text: '按「列印 / 存為 PDF」可以印出食譜，或存成 PDF 帶進廚房。' },
+      { icon: '✏️', title: '編輯或刪除', text: '頁面下方的「編輯配方」可以修改內容；「刪除配方」會永久刪除，請小心使用。' },
+    ],
+  },
+  [AppView.SCALING]: {
+    title: '換算怎麼用',
+    tips: [
+      { icon: '1️⃣', title: '選擇食譜', text: '先在上方選一份要換算的食譜。' },
+      { icon: '2️⃣', title: '產量換算', text: '在「目標產出」填你想做的數量，所有材料會自動依比例換算。' },
+      { icon: '3️⃣', title: '模具換算', text: '想換模具時，填「原本食譜模具」和「我要用的模具」的形狀與尺寸（圓形填直徑、方形填長寬），會算出換算倍率，圓形和方形也能互換。' },
+      { icon: '📋', title: '換算結果', text: '下方的「換算結果清單」會依區塊列出換算後的重量，也可以列印或存成 PDF。' },
+    ],
+  },
+  [AppView.COLLECTION]: {
+    title: '收集（烘焙知識庫）怎麼用',
+    tips: [
+      { icon: '✍️', title: '新增心得或技巧', text: '填標題、老師名稱和重點內容，可以附上圖片（上傳、拖曳或直接貼上都可以）。' },
+      { icon: '✨', title: 'AI 整理', text: '把 Line 訊息或網頁內容貼進框框，按「AI 即刻解析」，會自動整理出標題和老師名稱，內容保留原文。' },
+      { icon: '🔍', title: '搜尋筆記', text: '可以依標題、內容或老師名稱搜尋。' },
+      { icon: '🤖', title: '也能問 AI', text: '這裡的筆記也會被首頁的「AI 問答」參考，記越多，AI 回答得越完整。' },
+    ],
+  },
+  [AppView.MANAGE_CATEGORIES]: {
+    title: '分類管理怎麼用',
+    tips: [
+      { icon: '➕', title: '新增分類', text: '在上方輸入框輸入分類名稱，例如「甜點」「抹醬」，就能新增。' },
+      { icon: '↕️', title: '調整順序', text: '用「上移」「下移」調整分類在首頁和表單中的順序。' },
+      { icon: '🗂️', title: '子分類', text: '每個分類底下可以再新增子分類，例如「麵包」底下分「吐司」「歐式」。' },
+      { icon: '🗑️', title: '刪除', text: '刪除分類前會提醒你還有幾份食譜在裡面，請確認後再刪。' },
+    ],
+  },
+};
+PAGE_HELP[AppView.EDIT] = PAGE_HELP[AppView.CREATE];
+
+const PageHelpModal: React.FC<{ view: AppView; onClose: () => void }> = ({ view, onClose }) => {
+  const help = PAGE_HELP[view];
+  if (!help) return null;
+  return (
+    <div className="fixed inset-0 z-[5000] flex items-end sm:items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm print:hidden" onClick={onClose}>
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        className="bg-white rounded-[32px] shadow-2xl w-full max-w-md overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="bg-gradient-to-r from-orange-500 to-orange-600 px-6 py-5 flex items-center justify-between">
+          <h3 className="text-white font-black text-lg flex items-center gap-3">
+            <span className="bg-white/20 w-9 h-9 rounded-xl flex items-center justify-center text-xl">❓</span>
+            {help.title}
+          </h3>
+          <button onClick={onClose} className="bg-white/20 hover:bg-white/40 text-white w-9 h-9 rounded-xl flex items-center justify-center" aria-label="關閉說明">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-6 space-y-5 max-h-[65vh] overflow-y-auto custom-scrollbar-thin">
+          {help.tips.map((tip, i) => (
+            <div key={i} className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-orange-50 border border-orange-100 flex items-center justify-center text-xl shrink-0">{tip.icon}</div>
+              <div className="pt-0.5">
+                <p className="font-black text-slate-800 text-base leading-tight mb-1">{tip.title}</p>
+                <p className="text-sm text-slate-500 font-bold leading-relaxed">{tip.text}</p>
+              </div>
+            </div>
+          ))}
+          <button onClick={onClose} className="w-full py-4 bg-[#E67E22] text-white rounded-2xl font-black text-base shadow-lg shadow-orange-200 hover:bg-orange-600 active:scale-95 transition-all">
+            我知道了
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -1859,6 +1962,7 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isInstructionsOpen, setIsInstructionsOpen] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+  const [isPageHelpOpen, setIsPageHelpOpen] = useState(false);
   const [suppressUpgradeModal, setSuppressUpgradeModal] = useState(false);
 
   const recipeStats = useMemo(() => {
@@ -5513,6 +5617,17 @@ const App: React.FC = () => {
             </div>
           )}
 
+          {PAGE_HELP[view] && (
+            <button
+              onClick={() => setIsPageHelpOpen(true)}
+              className={`fixed ${showJumpBtn && (view === AppView.LIST || view === AppView.DETAIL || view === AppView.CREATE || view === AppView.EDIT || view === AppView.MANAGE_CATEGORIES) ? 'bottom-[184px]' : 'bottom-28'} right-7 w-12 h-12 bg-white text-[#E67E22] border-2 border-orange-200 rounded-full shadow-[0_6px_20px_rgb(230,126,34,0.25)] flex items-center justify-center z-[1001] text-2xl font-black transition-all active:scale-90 hover:bg-orange-50 print:hidden`}
+              title="這頁怎麼用？"
+              aria-label="這頁怎麼用？"
+            >
+              ?
+            </button>
+          )}
+
           {showJumpBtn && (view === AppView.LIST || view === AppView.DETAIL || view === AppView.CREATE || view === AppView.EDIT || view === AppView.MANAGE_CATEGORIES) && (
             <button 
               onClick={() => {
@@ -6587,6 +6702,8 @@ const App: React.FC = () => {
         <button onClick={() => setView(AppView.SCALING)} className={`flex flex-col items-center gap-1 transition-all ${view === AppView.SCALING ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}><span className="text-2xl">⚖️</span><span className="text-[10px] font-black">換算</span></button>
         <button onClick={() => setView(AppView.COLLECTION)} className={`flex flex-col items-center gap-1 transition-all ${view === AppView.COLLECTION ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}><span className="text-2xl">📥</span><span className="text-[10px] font-black">收集</span></button>
       </nav>
+
+      {isPageHelpOpen && <PageHelpModal view={view} onClose={() => setIsPageHelpOpen(false)} />}
 
       {/* Help Modal */}
       {isHelpModalOpen && (
