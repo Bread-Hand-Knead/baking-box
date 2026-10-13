@@ -5617,35 +5617,39 @@ const App: React.FC = () => {
             </div>
           )}
 
-          {PAGE_HELP[view] && (
-            <button
-              onClick={() => setIsPageHelpOpen(true)}
-              className={`fixed ${showJumpBtn && (view === AppView.LIST || view === AppView.DETAIL || view === AppView.CREATE || view === AppView.EDIT || view === AppView.MANAGE_CATEGORIES) ? 'bottom-[184px]' : 'bottom-28'} right-7 w-12 h-12 bg-white text-[#E67E22] border-2 border-orange-200 rounded-full shadow-[0_6px_20px_rgb(230,126,34,0.25)] flex items-center justify-center z-[1001] text-2xl font-black transition-all active:scale-90 hover:bg-orange-50 print:hidden`}
-              title="這頁怎麼用？"
-              aria-label="這頁怎麼用？"
-            >
-              ?
-            </button>
-          )}
-
-          {showJumpBtn && (view === AppView.LIST || view === AppView.DETAIL || view === AppView.CREATE || view === AppView.EDIT || view === AppView.MANAGE_CATEGORIES) && (
-            <button 
-              onClick={() => {
-                if (isAtBottom) {
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                } else {
-                  window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
-                }
-              }}
-              className="fixed bottom-28 right-6 w-14 h-14 bg-[#E67E22] text-white rounded-full shadow-[0_8px_30px_rgb(230,126,34,0.4)] flex items-center justify-center z-[1001] animate-in fade-in slide-in-from-bottom-4 transition-all active:scale-90 hover:bg-orange-600 group overflow-hidden print:hidden"
-              title={isAtBottom ? "回到頂端" : "直達底部"}
-            >
-              <div className={`transition-transform duration-500 ease-in-out ${isAtBottom ? 'rotate-180' : 'rotate-0'}`}>
-                <svg className="w-8 h-8 group-hover:translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
-            </button>
+          {/* 右下角浮動按鈕：「？」說明在上、捲動按鈕在下，放在同一個欄位裡，任何螢幕都不會疊在一起 */}
+          {(PAGE_HELP[view] || (showJumpBtn && (view === AppView.LIST || view === AppView.DETAIL || view === AppView.CREATE || view === AppView.EDIT || view === AppView.MANAGE_CATEGORIES))) && (
+            <div className="fixed bottom-28 right-6 z-[1001] flex flex-col items-center gap-3 print:hidden">
+              {PAGE_HELP[view] && (
+                <button
+                  onClick={() => setIsPageHelpOpen(true)}
+                  className="w-12 h-12 bg-white text-[#E67E22] border-2 border-orange-200 rounded-full shadow-[0_6px_20px_rgb(230,126,34,0.25)] flex items-center justify-center text-2xl font-black transition-all active:scale-90 hover:bg-orange-50"
+                  title="這頁怎麼用？"
+                  aria-label="這頁怎麼用？"
+                >
+                  ?
+                </button>
+              )}
+              {showJumpBtn && (view === AppView.LIST || view === AppView.DETAIL || view === AppView.CREATE || view === AppView.EDIT || view === AppView.MANAGE_CATEGORIES) && (
+                <button 
+                  onClick={() => {
+                    if (isAtBottom) {
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    } else {
+                      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+                    }
+                  }}
+                  className="w-14 h-14 bg-[#E67E22] text-white rounded-full shadow-[0_8px_30px_rgb(230,126,34,0.4)] flex items-center justify-center animate-in fade-in slide-in-from-bottom-4 transition-all active:scale-90 hover:bg-orange-600 group overflow-hidden"
+                  title={isAtBottom ? "回到頂端" : "直達底部"}
+                >
+                  <div className={`transition-transform duration-500 ease-in-out ${isAtBottom ? 'rotate-180' : 'rotate-0'}`}>
+                    <svg className="w-8 h-8 group-hover:translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </button>
+              )}
+            </div>
           )}
 
           {view === AppView.MANAGE_CATEGORIES && (
