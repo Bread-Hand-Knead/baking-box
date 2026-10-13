@@ -2613,6 +2613,21 @@ const App: React.FC = () => {
       }
 
       console.log('[AI] Parsing Success');
+      // 照片裡如果有成品照，裁切下來當食譜封面
+      const sourceImages = pasteImages.map(img => img.dataUrl);
+      for (const r of recipesFound) {
+        const photo = r.productPhoto;
+        delete r.productPhoto;
+        if (!photo || sourceImages.length === 0) continue;
+        const source = sourceImages[Number(photo.imageIndex)] ?? (sourceImages.length === 1 ? sourceImages[0] : undefined);
+        if (!source) continue;
+        try {
+          const cover = await cropImageByBox(source, photo.box);
+          if (cover) r.imageUrl = cover;
+        } catch (cropErr) {
+          console.warn('[AI] Product photo crop failed', cropErr);
+        }
+      }
       setPasteImages([]);
       if (recipesFound.length === 1) {
         applyParsedRecipe(recipesFound[0]);
@@ -2989,6 +3004,43 @@ const App: React.FC = () => {
 
   const MAX_PASTE_IMAGES = 8;
 
+  // 依 AI 回傳的位置 [ymin, xmin, ymax, xmax]（0~1000）裁切出成品照片，回傳壓縮後的封面圖
+  const cropImageByBox = (dataUrl: string, box: unknown): Promise<string | null> => {
+    return new Promise((resolve, reject) => {
+      if (!Array.isArray(box) || box.length !== 4 || box.some(v => typeof v !== 'number' || !isFinite(v))) {
+        resolve(null);
+        return;
+      }
+      const [ymin, xmin, ymax, xmax] = (box as number[]).map(v => Math.min(1000, Math.max(0, v)) / 1000);
+      // 太小或不合理的框就不用（避免裁到一小塊文字）
+      if (xmax - xmin < 0.08 || ymax - ymin < 0.08) {
+        resolve(null);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        const sx = Math.round(xmin * img.width);
+        const sy = Math.round(ymin * img.height);
+        const sw = Math.round((xmax - xmin) * img.width);
+        const sh = Math.round((ymax - ymin) * img.height);
+        const maxDimension = 800;
+        const scale = Math.min(1, maxDimension / Math.max(sw, sh));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(sw * scale));
+        canvas.height = Math.max(1, Math.round(sh * scale));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Canvas context not found'));
+          return;
+        }
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.onerror = () => reject(new Error('Image load failed'));
+      img.src = dataUrl;
+    });
+  };
+
   const handlePasteImagesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files: File[] = (Array.from(e.target.files || []) as File[]).filter(f => f.type.startsWith('image/'));
     e.target.value = '';
@@ -3064,7 +3116,9 @@ const App: React.FC = () => {
       fermentationStages: parsed.fermentationStages || [],
       bakingStages: sanitizeBakingStages(parsed.bakingStages),
       instructions: Array.isArray(parsed.instructions) ? parsed.instructions : (parsed.instructions ? [parsed.instructions] : prev.instructions),
-      tags: [...new Set([...(prev.tags || []), ...(parsed.tags || [])])]
+      tags: [...new Set([...(prev.tags || []), ...(parsed.tags || [])])],
+      // 已經有封面照就保留，沒有才用 AI 從照片裁下來的成品照
+      imageUrl: prev.imageUrl || parsed.imageUrl || ''
     }));
     setAiPreviewData(null);
     setSmartPasteText('');
@@ -3092,7 +3146,8 @@ const App: React.FC = () => {
       tags: [...new Set(aiPreviewData.flatMap(r => r.tags || []) as string[])],
       notes: aiPreviewData.map(r => r.notes).filter(Boolean).join('\n---\n'),
       description: aiPreviewData.map(r => r.description).filter(Boolean).join('\n'),
-      master: aiPreviewData.find(r => r.master)?.master || ''
+      master: aiPreviewData.find(r => r.master)?.master || '',
+      imageUrl: aiPreviewData.find(r => r.imageUrl)?.imageUrl || ''
     };
     applyParsedRecipe(merged);
   };
