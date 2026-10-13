@@ -3041,32 +3041,91 @@ const App: React.FC = () => {
     });
   };
 
+  // PDF 講義：用 pdf.js 把每一頁轉成圖片，再走跟照片一樣的解析流程
+  // （pdf.js 只在使用者選 PDF 時才從 CDN 載入，不影響 App 平常的載入速度）
+  const PDFJS_VERSION = '4.10.38';
+  const PDFJS_BASE = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build`;
+  const pdfjsRef = useRef<any>(null);
+
+  const loadPdfJs = async () => {
+    if (pdfjsRef.current) return pdfjsRef.current;
+    const lib: any = await import(/* @vite-ignore */ `${PDFJS_BASE}/pdf.min.mjs`);
+    lib.GlobalWorkerOptions.workerSrc = `${PDFJS_BASE}/pdf.worker.min.mjs`;
+    pdfjsRef.current = lib;
+    return lib;
+  };
+
+  const renderPdfToImages = async (file: File, maxPages: number): Promise<{ pages: string[]; totalPages: number }> => {
+    const pdfjs = await loadPdfJs();
+    const data = new Uint8Array(await file.arrayBuffer());
+    const pdf = await pdfjs.getDocument({ data }).promise;
+    const pages: string[] = [];
+    const count = Math.min(pdf.numPages, maxPages);
+    for (let i = 1; i <= count; i++) {
+      const page = await pdf.getPage(i);
+      const base = page.getViewport({ scale: 1 });
+      // 長邊約 2000px，小字也看得清楚
+      const scale = Math.min(4, 2000 / Math.max(base.width, base.height));
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(viewport.width);
+      canvas.height = Math.round(viewport.height);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas context not found');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      pages.push(canvas.toDataURL('image/jpeg', 0.82));
+      page.cleanup();
+    }
+    const totalPages = pdf.numPages;
+    await pdf.destroy();
+    return { pages, totalPages };
+  };
+
+  const isPdfFile = (f: File) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+
   const handlePasteImagesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files: File[] = (Array.from(e.target.files || []) as File[]).filter(f => f.type.startsWith('image/'));
+    const files: File[] = (Array.from(e.target.files || []) as File[]).filter(f => f.type.startsWith('image/') || isPdfFile(f));
     e.target.value = '';
     if (files.length === 0) return;
 
-    const room = MAX_PASTE_IMAGES - pasteImages.length;
+    let room = MAX_PASTE_IMAGES - pasteImages.length;
     if (room <= 0) {
-      showToast(`一次最多 ${MAX_PASTE_IMAGES} 張照片`);
+      showToast(`一次最多 ${MAX_PASTE_IMAGES} 張照片／頁`);
       return;
-    }
-    if (files.length > room) {
-      showToast(`一次最多 ${MAX_PASTE_IMAGES} 張照片，只加入前 ${room} 張`);
     }
 
     setIsPreparingImages(true);
     try {
       const added: { id: string; dataUrl: string }[] = [];
-      for (const file of files.slice(0, room)) {
+      const newId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      let skipped = false;
+      for (const file of files) {
+        if (room <= 0) { skipped = true; break; }
         try {
-          const dataUrl = await compressImageForAi(file);
-          added.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, dataUrl });
-        } catch (err) {
-          console.error('Photo compression failed', err);
-          showToast('有照片無法讀取，請換一張試試');
+          if (isPdfFile(file)) {
+            const { pages, totalPages } = await renderPdfToImages(file, room);
+            pages.forEach(dataUrl => added.push({ id: newId(), dataUrl }));
+            room -= pages.length;
+            if (totalPages > pages.length) {
+              showToast(`「${file.name}」有 ${totalPages} 頁，只加入前 ${pages.length} 頁（上限 ${MAX_PASTE_IMAGES} 頁）`);
+            }
+          } else {
+            const dataUrl = await compressImageForAi(file);
+            added.push({ id: newId(), dataUrl });
+            room -= 1;
+          }
+        } catch (err: any) {
+          console.error('File preparation failed', err);
+          if (isPdfFile(file)) {
+            showToast(err?.name === 'PasswordException' ? `「${file.name}」有密碼保護，無法讀取` : `「${file.name}」無法讀取，請確認網路連線後再試`);
+          } else {
+            showToast('有照片無法讀取，請換一張試試');
+          }
         }
       }
+      if (skipped) showToast(`一次最多 ${MAX_PASTE_IMAGES} 張照片／頁，多的已略過`);
       setPasteImages(prev => [...prev, ...added]);
     } finally {
       setIsPreparingImages(false);
@@ -4705,17 +4764,17 @@ const App: React.FC = () => {
                         className={`px-4 py-2 rounded-xl font-black text-xs border flex items-center gap-2 transition-all active:scale-95 ${(isAiParsing || isPreparingImages || pasteImages.length >= MAX_PASTE_IMAGES) ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100'}`}
                       >
                         <Camera size={14} />
-                        <span>{isPreparingImages ? '處理照片中...' : '上傳食譜照片'}</span>
+                        <span>{isPreparingImages ? '處理檔案中...' : '上傳照片或 PDF'}</span>
                       </button>
                       <span className="text-[10px] text-slate-400 font-bold">
-                        {pasteImages.length > 0 ? `已選 ${pasteImages.length} 張（最多 ${MAX_PASTE_IMAGES} 張），同一份食譜的多頁會自動合併` : '講義、食譜書、截圖都可以，可一次選多張'}
+                        {pasteImages.length > 0 ? `已選 ${pasteImages.length} 張／頁（最多 ${MAX_PASTE_IMAGES}），同一份食譜的多頁會自動合併` : '講義、食譜書、截圖、PDF 都可以，可一次選多個'}
                       </span>
                     </div>
                     {pasteImages.length > 0 && (
                       <div className="flex gap-2 overflow-x-auto pb-1">
                         {pasteImages.map((img, idx) => (
                           <div key={img.id} className="relative shrink-0">
-                            <img src={img.dataUrl} alt={`食譜照片 ${idx + 1}`} className="w-16 h-16 object-cover rounded-xl border border-orange-100" />
+                            <img src={img.dataUrl} alt={`食譜第 ${idx + 1} 張／頁`} className="w-16 h-16 object-cover rounded-xl border border-orange-100" />
                             <span className="absolute bottom-0.5 left-0.5 bg-black/50 text-white text-[9px] font-black px-1 rounded">{idx + 1}</span>
                             <button
                               type="button"
@@ -4730,7 +4789,7 @@ const App: React.FC = () => {
                         ))}
                       </div>
                     )}
-                    <input type="file" ref={pasteImageInputRef} onChange={handlePasteImagesSelected} className="hidden" accept="image/*" multiple />
+                    <input type="file" ref={pasteImageInputRef} onChange={handlePasteImagesSelected} className="hidden" accept="image/*,application/pdf,.pdf" multiple />
                   </div>
                   <p className="text-[10px] text-slate-400 font-bold ml-1">💡 貼入文字或上傳照片後點擊解析，AI 將自動填充材料、重量與步驟。</p>
                 </div>
