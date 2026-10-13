@@ -156,6 +156,16 @@
         font-size: 14px !important;
         opacity: 0.7 !important;
       }
+      /* 換算頁：材料區塊外框允許跨頁，讓內容接在摘要後面排在同一頁 */
+      .print-flow {
+        page-break-inside: auto !important;
+        break-inside: auto !important;
+        display: flex !important;
+      }
+      .print-flow > * {
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+      }
       /* 製作步驟緊湊化 */
       .print-steps-compact {
         gap: 0.25rem !important;
