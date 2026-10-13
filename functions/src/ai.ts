@@ -30,7 +30,8 @@ const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 type InlineImage = { mimeType: string; data: string };
 const MAX_QA_QUESTION_CHARS = 2000;
-const MAX_QA_CONTEXT_CHARS = 400000;
+// 前端只會送相關食譜＋標題清單（約 6 萬字以內），這裡留一點餘裕，避免單次問答費用過高
+const MAX_QA_CONTEXT_CHARS = 80000;
 
 // 與前端 firebase-applet-config.json 的 firestoreDatabaseId 相同
 export const FIRESTORE_DATABASE_ID = "ai-studio-94083e6a-9c2f-4dd1-8189-a5b2087ed826";
