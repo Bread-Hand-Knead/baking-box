@@ -1998,7 +1998,7 @@ const App: React.FC = () => {
     }
   }, []);
   const [newSubCatInputs, setNewSubCatInputs] = useState<Record<string, string>>({});
-  const [isCloudSyncEnabled, setIsCloudSyncEnabled] = useState(false);
+  const [, setIsCloudSyncEnabled] = useState(false);
   const [view, setView] = useState<AppView>(AppView.LIST);
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
   const [subscriptionModalMessage, setSubscriptionModalMessage] = useState<string | undefined>(undefined);
@@ -2024,6 +2024,17 @@ const App: React.FC = () => {
 
   // 定義統一的進階判斷
   const isPremiumUser = isVip || subscriptionStatus === 'active' || isAdmin;
+
+  // 免費版最多 10 份食譜。會員到期後若食譜超過上限：可以瀏覽全部，但不能新增、編輯或刪除
+  const FREE_RECIPE_LIMIT = 10;
+  const isReadOnlyMember = !!user && !isPremiumUser && recipes.length > FREE_RECIPE_LIMIT;
+  const READ_ONLY_MESSAGE = '會員已到期，目前可以瀏覽所有食譜；續訂後即可新增、編輯與刪除食譜。';
+  // 唯讀時擋下修改動作，回傳 true 代表已擋下
+  const blockIfReadOnly = () => {
+    if (!isReadOnlyMember) return false;
+    triggerUpgradePrompt(true, READ_ONLY_MESSAGE);
+    return true;
+  };
 
   const triggerUpgradePrompt = (force = false, message?: string) => {
     // 優先檢查進階權限
@@ -3530,6 +3541,7 @@ const App: React.FC = () => {
   };
 
   const renameCategory = async (oldName: string, newName: string) => {
+    if (blockIfReadOnly()) return;
     if (!newName.trim() || oldName === newName) {
       setEditingCatId(null);
       return;
@@ -3553,7 +3565,7 @@ const App: React.FC = () => {
     // 3. 更新同步邏輯
     await syncCategoriesToCloud(updatedCats);
     
-    if (user && isCloudSyncEnabled) {
+    if (user) {
       // 更新雲端食譜
       const recipesToUpdate = recipes.filter(r => r.category === oldName);
       await Promise.all(recipesToUpdate.map(async (r) => {
@@ -3713,6 +3725,7 @@ const App: React.FC = () => {
   };
 
   const handleAddLog = async () => {
+    if (blockIfReadOnly()) return;
     if (!selectedRecipe || !newLog.feedback) return;
     const log: ExecutionLog = {
       id: 'log-' + Date.now(),
@@ -3727,7 +3740,7 @@ const App: React.FC = () => {
       updatedAt: Date.now()
     };
 
-    if (user && isCloudSyncEnabled) {
+    if (user) {
       try {
         await setDoc(doc(db, 'recipes', updatedRecipe.id), updatedRecipe);
       } catch (error) {
@@ -3745,6 +3758,7 @@ const App: React.FC = () => {
   };
 
   const handleLinkRecipe = async (recipeId: string, relatedId: string) => {
+    if (blockIfReadOnly()) return;
     const targetRecipe = recipes.find(r => r.id === recipeId);
     if (!targetRecipe) return;
 
@@ -3754,7 +3768,7 @@ const App: React.FC = () => {
       updatedAt: Date.now()
     };
 
-    if (user && isCloudSyncEnabled) {
+    if (user) {
       try {
         await setDoc(doc(db, 'recipes', updatedRecipe.id), updatedRecipe);
       } catch (error) {
@@ -3770,6 +3784,7 @@ const App: React.FC = () => {
   };
 
   const handleUnlinkRecipe = async (recipeId: string, relatedId: string) => {
+    if (blockIfReadOnly()) return;
     const targetRecipe = recipes.find(r => r.id === recipeId);
     if (!targetRecipe) return;
 
@@ -3779,7 +3794,7 @@ const App: React.FC = () => {
       updatedAt: Date.now()
     };
 
-    if (user && isCloudSyncEnabled) {
+    if (user) {
       try {
         await setDoc(doc(db, 'recipes', updatedRecipe.id), updatedRecipe);
       } catch (error) {
@@ -3856,10 +3871,11 @@ const App: React.FC = () => {
   };
 
   const handleDeleteRecipe = async () => {
+    if (blockIfReadOnly()) return;
     if (!selectedRecipe) return;
     const recipeIdToDelete = String(selectedRecipe.id);
     
-    if (user && isCloudSyncEnabled) {
+    if (user) {
       try {
         await deleteDoc(doc(db, 'recipes', recipeIdToDelete));
       } catch (error) {
@@ -3959,6 +3975,12 @@ const App: React.FC = () => {
         </div>
 
         {/* LIST View Header */}
+        {view === AppView.LIST && isReadOnlyMember && (
+          <div className="mb-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl px-5 py-4 text-sm font-bold flex flex-col sm:flex-row sm:items-center gap-3 print:hidden">
+            <span className="flex-1">🔒 {READ_ONLY_MESSAGE}</span>
+            <button onClick={() => triggerUpgradePrompt(true, READ_ONLY_MESSAGE)} className="shrink-0 px-4 py-2 bg-[#E67E22] text-white rounded-xl font-black text-sm hover:bg-orange-600 active:scale-95 transition-all whitespace-nowrap">續訂會員</button>
+          </div>
+        )}
         {view === AppView.LIST && (
           <header className="flex flex-col gap-6 mb-8 animate-in fade-in slide-in-from-top-4 no-print">
             {isRecipesLoading && (
@@ -3976,7 +3998,7 @@ const App: React.FC = () => {
                   </h1>
                       <div className="flex items-center gap-2 mt-1">
                         <p className="text-orange-300 text-xs font-medium">記錄師傅的筆記與經典配方</p>
-            {user && isCloudSyncEnabled ? (
+            {user ? (
               <span className="inline-flex items-center gap-1.5 text-[14px] font-black text-emerald-500 bg-emerald-50 px-[10px] h-[28px] rounded-[50px] border border-emerald-100 shadow-sm transition-all transform hover:scale-105 active:scale-95 cursor-default shrink-0 mt-0.5">
                 <Cloud size={14} strokeWidth={3} />
                 <span className="leading-none whitespace-nowrap">已安全備份至雲端</span>
@@ -5597,6 +5619,7 @@ const App: React.FC = () => {
                   <button 
                     onClick={async () => { 
                       if (!formRecipe.title) return; 
+                      if (view === AppView.EDIT && blockIfReadOnly()) return;
 
                       const recipeData = {
                         ...formRecipe,
@@ -5607,7 +5630,7 @@ const App: React.FC = () => {
 
                       if (view === AppView.CREATE) {
                         // 檢查食譜數量限制 (非 Premium 用戶上限 10 份)
-                        if (!isPremiumUser && recipes.length >= 10) {
+                        if (!isPremiumUser && recipes.length >= FREE_RECIPE_LIMIT) {
                           triggerUpgradePrompt(true, "您的食譜已達免費版上限 (10份)，升級 Premium 即可儲存更多美味配方！");
                           return;
                         }
@@ -5615,7 +5638,7 @@ const App: React.FC = () => {
                         const newId = 'rec-' + Date.now();
                         const newRecipe = { ...recipeData, id: newId, createdAt: Date.now(), uid: user?.uid, author_id: user?.uid } as Recipe;
                         
-                        if (user && isCloudSyncEnabled) {
+                        if (user) {
                           try {
                             await setDoc(doc(db, 'recipes', newId), newRecipe);
                           } catch (error) {
@@ -5629,7 +5652,7 @@ const App: React.FC = () => {
                         }
                       } else {
                         const updatedRecipe = recipeData as Recipe;
-                        if (user && isCloudSyncEnabled) {
+                        if (user) {
                           try {
                             await setDoc(doc(db, 'recipes', updatedRecipe.id), updatedRecipe);
                           } catch (error) {
@@ -6713,7 +6736,7 @@ const App: React.FC = () => {
                   </div>
 
                   <div className="flex flex-wrap gap-4 relative z-[100] no-print">
-                    <button onClick={() => { setTagInput(''); setFormRecipe(selectedRecipe); setView(AppView.EDIT); }} className="flex-grow py-5 bg-white border border-orange-100 rounded-[32px] font-black text-orange-600 shadow-sm active:scale-95 transition-all hover:bg-orange-50 text-base">編輯配方</button>
+                    <button onClick={() => { if (blockIfReadOnly()) return; setTagInput(''); setFormRecipe(selectedRecipe); setView(AppView.EDIT); }} className="flex-grow py-5 bg-white border border-orange-100 rounded-[32px] font-black text-orange-600 shadow-sm active:scale-95 transition-all hover:bg-orange-50 text-base">編輯配方</button>
                     <button 
                       onClick={() => {
                         if (!isPremiumUser) {
