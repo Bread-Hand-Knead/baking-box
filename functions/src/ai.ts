@@ -286,7 +286,9 @@ function isPremium(data: admin.firestore.DocumentData | undefined, email: string
   if (!data) return false;
   const now = Date.now();
   const isTrialActive = typeof data.trial_until === "number" && data.trial_until > now;
-  return data.subscriptionStatus === "active" || data.is_vip === true || isTrialActive || data.is_permanent_vip === true;
+  // 付費會員以到期日為準，過期就不再是 Premium
+  const isPaidActive = typeof data.subscriptionExpiresAt === "number" && data.subscriptionExpiresAt > now;
+  return isPaidActive || isTrialActive || data.is_permanent_vip === true;
 }
 
 function readImages(value: unknown): InlineImage[] {

@@ -1,10 +1,14 @@
 import { onRequest, onCall, HttpsError } from "firebase-functions/v2/https";
+import { setGlobalOptions } from "firebase-functions/v2";
 import * as admin from "firebase-admin";
 import * as crypto from "crypto";
 import { getFirestore } from "firebase-admin/firestore";
 import { FIRESTORE_DATABASE_ID } from "./ai";
 
 admin.initializeApp();
+
+// 所有後端功能都放在台灣 (asia-east1)，跟前端呼叫的區域一致
+setGlobalOptions({ region: "asia-east1" });
 
 // AI 解析（金鑰放在後端）
 export { aiGenerate } from "./ai";
@@ -220,11 +224,16 @@ export const newebpayWebhook = onRequest(async (req, res) => {
 
       let subscriptionExpiresAt: number | null = null;
       const now = Date.now();
+
+      // 續訂時從「目前到期日」往後加，不會吃掉還沒用完的天數
+      const currentSnap = await userSettingsRef.get();
+      const currentExpires = currentSnap.data()?.subscriptionExpiresAt;
+      const base = typeof currentExpires === "number" && currentExpires > now ? currentExpires : now;
       
       if (planType === "monthly") {
-        subscriptionExpiresAt = now + 30 * 24 * 60 * 60 * 1000;
+        subscriptionExpiresAt = base + 30 * 24 * 60 * 60 * 1000;
       } else if (planType === "yearly") {
-        subscriptionExpiresAt = now + 365 * 24 * 60 * 60 * 1000;
+        subscriptionExpiresAt = base + 365 * 24 * 60 * 60 * 1000;
       }
 
       await userSettingsRef.set({
@@ -305,6 +314,7 @@ export const adminUpdateUserVip = onCall(async (request) => {
       ...updates,
       is_permanent_vip: false,
       trial_until: now - 1000,
+      subscriptionExpiresAt: null, // 一併結束付費期間
       subscriptionStatus: "free",
       is_vip: false,
     };
