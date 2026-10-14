@@ -693,6 +693,15 @@ const MOLD_PRESETS = [
 
 const getTodayString = () => new Date().toISOString().split('T')[0];
 const getThisMonthString = () => new Date().toISOString().substring(0, 7);
+// 本週（週一開始）的日期字串，跟後端的算法一樣
+const getThisWeekString = () => {
+  const d = new Date();
+  const diff = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - diff);
+  return d.toISOString().split('T')[0];
+};
+// AI 次數上限（後端也會檢查；管理員不受限制）
+const AI_LIMITS = { freeMonthlyParse: 10, premiumMonthlyParse: 100, freeWeeklyQa: 3, premiumDailyQa: 30 };
 
 // ---------------- AI 問答：挑出相關的食譜與筆記 ----------------
 // 每次問答只把最相關的幾份完整內容送給 AI，其餘只送標題清單，
@@ -1333,7 +1342,7 @@ const SubscriptionModal: React.FC<{
                     <span>✨</span> 無限食譜儲存 (∞)
                   </li>
                   <li className="flex items-center gap-2.5 text-sm font-black text-white">
-                    <span>✨</span> 無限 AI 智慧解析
+                    <span>✨</span> 每月 100 次 AI 解析、每天 30 次問答
                   </li>
                   <li className="flex items-center gap-2.5 text-sm font-black text-white">
                     <span>✨</span> 專業雙欄 PDF 導出
@@ -1552,18 +1561,18 @@ const Sidebar: React.FC<{
                       <div className="text-[#8B5A2B] text-sm font-black flex items-center gap-1">
                         <span>{aiUsage.count}</span>
                         <span className="opacity-40 font-normal">/</span>
-                        {isPremiumUser ? (
+                        {isAdmin ? (
                           <span className="font-extrabold text-[#8B5A2B] text-lg leading-none print-symbol-small">∞</span>
                         ) : (
-                          <span className="opacity-40 font-normal">10</span>
+                          <span className="opacity-40 font-normal">{isPremiumUser ? AI_LIMITS.premiumMonthlyParse : AI_LIMITS.freeMonthlyParse}</span>
                         )}
                       </div>
                     </div>
                     <div className="w-full h-2 bg-white/60 rounded-full overflow-hidden border border-[#E8DCCB]/20 shadow-inner">
                       <motion.div 
                         initial={{ width: 0 }}
-                        animate={{ width: `${Math.min((aiUsage.count / (isPremiumUser ? 1000 : 10)) * 100, 100)}%` }}
-                        className={`h-full ${isPremiumUser ? 'bg-emerald-400' : (aiUsage.count >= 10 ? 'bg-red-400' : 'bg-orange-400')}`}
+                        animate={{ width: `${isAdmin ? 0 : Math.min((aiUsage.count / (isPremiumUser ? AI_LIMITS.premiumMonthlyParse : AI_LIMITS.freeMonthlyParse)) * 100, 100)}%` }}
+                        className={`h-full ${aiUsage.count >= (isPremiumUser ? AI_LIMITS.premiumMonthlyParse : AI_LIMITS.freeMonthlyParse) ? 'bg-red-400' : (isPremiumUser ? 'bg-emerald-400' : 'bg-orange-400')}`}
                       />
                     </div>
                   </div>
@@ -1916,7 +1925,7 @@ const App: React.FC = () => {
   const [subscriptionStatus, setSubscriptionStatus] = useState<'free' | 'active'>('free');
   const [subTypeLabel, setSubTypeLabel] = useState('一般用戶');
   const [aiUsage, setAiUsage] = useState({ date: '', count: 0 });
-  const [aiQaUsage, setAiQaUsage] = useState({ date: '', count: 0 });
+  const [aiQaUsage, setAiQaUsage] = useState<{ date: string; count: number; week?: string; weekCount?: number }>({ date: '', count: 0 });
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
 
   // 藍新金流付費跳轉處理
@@ -2896,10 +2905,13 @@ const App: React.FC = () => {
     const q = searchQuery.trim();
     if (!q) return;
 
+    if (isPremiumUser && !isAdmin && aiQaUsage.date === getTodayString() && aiQaUsage.count >= AI_LIMITS.premiumDailyQa) {
+      showToast(`今天的 AI 問答次數已達上限 (${AI_LIMITS.premiumDailyQa}次)，明天會自動重置`);
+      return;
+    }
     if (!isPremiumUser) {
-      const today = getTodayString();
-      if (aiQaUsage.date === today && aiQaUsage.count >= 3) {
-        triggerUpgradePrompt(true, "您的免費 AI 問問次數已達今日上限 (3次)，升級 Premium 可解鎖無限次數與雲端備份！");
+      if (aiQaUsage.week === getThisWeekString() && (aiQaUsage.weekCount || 0) >= AI_LIMITS.freeWeeklyQa) {
+        triggerUpgradePrompt(true, `免費版每週可以使用 ${AI_LIMITS.freeWeeklyQa} 次 AI 問答，本週已用完。升級 Premium 每天可以問 ${AI_LIMITS.premiumDailyQa} 次！`);
         return;
       }
     }
@@ -3122,7 +3134,7 @@ const App: React.FC = () => {
     if (!isPremiumUser) {
       const thisMonth = getThisMonthString();
       if (aiUsage.date === thisMonth && aiUsage.count >= 10) {
-        triggerUpgradePrompt(true, "每月 AI 解析次數已達上限 (10次)，升級 Premium 可解鎖無限次數！");
+        triggerUpgradePrompt(true, `每月 AI 解析次數已達上限 (${AI_LIMITS.freeMonthlyParse}次)，升級 Premium 每月可以解析 ${AI_LIMITS.premiumMonthlyParse} 次！`);
         return;
       }
     }
@@ -3330,7 +3342,7 @@ const App: React.FC = () => {
     if (!isPremiumUser) {
       const thisMonth = getThisMonthString();
       if (aiUsage.date === thisMonth && aiUsage.count >= 10) {
-        triggerUpgradePrompt(true, "每月 AI 解析次數已達上限 (10次)，升級 Premium 可解鎖無限次數！");
+        triggerUpgradePrompt(true, `每月 AI 解析次數已達上限 (${AI_LIMITS.freeMonthlyParse}次)，升級 Premium 每月可以解析 ${AI_LIMITS.premiumMonthlyParse} 次！`);
         return;
       }
     }
@@ -6009,7 +6021,7 @@ const App: React.FC = () => {
                                 </span>
                               </td>
                               <td className="p-4 font-mono font-black text-xs text-slate-500">
-                                {u.aiUsage?.count || 0} / {isVipUser || isTrial ? '∞' : '10'}
+                                {u.aiUsage?.count || 0} / {isVipUser || isTrial ? AI_LIMITS.premiumMonthlyParse : AI_LIMITS.freeMonthlyParse}
                               </td>
                               <td className="p-4 pr-6 text-right space-x-2">
                                 <button

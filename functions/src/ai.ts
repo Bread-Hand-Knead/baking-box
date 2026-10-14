@@ -18,8 +18,10 @@ const GEMINI_MODEL = "gemini-3-flash-preview";
 
 // 次數上限
 const FREE_MONTHLY_PARSE_LIMIT = 10;
-const PREMIUM_MONTHLY_PARSE_LIMIT = 1000;
-const FREE_DAILY_QA_LIMIT = 3;
+const PREMIUM_MONTHLY_PARSE_LIMIT = 100;
+// 問答：免費每週 3 次、Premium 每天 30 次（管理員不受限制）
+const FREE_WEEKLY_QA_LIMIT = 3;
+const PREMIUM_DAILY_QA_LIMIT = 30;
 
 // 單次輸入長度上限（避免被拿來塞超大內容）
 const MAX_PASTE_CHARS = 50000;
@@ -268,6 +270,15 @@ ${notesContext || '（目前沒有筆記）'}
 // 與前端相同的日期格式 (UTC)
 const getTodayString = () => new Date().toISOString().split("T")[0];
 const getThisMonthString = () => new Date().toISOString().substring(0, 7);
+// 本週（週一開始）的日期字串，例如 2026-10-12
+const getThisWeekString = () => {
+  const d = new Date();
+  const diff = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - diff);
+  return d.toISOString().split("T")[0];
+};
+
+const isAdminEmail = (email: string) => ADMIN_EMAILS.includes(email.toLowerCase().trim());
 
 // 判斷是否為進階用戶（與前端 App.tsx 的判斷方式一致）
 function isPremium(data: admin.firestore.DocumentData | undefined, email: string): boolean {
@@ -411,6 +422,7 @@ export const aiGenerate = onCall(
 
     const [settingsSnap, usageSnap] = await Promise.all([userSettingsRef.get(), userUsageRef.get()]);
     const premium = isPremium(settingsSnap.data(), email);
+    const admin_ = isAdminEmail(email);
     const usageData = usageSnap.data() || {};
     const now = Date.now();
 
@@ -424,20 +436,29 @@ export const aiGenerate = onCall(
       }
 
       const today = getTodayString();
+      const week = getThisWeekString();
       const currentQa = usageData.qa_date === today ? Number(usageData.qa_count || 0) : 0;
-      if (!premium && currentQa >= FREE_DAILY_QA_LIMIT) {
-        throw new HttpsError("resource-exhausted", `您的免費 AI 問問次數已達今日上限 (${FREE_DAILY_QA_LIMIT}次)，升級 Premium 可解鎖無限次數與雲端備份！`);
+      const currentWeekQa = usageData.qa_week === week ? Number(usageData.qa_week_count || 0) : 0;
+      if (!admin_) {
+        if (!premium && currentWeekQa >= FREE_WEEKLY_QA_LIMIT) {
+          throw new HttpsError("resource-exhausted", `免費版每週可以使用 ${FREE_WEEKLY_QA_LIMIT} 次 AI 問答，本週已用完。升級 Premium 每天可以問 ${PREMIUM_DAILY_QA_LIMIT} 次！`);
+        }
+        if (premium && currentQa >= PREMIUM_DAILY_QA_LIMIT) {
+          throw new HttpsError("resource-exhausted", `今天的 AI 問答次數已達上限 (${PREMIUM_DAILY_QA_LIMIT}次)，明天會自動重置。`);
+        }
       }
 
       const answer = await callGemini(buildQaPrompt(recipesContext, notesContext, question));
 
       const newCount = currentQa + 1;
+      const newWeekCount = currentWeekQa + 1;
+      const aiQaUsage = { date: today, count: newCount, week, weekCount: newWeekCount };
       await Promise.all([
-        userUsageRef.set({ uid, email, qa_date: today, qa_count: newCount, updatedAt: now }, { merge: true }),
-        userSettingsRef.set({ aiQaUsage: { date: today, count: newCount }, updatedAt: now }, { merge: true }),
+        userUsageRef.set({ uid, email, qa_date: today, qa_count: newCount, qa_week: week, qa_week_count: newWeekCount, updatedAt: now }, { merge: true }),
+        userSettingsRef.set({ aiQaUsage, updatedAt: now }, { merge: true }),
       ]);
 
-      return { text: answer, aiQaUsage: { date: today, count: newCount } };
+      return { text: answer, aiQaUsage };
     }
 
     /* ----- 食譜解析 / 心得筆記解析 ----- */
@@ -451,12 +472,12 @@ export const aiGenerate = onCall(
       const month = getThisMonthString();
       const currentCount = usageData.month === month ? Number(usageData.ai_parse_count || 0) : 0;
       const limit = premium ? PREMIUM_MONTHLY_PARSE_LIMIT : FREE_MONTHLY_PARSE_LIMIT;
-      if (currentCount >= limit) {
+      if (!admin_ && currentCount >= limit) {
         throw new HttpsError(
           "resource-exhausted",
           premium
             ? `本月 AI 解析次數已達上限 (${limit}次)，下個月會自動重置。`
-            : `每月 AI 解析次數已達上限 (${limit}次)，升級 Premium 可解鎖更多次數！`
+            : `每月 AI 解析次數已達上限 (${limit}次)，升級 Premium 每月可以解析 ${PREMIUM_MONTHLY_PARSE_LIMIT} 次！`
         );
       }
 
