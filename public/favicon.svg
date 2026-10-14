@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFF6EA"/>
+      <stop offset="1" stop-color="#FDE7CC"/>
+    </linearGradient>
+    <linearGradient id="crust" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#D9822B"/>
+      <stop offset="1" stop-color="#B8641E"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <!-- 吐司切片：外皮 -->
+  <path d="M150 404 Q128 404 128 382 L128 254 C 92 232 98 146 172 138 C 204 104 308 104 340 138 C 414 146 420 232 384 254 L384 382 Q384 404 362 404 Z"
+        fill="url(#crust)"/>
+  <!-- 吐司切片：內裡 -->
+  <path d="M168 382 Q154 382 154 368 L154 246 C 126 230 132 168 186 162 C 214 134 298 134 326 162 C 380 168 386 230 358 246 L358 368 Q358 382 344 382 Z"
+        fill="#FCE1B4"/>
+  <!-- 小氣孔 -->
+  <g fill="#F2C98C">
+    <ellipse cx="214" cy="250" rx="9" ry="6"/>
+    <ellipse cx="290" cy="228" rx="7" ry="5"/>
+    <ellipse cx="248" cy="300" rx="8" ry="5"/>
+    <ellipse cx="312" cy="318" rx="6" ry="4"/>
+    <ellipse cx="200" cy="334" rx="6" ry="4"/>
+  </g>
+  <!-- 靈感小星光 -->
+  <path d="M392 92 C 396 116 404 124 428 128 C 404 132 396 140 392 164 C 388 140 380 132 356 128 C 380 124 388 116 392 92 Z" fill="#E67E22"/>
+  <path d="M120 112 C 122 124 126 128 138 130 C 126 132 122 136 120 148 C 118 136 114 132 102 130 C 114 128 118 124 120 112 Z" fill="#F0A35E"/>
+</svg>

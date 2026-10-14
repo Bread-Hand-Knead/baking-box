@@ -14,10 +14,10 @@ export default defineConfig(() => {
         react(),
         VitePWA({
           registerType: 'autoUpdate',
-          includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+          includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png'],
           manifest: {
-            name: '烘焙百寶箱 Baking Box',
-            short_name: 'Baking Box',
+            name: '烘焙靈感箱 Baking Box',
+            short_name: '烘焙靈感箱',
             description: '您的個人私有雲端烘焙食譜庫',
             theme_color: '#E67E22',
             background_color: '#FDFCFB',
