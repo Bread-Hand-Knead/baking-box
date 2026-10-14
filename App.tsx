@@ -1907,6 +1907,30 @@ const cloudSaveErrorMessage = (error: any, fallback: string): string => {
   return fallback;
 };
 
+
+// ---------------- 會員狀態（跟後端 ai.ts 的 isPremium 規則一致） ----------------
+// 付費會員以「到期日」為準，過期就自動變回免費版；試用、永久 VIP、管理員另外判斷
+const getMembershipStatus = (data: any, isAdminUser: boolean) => {
+  const now = Date.now();
+  const isPermanentVip = data?.is_permanent_vip === true;
+  const isTrialActive = typeof data?.trial_until === 'number' && data.trial_until > now;
+  const expiresAt = typeof data?.subscriptionExpiresAt === 'number' ? data.subscriptionExpiresAt : null;
+  const isPaidActive = expiresAt !== null && expiresAt > now;
+  return {
+    active: isAdminUser || isPermanentVip || isTrialActive || isPaidActive,
+    isPermanentVip,
+    isTrialActive,
+    isPaidActive,
+    expiresAt,
+    trialDaysLeft: isTrialActive ? Math.ceil((data.trial_until - now) / (24 * 60 * 60 * 1000)) : 0,
+  };
+};
+
+const formatDateTW = (ts: number) => {
+  const d = new Date(ts);
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+};
+
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -2197,26 +2221,18 @@ const App: React.FC = () => {
           return;
         }
 
-        let subStatus: 'free' | 'active' = 'free';
-        const now = Date.now();
-        const isTrialActive = data.trial_until && data.trial_until > now;
-        const isPermanentVip = data.is_permanent_vip === true;
-
-        if (isAdmin || data.subscriptionStatus === 'active' || data.is_vip || isTrialActive || isPermanentVip) {
-          subStatus = 'active';
-        }
+        // 付費會員以到期日判斷，過期自動回到免費版
+        const membership = getMembershipStatus(data, isAdmin);
+        const subStatus: 'free' | 'active' = membership.active ? 'active' : 'free';
 
         setSubscriptionStatus(subStatus);
         setIsVip(subStatus === 'active');
         
         let label = '一般用戶';
         if (isAdmin) label = '超級管理員';
-        else if (isPermanentVip) label = '永久 VIP';
-        else if (isTrialActive) {
-          const remainingDays = Math.ceil((data.trial_until - now) / (24 * 60 * 60 * 1000));
-          label = `試用中 (剩餘 ${remainingDays} 天)`;
-        }
-        else if (subStatus === 'active') label = 'Premium 會員';
+        else if (membership.isPermanentVip) label = '永久 VIP';
+        else if (membership.isPaidActive && membership.expiresAt) label = `Premium 會員（${formatDateTW(membership.expiresAt)} 到期）`;
+        else if (membership.isTrialActive) label = `試用中 (剩餘 ${membership.trialDaysLeft} 天)`;
         setSubTypeLabel(label);
         
         if (data.knowledge) setKnowledge(data.knowledge);
@@ -5975,23 +5991,24 @@ const App: React.FC = () => {
                       </thead>
                       <tbody className="divide-y divide-orange-50/30 text-sm">
                         {adminUsers.map(u => {
-                          const now = Date.now();
-                          const isPermanent = u.is_permanent_vip === true;
-                          const isTrial = u.trial_until && u.trial_until > now;
-                          const isVipUser = u.subscriptionStatus === 'active' || u.is_vip;
+                          const m = getMembershipStatus(u, false);
+                          const isTrial = m.isTrialActive;
+                          const isVipUser = m.isPaidActive || m.isPermanentVip;
                           
                           let planLabel = '免費版';
                           let planClass = 'bg-slate-100 text-slate-600';
-                          if (isPermanent) {
+                          if (m.isPermanentVip) {
                             planLabel = '永久 VIP';
                             planClass = 'bg-emerald-100 text-emerald-700 font-bold';
-                          } else if (isTrial) {
-                            const days = Math.ceil((u.trial_until - now) / (24 * 60 * 60 * 1000));
-                            planLabel = `試用中 (剩 ${days} 天)`;
-                            planClass = 'bg-orange-100 text-orange-700';
-                          } else if (isVipUser) {
-                            planLabel = '付費 VIP';
+                          } else if (m.isPaidActive && m.expiresAt) {
+                            planLabel = `付費 VIP（${formatDateTW(m.expiresAt)} 到期）`;
                             planClass = 'bg-amber-100 text-amber-700 font-bold';
+                          } else if (isTrial) {
+                            planLabel = `試用中 (剩 ${m.trialDaysLeft} 天)`;
+                            planClass = 'bg-orange-100 text-orange-700';
+                          } else if (typeof u.subscriptionExpiresAt === 'number') {
+                            planLabel = `已過期（${formatDateTW(u.subscriptionExpiresAt)}）`;
+                            planClass = 'bg-slate-100 text-slate-500';
                           }
 
                           return (
@@ -6036,7 +6053,7 @@ const App: React.FC = () => {
                                 >
                                   設為永久VIP
                                 </button>
-                                {(isPermanent || isTrial || isVipUser) && (
+                                {(m.isPermanentVip || isTrial || isVipUser) && (
                                   <button
                                     onClick={() => handleResetToFree(u.id)}
                                     className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-500 text-xs font-black rounded-lg transition-all active:scale-95 shadow-sm"
