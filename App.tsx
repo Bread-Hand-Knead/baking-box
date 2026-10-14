@@ -3991,7 +3991,7 @@ const App: React.FC = () => {
             )}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-orange-100 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl shadow-sm">🥖</div>
+                <img src={`${(import.meta as any).env?.BASE_URL || '/'}favicon.svg`} alt="烘焙靈感箱" className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl shadow-sm shrink-0" />
                 <div>
                   <h1 className="text-3xl font-black tracking-tight text-[#E67E22] leading-tight">
                     烘焙靈感箱
