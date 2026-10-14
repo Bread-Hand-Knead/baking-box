@@ -2,7 +2,7 @@ import { onRequest, onCall, HttpsError } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2";
 import * as admin from "firebase-admin";
 import * as crypto from "crypto";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, DocumentReference } from "firebase-admin/firestore";
 import { FIRESTORE_DATABASE_ID } from "./ai";
 
 admin.initializeApp();
@@ -326,3 +326,48 @@ export const adminUpdateUserVip = onCall(async (request) => {
   return { success: true, targetUserId, action };
 });
 
+/**
+ * 使用者刪除自己的帳號 (Callable Function)
+ * 刪除：食譜、設定（含心得筆記）、分類、草稿、AI 使用紀錄，最後刪除登入帳號。
+ * 保留：付款訂單紀錄（依稅務與會計法規需保存一段時間，見隱私權政策）。
+ */
+export const deleteMyAccount = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "請先登入。");
+  }
+  const uid = request.auth.uid;
+  const email = String(request.auth.token.email || "").toLowerCase().trim();
+  if (email === "linda6623@gmail.com" || email === "linda6623@gamil.com") {
+    throw new HttpsError("permission-denied", "管理員帳號不能從這裡刪除。");
+  }
+  if (request.data?.confirm !== "刪除帳號") {
+    throw new HttpsError("invalid-argument", "請輸入「刪除帳號」確認。");
+  }
+
+  // 1) 食譜：author_id 或 uid 是本人的都刪（分批，每批最多 400 筆）
+  const recipeRefs = new Map<string, DocumentReference>();
+  for (const field of ["author_id", "uid"]) {
+    const snap = await db.collection("recipes").where(field, "==", uid).get();
+    snap.docs.forEach((d: { id: string; ref: DocumentReference }) => recipeRefs.set(d.id, d.ref));
+  }
+  const refs = Array.from(recipeRefs.values());
+  for (let i = 0; i < refs.length; i += 400) {
+    const batch = db.batch();
+    refs.slice(i, i + 400).forEach((ref) => batch.delete(ref));
+    await batch.commit();
+  }
+
+  // 2) 個人設定（含心得筆記）、分類、草稿、AI 使用紀錄
+  await Promise.all([
+    db.collection("userSettings").doc(uid).delete(),
+    db.collection("user_categories").doc(uid).delete(),
+    db.collection("drafts").doc(uid).delete(),
+    db.collection("user_usage").doc(uid).delete(),
+  ]);
+
+  // 3) 刪除登入帳號
+  await admin.auth().deleteUser(uid);
+
+  console.log(`Account ${uid} deleted (${refs.length} recipes).`);
+  return { success: true, deletedRecipes: refs.length };
+});

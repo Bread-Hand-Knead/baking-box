@@ -1447,6 +1447,7 @@ const Sidebar: React.FC<{
   user: User | null; 
   onLogin: () => void; 
   onLogout: () => void;
+  onDeleteAccount: () => void;
   subscriptionStatus: string;
   isAdmin: boolean;
   recipeCount: number;
@@ -1458,7 +1459,7 @@ const Sidebar: React.FC<{
   subTypeLabel: string;
   aiUsage: { count: number };
   onNavigate: (view: AppView) => void;
-}> = ({ isOpen, onClose, user, onLogin, onLogout, subscriptionStatus, isAdmin, isVip, subTypeLabel, recipeCount, onUpgrade, onShowInstructions, onShowHelp, aiUsage, onNavigate }) => {
+}> = ({ isOpen, onClose, user, onLogin, onLogout, onDeleteAccount, subscriptionStatus, isAdmin, isVip, subTypeLabel, recipeCount, onUpgrade, onShowInstructions, onShowHelp, aiUsage, onNavigate }) => {
   const isPremiumUser = isVip || isAdmin || subscriptionStatus === 'active';
 
   return (
@@ -1701,6 +1702,14 @@ const Sidebar: React.FC<{
                   >
                     <LogOut size={18} />
                     <span>登出帳號</span>
+                  </button>
+                )}
+                {user && !isAdmin && (
+                  <button
+                    onClick={() => { onDeleteAccount(); onClose(); }}
+                    className="w-full px-4 py-2 text-slate-400 font-bold text-xs hover:text-red-500 hover:bg-red-50 rounded-xl transition-all text-left"
+                  >
+                    刪除帳號
                   </button>
                 )}
               </div>
@@ -2006,6 +2015,9 @@ const App: React.FC = () => {
   const [isInstructionsOpen, setIsInstructionsOpen] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [isPageHelpOpen, setIsPageHelpOpen] = useState(false);
+  const [isDeleteAccountOpen, setIsDeleteAccountOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [suppressUpgradeModal, setSuppressUpgradeModal] = useState(false);
 
   const recipeStats = useMemo(() => {
@@ -2353,6 +2365,24 @@ const App: React.FC = () => {
     } catch (error) {
       console.error("Login Error:", error);
       showToast("登入失敗");
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText.trim() !== '刪除帳號') return;
+    setIsDeletingAccount(true);
+    try {
+      const deleteFn = httpsCallable(functions, 'deleteMyAccount');
+      await deleteFn({ confirm: '刪除帳號' });
+      setIsDeleteAccountOpen(false);
+      await handleLogout();
+      showToast('帳號與資料已刪除，謝謝你使用烘焙靈感箱');
+    } catch (error: any) {
+      console.error('Delete account error:', error);
+      const msg = String(error?.message || '');
+      showToast(/[\u4e00-\u9fff]/.test(msg) ? msg : '刪除失敗，請稍後再試或來信聯絡我們');
+    } finally {
+      setIsDeletingAccount(false);
     }
   };
 
@@ -3938,6 +3968,7 @@ const App: React.FC = () => {
         user={user}
         onLogin={handleLogin}
         onLogout={handleLogout}
+        onDeleteAccount={() => { setDeleteConfirmText(''); setIsDeleteAccountOpen(true); }}
         subscriptionStatus={subscriptionStatus}
         isAdmin={isAdmin}
         isVip={isVip}
@@ -6770,6 +6801,46 @@ const App: React.FC = () => {
         <button onClick={() => setView(AppView.SCALING)} className={`flex flex-col items-center gap-1 transition-all ${view === AppView.SCALING ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}><span className="text-2xl">⚖️</span><span className="text-[10px] font-black">換算</span></button>
         <button onClick={() => setView(AppView.COLLECTION)} className={`flex flex-col items-center gap-1 transition-all ${view === AppView.COLLECTION ? 'text-[#E67E22] scale-110' : 'text-orange-200 hover:text-orange-400'}`}><span className="text-2xl">📥</span><span className="text-[10px] font-black">收集</span></button>
       </nav>
+
+      {isDeleteAccountOpen && (
+        <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm print:hidden" onClick={() => !isDeletingAccount && setIsDeleteAccountOpen(false)}>
+          <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <h3 className="text-xl font-black text-red-500">刪除帳號</h3>
+            <p className="text-sm font-bold text-slate-600 leading-relaxed">
+              刪除後，以下資料會<span className="text-red-500">永久刪除、無法復原</span>：所有食譜與照片、心得筆記、分類、草稿、AI 使用紀錄，以及你的登入帳號。
+            </p>
+            <ul className="text-xs font-bold text-slate-500 space-y-1.5 bg-slate-50 rounded-2xl p-4 list-disc pl-8">
+              <li>想保留食譜的話，請先關掉這個視窗，到首頁按「匯出備份」。</li>
+              <li>剩餘的會員天數不會自動退款，如需退款請先來信。</li>
+              <li>付款紀錄依法需保存一段時間，不會一併刪除。</li>
+            </ul>
+            <label className="block text-sm font-black text-slate-700">請輸入「刪除帳號」確認</label>
+            <input
+              type="text"
+              value={deleteConfirmText}
+              onChange={e => setDeleteConfirmText(e.target.value)}
+              placeholder="刪除帳號"
+              className="w-full px-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 outline-none text-base font-bold focus:border-red-300"
+            />
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setIsDeleteAccountOpen(false)}
+                disabled={isDeletingAccount}
+                className="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-600 font-black text-sm"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deleteConfirmText.trim() !== '刪除帳號' || isDeletingAccount}
+                className={`flex-1 py-3 rounded-2xl font-black text-sm text-white ${deleteConfirmText.trim() === '刪除帳號' && !isDeletingAccount ? 'bg-red-500 hover:bg-red-600' : 'bg-red-200 cursor-not-allowed'}`}
+              >
+                {isDeletingAccount ? '刪除中...' : '永久刪除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isPageHelpOpen && <PageHelpModal view={view} onClose={() => setIsPageHelpOpen(false)} />}
 
