@@ -150,6 +150,7 @@ export interface Recipe {
   sectionsOrder?: string[]; isBakingRecipe: boolean; isTried: boolean;
   fermentationStages?: FermentationStage[]; bakingStages?: BakingStage[];
   notes?: string; tags?: string[]; moldName?: string;
+  equipment?: string[]; // 所需器具（不含模具，模具放 moldName）
   doughWeight?: number | string; crustWeight?: number | string; oilPasteWeight?: number | string; fillingWeight?: number | string;
   // 多種麵團／內餡的分割重量：第一種用 doughWeight / fillingWeight（可取名），其他的放在 extra 清單
   doughWeightName?: string; fillingWeightName?: string;
@@ -783,7 +784,7 @@ const formatRecipeForAi = (r: Recipe): string => {
 ${ingredientLines || '無'}
 ${ferment ? `發酵: ${ferment}\n` : ''}${bake ? `烘烤: ${bake}\n` : ''}步驟:
 ${(r.instructions || []).join('\n')}
-備註: ${r.notes || '無'}
+${r.moldName ? `模具: ${r.moldName}\n` : ''}${r.equipment && r.equipment.length ? `器具: ${r.equipment.join(', ')}\n` : ''}備註: ${r.notes || '無'}
 標籤: ${r.tags && r.tags.length ? r.tags.join(', ') : '無'}`;
 };
 
@@ -1803,6 +1804,65 @@ const SplitWeightEditor: React.FC<{
   );
 };
 
+// ---------------- 所需器具 ----------------
+const COMMON_EQUIPMENT = ['攪拌機', '打蛋器', '刮刀', '刮板', '擀麵棍', '篩網', '溫度計', '擠花袋', '烘焙紙', '噴水器', '發酵布', '割紋刀'];
+
+const normalizeEquipment = (list: unknown): string[] => {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  list.forEach(item => {
+    const name = String(item ?? '').trim();
+    if (name && !seen.has(name)) { seen.add(name); out.push(name); }
+  });
+  return out;
+};
+
+const EquipmentEditor: React.FC<{ items: string[] | undefined; onChange: (list: string[]) => void }> = ({ items, onChange }) => {
+  const list = items || [];
+  const inputClass = "px-4 py-3 rounded-2xl bg-orange-50/30 border border-orange-100 outline-none text-base font-bold";
+  const suggestions = COMMON_EQUIPMENT.filter(name => !list.some(item => item.trim() === name));
+  return (
+    <div className="space-y-2">
+      <label className="block text-sm font-black text-slate-600 uppercase mb-1.5 ml-1">🧰 所需器具</label>
+      {list.map((item, idx) => (
+        <div key={idx} className="flex gap-2 items-center">
+          <input
+            type="text"
+            value={item}
+            onChange={e => onChange(list.map((w, i) => i === idx ? e.target.value : w))}
+            placeholder="例如：SN 擠花嘴 #8"
+            className={`${inputClass} flex-1 min-w-0`}
+          />
+          <button type="button" onClick={() => onChange(list.filter((_, i) => i !== idx))} className="w-9 h-9 shrink-0 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-red-500 flex items-center justify-center" aria-label="刪除這個器具">
+            <X size={16} />
+          </button>
+        </div>
+      ))}
+      <button type="button" onClick={() => onChange([...list, ''])} className="text-xs font-black text-orange-600 bg-orange-50 border border-orange-100 px-3 py-1.5 rounded-xl hover:bg-orange-100 transition-all active:scale-95">
+        ＋ 新增器具
+      </button>
+      {suggestions.length > 0 && (
+        <div className="pt-1">
+          <div className="text-[11px] font-bold text-slate-400 ml-1 mb-1.5">常用器具，點一下就加入：</div>
+          <div className="flex flex-wrap gap-1.5">
+            {suggestions.map(name => (
+              <button
+                key={name}
+                type="button"
+                onClick={() => onChange([...list.filter(item => item.trim()), name])}
+                className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-2.5 py-1 rounded-full hover:border-orange-300 hover:text-orange-600 transition-all active:scale-95"
+              >
+                ＋ {name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 
 // ---------------- 各頁的「？」使用說明 ----------------
 type PageHelpTip = { icon: string; title: string; text: string };
@@ -1823,6 +1883,7 @@ const PAGE_HELP: Partial<Record<AppView, { title: string; tips: PageHelpTip[] }>
       { icon: '✨', title: 'AI 自動填寫', text: '在「AI 快速筆記助手」貼上文字，或按「上傳照片或 PDF」，也可以直接從資料夾把檔案拖曳到框框裡（一次最多 8 張／頁），再按「AI 即刻解析」，材料、步驟、發酵和烤溫會自動填好。照片裡有成品照的話，也會自動裁成封面。' },
       { icon: '✅', title: '存檔前核對', text: 'AI 偶爾會看錯數字，存檔前請檢查材料重量、小數點、烤溫和時間。' },
       { icon: '⚖️', title: '分割重量', text: '填分割後一個麵團或內餡的重量。按「＋ 新增」可以填好幾種，例如雙色麵團、彩色月餅的不同油皮。' },
+      { icon: '🧰', title: '所需器具', text: '在「模具規格」下方列出要用的器具，按「＋ 新增器具」自己輸入，或點常用器具一鍵加入。AI 解析時也會自動抓出來。' },
       { icon: '⏲️', title: '發酵與烤溫', text: '「發酵時序」可以新增多個階段（鬆弛也放這裡），「烤溫設定」可以填上下火和時間。' },
       { icon: '🕒', title: '草稿', text: '編輯時會自動存草稿，不小心離開的話，按「還原最近草稿」就能找回來。' },
       { icon: '⚙️', title: '分類管理', text: '右上角的「分類管理」可以新增分類、子分類，並調整順序。' },
@@ -1832,6 +1893,7 @@ const PAGE_HELP: Partial<Record<AppView, { title: string; tips: PageHelpTip[] }>
     title: '食譜頁怎麼用',
     tips: [
       { icon: '✔️', title: '勾選步驟', text: '製作時點一下步驟就能打勾，方便追蹤做到哪裡。做完按「重置進度」可以清除勾選。' },
+      { icon: '🧰', title: '準備器具', text: '「所需器具」可以一樣一樣點來打勾，確認都準備好再開始。列印時會變成方框清單。' },
       { icon: '📝', title: '實作紀錄', text: '每次做完可以按「＋ 新增紀錄」，記下日期、評分、心得和成品照，下次調整配方時很好用。' },
       { icon: '🖨️', title: '列印／存 PDF', text: '按「列印 / 存為 PDF」可以印出食譜，或存成 PDF 帶進廚房。' },
       { icon: '✏️', title: '編輯或刪除', text: '頁面下方的「編輯配方」可以修改內容；「刪除配方」會永久刪除，請小心使用。' },
@@ -2099,6 +2161,9 @@ const App: React.FC = () => {
   const [smartPasteText, setSmartPasteText] = useState('');
   // 照片解析：使用者選的食譜照片（已壓縮的 JPEG data URL）
   const [pasteImages, setPasteImages] = useState<{ id: string; dataUrl: string }[]>([]);
+  // 食譜頁「所需器具」勾選清單（只是準備時用，不存檔；換食譜就清空）
+  const [checkedEquipment, setCheckedEquipment] = useState<string[]>([]);
+  useEffect(() => { setCheckedEquipment([]); }, [selectedRecipe?.id]);
   const [isPasteDragOver, setIsPasteDragOver] = useState(false);
   const pasteDragDepth = useRef(0);
   const [isPreparingImages, setIsPreparingImages] = useState(false);
@@ -3482,6 +3547,8 @@ const App: React.FC = () => {
       bakingStages: sanitizeBakingStages(parsed.bakingStages),
       instructions: Array.isArray(parsed.instructions) ? parsed.instructions : (parsed.instructions ? [parsed.instructions] : prev.instructions),
       tags: [...new Set([...(prev.tags || []), ...(parsed.tags || [])])],
+      moldName: parsed.moldName || prev.moldName || '',
+      equipment: normalizeEquipment([...(prev.equipment || []), ...(parsed.equipment || [])]),
       // 已經有封面照就保留，沒有才用 AI 從照片裁下來的成品照
       imageUrl: prev.imageUrl || parsed.imageUrl || ''
     }));
@@ -3518,7 +3585,9 @@ const App: React.FC = () => {
       doughWeightName: aiPreviewData.find(r => r.doughWeight)?.doughWeightName || '',
       fillingWeightName: aiPreviewData.find(r => r.fillingWeight)?.fillingWeightName || '',
       extraDoughWeights: aiPreviewData.find(r => r.doughWeight)?.extraDoughWeights || [],
-      extraFillingWeights: aiPreviewData.find(r => r.fillingWeight)?.extraFillingWeights || []
+      extraFillingWeights: aiPreviewData.find(r => r.fillingWeight)?.extraFillingWeights || [],
+      moldName: aiPreviewData.find(r => r.moldName)?.moldName || '',
+      equipment: normalizeEquipment(aiPreviewData.flatMap(r => r.equipment || []))
     };
     applyParsedRecipe(merged);
   };
@@ -5296,6 +5365,8 @@ const App: React.FC = () => {
                     </div>
                   </div>
 
+                  <EquipmentEditor items={formRecipe.equipment} onChange={list => setFormRecipe(p => ({ ...p, equipment: list }))} />
+
                 </div>
 
                 {/* 職人新增：食譜來源與紀錄區塊 */}
@@ -5707,6 +5778,7 @@ const App: React.FC = () => {
 
                       const recipeData = {
                         ...formRecipe,
+                        equipment: normalizeEquipment(formRecipe.equipment),
                         uid: user?.uid || null,
                         author_id: user?.uid || null,
                         updatedAt: Date.now()
@@ -6413,6 +6485,38 @@ const App: React.FC = () => {
                     })()}
                   </div>
                 )}
+
+                {/* 所需器具：畫面上可以勾選，列印時是方框清單 */}
+                {selectedRecipe.equipment && selectedRecipe.equipment.filter(e => e.trim()).length > 0 && (() => {
+                  const items = selectedRecipe.equipment.filter(e => e.trim());
+                  const doneCount = items.filter(name => checkedEquipment.includes(name)).length;
+                  return (
+                    <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-4 print:rounded-2xl print:border-slate-200 print:p-4 print:break-inside-avoid">
+                      <div className="flex items-center justify-between gap-2 ml-1">
+                        <h3 className="text-xs font-black text-orange-600 uppercase tracking-widest">🧰 所需器具</h3>
+                        <span className="text-[11px] font-bold text-slate-400 print:hidden">{doneCount === items.length ? '✅ 都準備好了！' : `已準備 ${doneCount} / ${items.length}，點一下打勾`}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {items.map(name => {
+                          const done = checkedEquipment.includes(name);
+                          return (
+                            <button
+                              key={name}
+                              type="button"
+                              onClick={() => setCheckedEquipment(prev => done ? prev.filter(n => n !== name) : [...prev, name])}
+                              className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border text-sm font-bold transition-all active:scale-95 print:bg-white print:border-slate-300 print:text-slate-800 print:no-underline ${done ? 'bg-green-50 border-green-200 text-green-700 line-through' : 'bg-orange-50/40 border-orange-100 text-slate-700 hover:border-orange-300'}`}
+                            >
+                              <span className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] shrink-0 print:bg-white print:border-slate-500 ${done ? 'bg-green-500 border-green-500 text-white' : 'bg-white border-slate-300'}`}>
+                                <span className="print:hidden">{done ? '✓' : ''}</span>
+                              </span>
+                              {name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* 食譜出處區塊 */}
                 {(selectedRecipe.sourceName || selectedRecipe.onlineCourse || selectedRecipe.sourceUrl || (selectedRecipe.sourceLinks && selectedRecipe.sourceLinks.length > 0) || selectedRecipe.sourceNote) && (

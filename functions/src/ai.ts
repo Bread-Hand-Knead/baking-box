@@ -105,6 +105,8 @@ const AI_RECIPE_SCHEMA = {
     instructions: { type: "array", items: { type: "string" } },
     tags: { type: "array", items: { type: "string" } },
     notes: { type: "string" },
+    moldName: { type: "string", description: "模具或烤盤規格，例如「12 兩吐司模」「6 吋圓模」「28x28 烤盤」；沒有提到就留空" },
+    equipment: { type: "array", items: { type: "string" }, description: "製作時需要的器具（不含模具），例如攪拌機、擠花袋、SN7082 花嘴、溫度計；只列原文有提到的" },
     doughWeight: { type: "number", description: "分割後一個麵團／麵糊的重量（克），只填數字" },
     fillingWeight: { type: "number", description: "分割後一個內餡／餡料的重量（克），只填數字" },
     doughWeightName: { type: "string", description: "有多種麵團各自分割時，第一種麵團的名稱（例如：藍色麵團）；只有一種就留空" },
@@ -196,13 +198,17 @@ const buildRecipePrompt = (smartPasteText: string) => `你是一個專業且極�
            - 多種內餡各自分割時同理：第一種填 fillingWeight 與 fillingWeightName，其餘放入 extraFillingWeights。只有一種時，名稱欄位留空、extra 清單不要填。
            - 中式點心（例如彩色月餅、酥皮點心）若有多種顏色／重量的油皮或油酥：第一種填 crustWeight＋crustWeightName（或 oilPasteWeight＋oilPasteWeightName），其餘依序放入 extraCrustWeights（或 extraOilPasteWeights）。
            - 原文沒有提到分割重量就不要填，不要自己推算。
+        7. 模具與器具：
+           - 模具、烤模、烤盤的規格（例如「12 兩吐司模」「6 吋活動圓模」「28x28 烤盤」）→ moldName，有多個就用「、」串起來。
+           - 其他需要的器具（例如攪拌機、打蛋器、刮板、擀麵棍、溫度計、擠花袋、花嘴型號、月餅壓模、發酵布）→ equipment，一樣器具一個項目，保留原文的型號或尺寸。
+           - 只列原文有寫到的器具，不要自己補常識性的器具（例如沒寫就不要加「烤箱」「碗」）。模具不要重複放進 equipment。
         
         【筆記內容】：
         ${smartPasteText}
         
         【輸出要求】：
         - 必須回傳純 JSON 格式，根節點名為 "recipes" (陣列)。
-        - 每個物件包含: title, description, notes, master, category, subcategory, doughWeight, fillingWeight, ingredients (name, amount, unit), instructions (字串陣列), liquidStarterIngredients, fillingIngredients, decorationIngredients, customSectionIngredients, fermentationStages, bakingStages。
+        - 每個物件包含: title, description, notes, master, category, subcategory, doughWeight, fillingWeight, moldName, equipment (器具字串陣列), ingredients (name, amount, unit), instructions (字串陣列), liquidStarterIngredients, fillingIngredients, decorationIngredients, customSectionIngredients, fermentationStages, bakingStages。
         `;
 
 // 照片解析：沿用文字解析的所有規則，只把「筆記內容」換成照片
