@@ -1820,7 +1820,7 @@ const PAGE_HELP: Partial<Record<AppView, { title: string; tips: PageHelpTip[] }>
   [AppView.CREATE]: {
     title: '新增食譜怎麼用',
     tips: [
-      { icon: '✨', title: 'AI 自動填寫', text: '在「AI 快速筆記助手」貼上文字，或按「上傳照片或 PDF」（一次最多 8 張／頁），再按「AI 即刻解析」，材料、步驟、發酵和烤溫會自動填好。照片裡有成品照的話，也會自動裁成封面。' },
+      { icon: '✨', title: 'AI 自動填寫', text: '在「AI 快速筆記助手」貼上文字，或按「上傳照片或 PDF」，也可以直接從資料夾把檔案拖曳到框框裡（一次最多 8 張／頁），再按「AI 即刻解析」，材料、步驟、發酵和烤溫會自動填好。照片裡有成品照的話，也會自動裁成封面。' },
       { icon: '✅', title: '存檔前核對', text: 'AI 偶爾會看錯數字，存檔前請檢查材料重量、小數點、烤溫和時間。' },
       { icon: '⚖️', title: '分割重量', text: '填分割後一個麵團或內餡的重量。按「＋ 新增」可以填好幾種，例如雙色麵團、彩色月餅的不同油皮。' },
       { icon: '⏲️', title: '發酵與烤溫', text: '「發酵時序」可以新增多個階段（鬆弛也放這裡），「烤溫設定」可以填上下火和時間。' },
@@ -2099,6 +2099,8 @@ const App: React.FC = () => {
   const [smartPasteText, setSmartPasteText] = useState('');
   // 照片解析：使用者選的食譜照片（已壓縮的 JPEG data URL）
   const [pasteImages, setPasteImages] = useState<{ id: string; dataUrl: string }[]>([]);
+  const [isPasteDragOver, setIsPasteDragOver] = useState(false);
+  const pasteDragDepth = useRef(0);
   const [isPreparingImages, setIsPreparingImages] = useState(false);
   const pasteImageInputRef = useRef<HTMLInputElement>(null);
 
@@ -3342,8 +3344,46 @@ const App: React.FC = () => {
   const isPdfFile = (f: File) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
 
   const handlePasteImagesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files: File[] = (Array.from(e.target.files || []) as File[]).filter(f => f.type.startsWith('image/') || isPdfFile(f));
+    const files: File[] = Array.from(e.target.files || []) as File[];
     e.target.value = '';
+    await addPasteFiles(files);
+  };
+
+  // 從資料夾拖曳檔案到 AI 解析框
+  const isFileDrag = (e: React.DragEvent) => Array.from(e.dataTransfer?.types || []).includes('Files');
+  const handlePasteDragEnter = (e: React.DragEvent) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    pasteDragDepth.current += 1;
+    setIsPasteDragOver(true);
+  };
+  const handlePasteDragOver = (e: React.DragEvent) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+  const handlePasteDragLeave = (e: React.DragEvent) => {
+    if (!isFileDrag(e)) return;
+    pasteDragDepth.current = Math.max(0, pasteDragDepth.current - 1);
+    if (pasteDragDepth.current === 0) setIsPasteDragOver(false);
+  };
+  const handlePasteDrop = async (e: React.DragEvent) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    pasteDragDepth.current = 0;
+    setIsPasteDragOver(false);
+    if (isAiParsing || isPreparingImages) {
+      showToast('正在處理中，請稍候再拖曳檔案');
+      return;
+    }
+    const all = Array.from(e.dataTransfer.files || []) as File[];
+    const ok = all.filter(f => f.type.startsWith('image/') || isPdfFile(f));
+    if (all.length > 0 && ok.length < all.length) showToast('只能上傳照片或 PDF，其他檔案已略過');
+    await addPasteFiles(ok);
+  };
+
+  const addPasteFiles = async (rawFiles: File[]) => {
+    const files = rawFiles.filter(f => f.type.startsWith('image/') || isPdfFile(f));
     if (files.length === 0) return;
 
     let room = MAX_PASTE_IMAGES - pasteImages.length;
@@ -4992,7 +5032,20 @@ const App: React.FC = () => {
                 </div>
 
                 {/* 1. 快速解析貼上 (Smart Paste) & 草稿還原 */}
-                <div className="bg-white p-6 rounded-[32px] border border-orange-50 shadow-sm space-y-4">
+                <div
+                  className={`relative bg-white p-6 rounded-[32px] border shadow-sm space-y-4 transition-all ${isPasteDragOver ? 'border-orange-400 ring-4 ring-orange-100' : 'border-orange-50'}`}
+                  onDragEnter={handlePasteDragEnter}
+                  onDragOver={handlePasteDragOver}
+                  onDragLeave={handlePasteDragLeave}
+                  onDrop={handlePasteDrop}
+                >
+                  {isPasteDragOver && (
+                    <div className="absolute inset-0 z-20 rounded-[32px] bg-orange-50/90 border-2 border-dashed border-orange-400 flex flex-col items-center justify-center gap-2 pointer-events-none">
+                      <Camera size={28} className="text-orange-500" />
+                      <span className="text-sm font-black text-orange-600">放開就能上傳照片或 PDF</span>
+                      <span className="text-[10px] font-bold text-orange-400">最多 {MAX_PASTE_IMAGES} 張／頁</span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center mb-1">
                     <label className="text-xs font-black text-orange-600 uppercase tracking-widest flex items-center gap-2">
                        ✨ AI 快速筆記助手
@@ -5040,7 +5093,7 @@ const App: React.FC = () => {
                         <span>{isPreparingImages ? '處理檔案中...' : '上傳照片或 PDF'}</span>
                       </button>
                       <span className="text-[10px] text-slate-400 font-bold">
-                        {pasteImages.length > 0 ? `已選 ${pasteImages.length} 張／頁（最多 ${MAX_PASTE_IMAGES}），同一份食譜的多頁會自動合併` : '講義、食譜書、截圖、PDF 都可以，可一次選多個'}
+                        {pasteImages.length > 0 ? `已選 ${pasteImages.length} 張／頁（最多 ${MAX_PASTE_IMAGES}），同一份食譜的多頁會自動合併` : '講義、食譜書、截圖、PDF 都可以，可一次選多個，也可以直接把檔案拖曳到這個框框'}
                       </span>
                     </div>
                     {pasteImages.length > 0 && (
