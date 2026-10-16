@@ -1816,6 +1816,62 @@ const SplitWeightEditor: React.FC<{
   );
 };
 
+// ---------------- 從步驟抓「鬆弛／醒麵」放進發酵時序 ----------------
+const RESTING_REGEX = /(滾圓|中間|室溫|冷藏|冷凍|分割後|分割|整形前|整型前|第[一二三]次|二次)?\s*(鬆弛|醒麵糰|醒麵團|醒麵)[^0-9。；;\n]{0,10}?(\d+(?:\.\d+)?(?:\s*[~～\-－到至]\s*\d+(?:\.\d+)?)?)\s*(分鐘|分|mins?|小時|hrs?|h)(?![a-z])/gi;
+
+const extractRestingStages = (texts: (string | undefined)[]): FermentationStage[] => {
+  const found: FermentationStage[] = [];
+  texts.forEach(raw => {
+    const text = String(raw || '').replace(/^\[SECTION\]/, '');
+    RESTING_REGEX.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = RESTING_REGEX.exec(text)) !== null) {
+      const prefix = m[1] || '';
+      const kind = m[2].startsWith('醒') ? '醒麵' : '鬆弛';
+      const time = m[3].replace(/\s+/g, '').replace(/[～到至－]/g, '~');
+      const unitRaw = m[4].toLowerCase();
+      const timeUnit: '分鐘' | '小時' = /^(小時|hrs?|h)$/.test(unitRaw) ? '小時' : '分鐘';
+      const name = `${prefix}${kind}`;
+      const temperature = prefix === '冷藏' ? '4' : '';
+      if (!found.some(f => f.name === name && f.time === time)) {
+        found.push({ name, time, timeUnit, temperature, humidity: '' });
+      }
+    }
+  });
+  return found;
+};
+
+const isRestingStageName = (name: string) => /鬆弛|醒麵/.test(name || '');
+const isEmptyFermentationStage = (s: FermentationStage) => !String(s.time || '').trim() && !String(s.temperature || '').trim() && !String(s.humidity || '').trim();
+
+// 把步驟裡找到、但發酵時序還沒有的鬆弛加進去，並依步驟出現的先後排序
+const mergeRestingStages = (stages: FermentationStage[] | undefined, instructions: string[] | undefined, notes?: string): { stages: FermentationStage[]; added: number } => {
+  const current = (stages || []).filter(s => !isEmptyFermentationStage(s));
+  const detected = extractRestingStages([...(instructions || []), notes]);
+  const sameTime = (a: string, b: string) => String(a || '').replace(/\s+/g, '') === String(b || '').replace(/\s+/g, '');
+  const missing = detected.filter(d => !current.some(c => isRestingStageName(c.name) && (sameTime(c.time, d.time) || c.name === d.name)));
+  if (missing.length === 0) return { stages: stages || [], added: 0 };
+  const fullText = (instructions || []).join('\n');
+  const positionOf = (s: FermentationStage) => {
+    const candidates = [s.name, s.name.replace(/(滾圓|中間|室溫|冷藏|冷凍|分割後|分割|整形前|整型前|第[一二三]次|二次)/, ''), s.name.slice(0, 2)].filter(Boolean);
+    for (const c of candidates) {
+      const i = fullText.indexOf(c);
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+  const all = [...current, ...missing];
+  let last = -1;
+  const withPos = all.map((s, idx) => {
+    let pos = positionOf(s);
+    if (pos < 0) pos = idx < current.length ? last + 0.5 : Number.MAX_SAFE_INTEGER;
+    last = pos;
+    return { s, pos, idx };
+  });
+  withPos.sort((a, b) => a.pos - b.pos || a.idx - b.idx);
+  return { stages: withPos.map(w => w.s), added: missing.length };
+};
+
 // ---------------- 所需器具 ----------------
 const COMMON_EQUIPMENT = ['攪拌機', '打蛋器', '刮刀', '刮板', '擀麵棍', '篩網', '溫度計', '擠花袋', '烘焙紙', '噴水器', '發酵布', '割紋刀'];
 
@@ -1896,7 +1952,7 @@ const PAGE_HELP: Partial<Record<AppView, { title: string; tips: PageHelpTip[] }>
       { icon: '✅', title: '存檔前核對', text: 'AI 偶爾會看錯數字，存檔前請檢查材料重量、小數點、烤溫和時間。' },
       { icon: '⚖️', title: '分割重量', text: '填分割後一個麵團或內餡的重量。按「＋ 新增」可以填好幾種，例如雙色麵團、彩色月餅的不同油皮。' },
       { icon: '🧰', title: '所需器具', text: '在「模具規格」下方列出要用的器具，按「＋ 新增器具」自己輸入，或點常用器具一鍵加入。AI 解析時也會自動抓出來。' },
-      { icon: '⏲️', title: '發酵與烤溫', text: '「發酵時序」可以新增多個階段（鬆弛也放這裡），「烤溫設定」可以填上下火和時間。' },
+      { icon: '⏲️', title: '發酵與烤溫', text: '「發酵時序」可以新增多個階段（鬆弛也放這裡；舊食譜可以按「🔍 從步驟找鬆弛」自動加入），「烤溫設定」可以填上下火和時間。' },
       { icon: '🕒', title: '草稿', text: '編輯時會自動存草稿，不小心離開的話，按「還原最近草稿」就能找回來。' },
       { icon: '⚙️', title: '分類管理', text: '右上角的「分類管理」可以新增分類、子分類，並調整順序。' },
     ],
@@ -3571,7 +3627,7 @@ const App: React.FC = () => {
       fillingSectionName: parsed.fillingSectionName || prev.fillingSectionName,
       decorationSectionName: parsed.decorationSectionName || prev.decorationSectionName,
       customSectionName: parsed.customSectionName || prev.customSectionName,
-      fermentationStages: parsed.fermentationStages || [],
+      fermentationStages: mergeRestingStages(parsed.fermentationStages || [], Array.isArray(parsed.instructions) ? parsed.instructions : (parsed.instructions ? [String(parsed.instructions)] : []), parsed.notes).stages,
       bakingStages: sanitizeBakingStages(parsed.bakingStages),
       instructions: Array.isArray(parsed.instructions) ? parsed.instructions : (parsed.instructions ? [parsed.instructions] : prev.instructions),
       tags: [...new Set([...(prev.tags || []), ...(parsed.tags || [])])],
@@ -5543,7 +5599,22 @@ const App: React.FC = () => {
                   <div className="p-6 bg-white rounded-[32px] border border-orange-50 shadow-sm space-y-4">
                     <div className="flex justify-between items-center">
                       <label className="text-xs font-black text-orange-600 uppercase tracking-widest">發酵時序</label>
-                      <button type="button" onClick={() => setFormRecipe(prev => ({ ...prev, fermentationStages: [...(prev.fermentationStages || []), { name: '', time: '', temperature: '', humidity: '' }] }))} className="text-[10px] font-bold bg-[#E67E22] text-white px-3 py-1.5 rounded-lg shadow-sm active:scale-95 transition-all">＋新增階段</button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const result = mergeRestingStages(formRecipe.fermentationStages, formRecipe.instructions, formRecipe.notes);
+                            if (result.added > 0) {
+                              setFormRecipe(prev => ({ ...prev, fermentationStages: result.stages }));
+                              showToast(`已從步驟找到 ${result.added} 個鬆弛，放進發酵時序了`);
+                            } else {
+                              showToast('步驟裡沒有找到還沒加入的鬆弛（要有時間，例如「鬆弛 15 分鐘」）');
+                            }
+                          }}
+                          className="text-[10px] font-bold bg-orange-50 text-orange-600 border border-orange-200 px-3 py-1.5 rounded-lg active:scale-95 transition-all hover:bg-orange-100"
+                        >🔍 從步驟找鬆弛</button>
+                        <button type="button" onClick={() => setFormRecipe(prev => ({ ...prev, fermentationStages: [...(prev.fermentationStages || []), { name: '', time: '', temperature: '', humidity: '' }] }))} className="text-[10px] font-bold bg-[#E67E22] text-white px-3 py-1.5 rounded-lg shadow-sm active:scale-95 transition-all">＋新增階段</button>
+                      </div>
                     </div>
                     <div className="space-y-6">
                       {formRecipe.fermentationStages?.map((stage, idx) => (
