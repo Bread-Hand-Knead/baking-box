@@ -1816,44 +1816,77 @@ const SplitWeightEditor: React.FC<{
   );
 };
 
-// ---------------- 從步驟抓「鬆弛／醒麵」放進發酵時序 ----------------
-const RESTING_REGEX = /(滾圓|中間|室溫|冷藏|冷凍|分割後|分割|整形前|整型前|第[一二三]次|二次)?\s*(鬆弛|醒麵糰|醒麵團|醒麵)[^0-9。；;\n]{0,10}?(\d+(?:\.\d+)?(?:\s*[~～\-－到至]\s*\d+(?:\.\d+)?)?)\s*(分鐘|分|mins?|小時|hrs?|h)(?![a-z])/gi;
+// ---------------- 從步驟抓「發酵／鬆弛／醒麵」放進發酵時序 ----------------
+const STAGE_PREFIX = '(基本|中間|最後|最終|一次|二次|三次|第[一二三]次|冷藏|冷凍|室溫|常溫|低溫|隔夜|滾圓|分割後|分割|整形後|整型後|整形前|整型前|桌上)';
+const STAGE_KIND = '(發酵|鬆弛|醒麵糰|醒麵團|醒麵)';
+const STAGE_TIME = '(\\d+(?:\\.\\d+)?(?:\\s*[~～\\-－到至]\\s*\\d+(?:\\.\\d+)?)?)\\s*(分鐘|分|mins?|小時|hrs?|h)(?![a-z])';
+// 「最後發酵 50 分鐘」「鬆弛約 10~15min」
+const STAGE_AFTER_REGEX = new RegExp(`${STAGE_PREFIX}?\\s*${STAGE_KIND}[^0-9。；;\\n]{0,10}?${STAGE_TIME}`, 'gi');
+// 「冷藏 30 分鐘鬆弛」「60 分鐘發酵」
+const STAGE_BEFORE_REGEX = new RegExp(`${STAGE_PREFIX}?\\s*${STAGE_TIME}[^\\d。，,；;\\n]{0,3}?${STAGE_KIND}`, 'gi');
+const PREFIX_ONLY_REGEX = new RegExp(`^${STAGE_PREFIX}`);
 
-const extractRestingStages = (texts: (string | undefined)[]): FermentationStage[] => {
-  const found: FermentationStage[] = [];
-  texts.forEach(raw => {
+const normalizeStageTime = (t: string) => t.replace(/\s+/g, '').replace(/[～到至－\-]/g, '~');
+const toTimeUnit = (u: string): '分鐘' | '小時' => (/^(小時|hrs?|h)$/i.test(u) ? '小時' : '分鐘');
+
+const extractFermentationStages = (texts: (string | undefined)[]): FermentationStage[] => {
+  const found: { stage: FermentationStage; pos: number }[] = [];
+  texts.forEach((raw, ti) => {
     const text = String(raw || '').replace(/^\[SECTION\]/, '');
-    RESTING_REGEX.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = RESTING_REGEX.exec(text)) !== null) {
-      const prefix = m[1] || '';
-      const kind = m[2].startsWith('醒') ? '醒麵' : '鬆弛';
-      const time = m[3].replace(/\s+/g, '').replace(/[～到至－]/g, '~');
-      const unitRaw = m[4].toLowerCase();
-      const timeUnit: '分鐘' | '小時' = /^(小時|hrs?|h)$/.test(unitRaw) ? '小時' : '分鐘';
-      const name = `${prefix}${kind}`;
-      const temperature = prefix === '冷藏' ? '4' : '';
-      if (!found.some(f => f.name === name && f.time === time)) {
-        found.push({ name, time, timeUnit, temperature, humidity: '' });
+    const add = (prefix: string, kindRaw: string, timeRaw: string, unitRaw: string, index: number, length: number) => {
+      const kind = kindRaw.startsWith('醒') ? '醒麵' : kindRaw;
+      const name = `${prefix || ''}${kind}`;
+      const time = normalizeStageTime(timeRaw);
+      // 同一句裡的溫度、濕度（例如「最後發酵 50 分鐘，35°C、濕度 85%」）
+      const clauseEnd = text.slice(index + length).search(/[。；;\n]/);
+      const after = text.slice(index + length, clauseEnd < 0 ? index + length + 25 : index + length + Math.min(clauseEnd, 25));
+      const before = text.slice(Math.max(0, index - 12), index);
+      const around = `${before} ${after}`;
+      const tempMatch = around.match(/(\d+(?:\s*[~～\-－]\s*\d+)?)\s*(?:°\s*C|℃|度|°)/i);
+      const humMatch = around.match(/(\d+(?:\s*[~～\-－]\s*\d+)?)\s*%/);
+      let temperature = tempMatch ? normalizeStageTime(tempMatch[1]) : '';
+      if (!temperature && /冷藏/.test(prefix || '')) temperature = '4';
+      const humidity = humMatch ? `${normalizeStageTime(humMatch[1])}%` : '';
+      if (!found.some(f => f.stage.name === name && f.stage.time === time)) {
+        found.push({ stage: { name, time, timeUnit: toTimeUnit(unitRaw), temperature, humidity }, pos: ti * 100000 + index });
       }
+    };
+    let m: RegExpExecArray | null;
+    const used: [number, number][] = [];
+    STAGE_AFTER_REGEX.lastIndex = 0;
+    while ((m = STAGE_AFTER_REGEX.exec(text)) !== null) {
+      used.push([m.index, m.index + m[0].length]);
+      add(m[1], m[2], m[3], m[4], m.index, m[0].length);
+    }
+    STAGE_BEFORE_REGEX.lastIndex = 0;
+    while ((m = STAGE_BEFORE_REGEX.exec(text)) !== null) {
+      const start = m.index, end = m.index + m[0].length;
+      // 這段時間已經被「發酵 60 分鐘」這種寫法用掉了，就不要再算一次
+      if (used.some(([a, b]) => start < b && end > a)) continue;
+      add(m[1], m[4], m[2], m[3], m.index, m[0].length);
     }
   });
-  return found;
+  return found.sort((a, b) => a.pos - b.pos).map(f => f.stage);
 };
 
-const isRestingStageName = (name: string) => /鬆弛|醒麵/.test(name || '');
 const isEmptyFermentationStage = (s: FermentationStage) => !String(s.time || '').trim() && !String(s.temperature || '').trim() && !String(s.humidity || '').trim();
+const stageKindOf = (name: string) => (/鬆弛/.test(name || '') ? '鬆弛' : /醒麵/.test(name || '') ? '醒麵' : /發酵/.test(name || '') ? '發酵' : '');
 
-// 把步驟裡找到、但發酵時序還沒有的鬆弛加進去，並依步驟出現的先後排序
-const mergeRestingStages = (stages: FermentationStage[] | undefined, instructions: string[] | undefined, notes?: string): { stages: FermentationStage[]; added: number } => {
+// 把步驟裡找到、但發酵時序還沒有的階段加進去，並依步驟出現的先後排序
+const mergeFermentationStages = (stages: FermentationStage[] | undefined, instructions: string[] | undefined, notes?: string): { stages: FermentationStage[]; added: number } => {
   const current = (stages || []).filter(s => !isEmptyFermentationStage(s));
-  const detected = extractRestingStages([...(instructions || []), notes]);
-  const sameTime = (a: string, b: string) => String(a || '').replace(/\s+/g, '') === String(b || '').replace(/\s+/g, '');
-  const missing = detected.filter(d => !current.some(c => isRestingStageName(c.name) && (sameTime(c.time, d.time) || c.name === d.name)));
+  const detected = extractFermentationStages([...(instructions || []), notes]);
+  const sameTime = (a: string, b: string) => normalizeStageTime(String(a || '')) === normalizeStageTime(String(b || ''));
+  const missing = detected.filter(d => !current.some(c => {
+    if (String(c.name || '').trim() === d.name) return true;
+    const ck = stageKindOf(c.name);
+    return ck !== '' && ck === stageKindOf(d.name) && sameTime(c.time, d.time);
+  }));
   if (missing.length === 0) return { stages: stages || [], added: 0 };
   const fullText = (instructions || []).join('\n');
   const positionOf = (s: FermentationStage) => {
-    const candidates = [s.name, s.name.replace(/(滾圓|中間|室溫|冷藏|冷凍|分割後|分割|整形前|整型前|第[一二三]次|二次)/, ''), s.name.slice(0, 2)].filter(Boolean);
+    const bare = s.name.replace(PREFIX_ONLY_REGEX, '');
+    const candidates = [s.name, bare && s.time ? `${bare}` : ''].filter(Boolean);
     for (const c of candidates) {
       const i = fullText.indexOf(c);
       if (i >= 0) return i;
@@ -1952,7 +1985,7 @@ const PAGE_HELP: Partial<Record<AppView, { title: string; tips: PageHelpTip[] }>
       { icon: '✅', title: '存檔前核對', text: 'AI 偶爾會看錯數字，存檔前請檢查材料重量、小數點、烤溫和時間。' },
       { icon: '⚖️', title: '分割重量', text: '填分割後一個麵團或內餡的重量。按「＋ 新增」可以填好幾種，例如雙色麵團、彩色月餅的不同油皮。' },
       { icon: '🧰', title: '所需器具', text: '在「模具規格」下方列出要用的器具，按「＋ 新增器具」自己輸入，或點常用器具一鍵加入。AI 解析時也會自動抓出來。' },
-      { icon: '⏲️', title: '發酵與烤溫', text: '「發酵時序」可以新增多個階段（鬆弛也放這裡；舊食譜可以按「🔍 從步驟找鬆弛」自動加入），「烤溫設定」可以填上下火和時間。' },
+      { icon: '⏲️', title: '發酵與烤溫', text: '「發酵時序」可以新增多個階段（鬆弛也放這裡；舊食譜可以按「🔍 從步驟找發酵／鬆弛」自動加入），「烤溫設定」可以填上下火和時間。' },
       { icon: '🕒', title: '草稿', text: '編輯時會自動存草稿，不小心離開的話，按「還原最近草稿」就能找回來。' },
       { icon: '⚙️', title: '分類管理', text: '右上角的「分類管理」可以新增分類、子分類，並調整順序。' },
     ],
@@ -3627,7 +3660,7 @@ const App: React.FC = () => {
       fillingSectionName: parsed.fillingSectionName || prev.fillingSectionName,
       decorationSectionName: parsed.decorationSectionName || prev.decorationSectionName,
       customSectionName: parsed.customSectionName || prev.customSectionName,
-      fermentationStages: mergeRestingStages(parsed.fermentationStages || [], Array.isArray(parsed.instructions) ? parsed.instructions : (parsed.instructions ? [String(parsed.instructions)] : []), parsed.notes).stages,
+      fermentationStages: mergeFermentationStages(parsed.fermentationStages || [], Array.isArray(parsed.instructions) ? parsed.instructions : (parsed.instructions ? [String(parsed.instructions)] : []), parsed.notes).stages,
       bakingStages: sanitizeBakingStages(parsed.bakingStages),
       instructions: Array.isArray(parsed.instructions) ? parsed.instructions : (parsed.instructions ? [parsed.instructions] : prev.instructions),
       tags: [...new Set([...(prev.tags || []), ...(parsed.tags || [])])],
@@ -5603,16 +5636,16 @@ const App: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => {
-                            const result = mergeRestingStages(formRecipe.fermentationStages, formRecipe.instructions, formRecipe.notes);
+                            const result = mergeFermentationStages(formRecipe.fermentationStages, formRecipe.instructions, formRecipe.notes);
                             if (result.added > 0) {
                               setFormRecipe(prev => ({ ...prev, fermentationStages: result.stages }));
-                              showToast(`已從步驟找到 ${result.added} 個鬆弛，放進發酵時序了`);
+                              showToast(`已從步驟找到 ${result.added} 個發酵／鬆弛階段，放進發酵時序了`);
                             } else {
-                              showToast('步驟裡沒有找到還沒加入的鬆弛（要有時間，例如「鬆弛 15 分鐘」）');
+                              showToast('步驟裡沒有找到還沒加入的發酵或鬆弛（要寫時間，例如「最後發酵 50 分鐘」「鬆弛 15 分鐘」）');
                             }
                           }}
                           className="text-[10px] font-bold bg-orange-50 text-orange-600 border border-orange-200 px-3 py-1.5 rounded-lg active:scale-95 transition-all hover:bg-orange-100"
-                        >🔍 從步驟找鬆弛</button>
+                        >🔍 從步驟找發酵／鬆弛</button>
                         <button type="button" onClick={() => setFormRecipe(prev => ({ ...prev, fermentationStages: [...(prev.fermentationStages || []), { name: '', time: '', temperature: '', humidity: '' }] }))} className="text-[10px] font-bold bg-[#E67E22] text-white px-3 py-1.5 rounded-lg shadow-sm active:scale-95 transition-all">＋新增階段</button>
                       </div>
                     </div>
