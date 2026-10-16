@@ -409,30 +409,42 @@ const Toast: React.FC<{
 }> = ({ isOpen, message, onClose }) => {
   const [shouldRender, setShouldRender] = useState(isOpen);
   const [isAnimating, setIsAnimating] = useState(false);
+  // 用 ref 記住 onClose，避免畫面每次更新都讓計時重新開始
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  const close = () => {
+    setIsAnimating(false);
+    setTimeout(() => setShouldRender(false), 200);
+    onCloseRef.current();
+  };
 
   useEffect(() => {
     if (isOpen) {
       setShouldRender(true);
       const timer = setTimeout(() => setIsAnimating(true), 10);
-      const closeTimer = setTimeout(() => {
-        setIsAnimating(false);
-        setTimeout(() => setShouldRender(false), 200);
-        onClose();
-      }, 1500);
+      // 停留時間：至少 3 秒，字越多停越久（最多 7 秒）
+      const duration = Math.min(7000, 3000 + message.length * 60);
+      const closeTimer = setTimeout(close, duration);
       return () => {
         clearTimeout(timer);
         clearTimeout(closeTimer);
       };
     }
-  }, [isOpen, onClose]);
+  }, [isOpen, message]);
 
   if (!shouldRender) return null;
 
   return (
     <div className="fixed top-24 left-0 right-0 z-[3000] flex justify-center pointer-events-none px-4">
-      <div className={`bg-white/80 backdrop-blur-md border border-emerald-100 px-6 py-3 rounded-2xl shadow-xl flex items-center gap-3 transition-all duration-200 ease-out ${isAnimating ? 'scale-100 opacity-100 translate-y-0' : 'scale-95 opacity-0 translate-y-4'}`}>
+      <div
+        onClick={close}
+        title="點一下關閉"
+        className={`pointer-events-auto cursor-pointer bg-white/90 backdrop-blur-md border border-emerald-100 px-6 py-3 rounded-2xl shadow-xl flex items-center gap-3 transition-all duration-200 ease-out ${isAnimating ? 'scale-100 opacity-100 translate-y-0' : 'scale-95 opacity-0 translate-y-4'}`}
+      >
         <span className="text-emerald-500 text-lg">✅</span>
         <span className="text-slate-800 font-black text-sm">{message}</span>
+        <span className="text-slate-300 text-xs font-black ml-1">✕</span>
       </div>
     </div>
   );
