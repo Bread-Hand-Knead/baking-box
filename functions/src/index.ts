@@ -357,16 +357,20 @@ export const deleteMyAccount = onCall(async (request) => {
     await batch.commit();
   }
 
-  // 2) 個人設定（含心得筆記）、分類、草稿、AI 使用紀錄
-  await Promise.all([
+  // 2) 先刪除登入帳號，讓這個帳號不能再登入
+  await admin.auth().deleteUser(uid);
+
+  // 3) 個人設定（含心得筆記）、分類、草稿、AI 使用紀錄
+  const deleteSettingsDocs = () => Promise.all([
     db.collection("userSettings").doc(uid).delete(),
     db.collection("user_categories").doc(uid).delete(),
     db.collection("drafts").doc(uid).delete(),
     db.collection("user_usage").doc(uid).delete(),
   ]);
-
-  // 3) 刪除登入帳號
-  await admin.auth().deleteUser(uid);
+  await deleteSettingsDocs();
+  // 使用者的網頁可能在刪除的瞬間又寫回一點資料，等幾秒再清一次
+  await new Promise((resolve) => setTimeout(resolve, 5000));
+  await deleteSettingsDocs();
 
   console.log(`Account ${uid} deleted (${refs.length} recipes).`);
   return { success: true, deletedRecipes: refs.length };
