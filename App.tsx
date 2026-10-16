@@ -2092,6 +2092,8 @@ const App: React.FC = () => {
   const [isDeleteAccountOpen, setIsDeleteAccountOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  // 刪除帳號期間停止所有寫入雲端的動作，避免刪掉的資料又被寫回去
+  const accountDeletingRef = useRef(false);
   const [suppressUpgradeModal, setSuppressUpgradeModal] = useState(false);
 
   const recipeStats = useMemo(() => {
@@ -2272,6 +2274,7 @@ const App: React.FC = () => {
 
     const docRef = doc(db, 'user_categories', user.uid);
     const unsubscribe = onSnapshot(docRef, (snapshot) => {
+      if (accountDeletingRef.current) return;
       if (snapshot.exists()) {
         const data = snapshot.data();
         isSyncingFromCloud.current = true;
@@ -2306,12 +2309,19 @@ const App: React.FC = () => {
 
     const docRef = doc(db, 'userSettings', user.uid);
     const unsubscribe = onSnapshot(docRef, (snapshot) => {
+      if (accountDeletingRef.current) return;
       if (snapshot.exists()) {
         const data = snapshot.data();
         isSyncingFromCloud.current = true;
         
         if (user && (!data.email || data.email !== user.email)) {
           saveUserSettings({ email: user.email });
+        }
+
+        // 舊帳號沒有註冊時間：用 Google 登入帳號真正的建立時間補上（只補一次）
+        if (user && !data.createdAt && !data.created_at && user.metadata?.creationTime) {
+          const created = new Date(user.metadata.creationTime).getTime();
+          if (!Number.isNaN(created)) saveUserSettings({ createdAt: created });
         }
 
         // 若無試用期欄位，則為其初始化 15 天試用期
@@ -2372,6 +2382,7 @@ const App: React.FC = () => {
 
   // Helper to sync categories to cloud immediately
   const syncCategoriesToCloud = async (newCategories: Category[]) => {
+    if (accountDeletingRef.current) return;
     if (!user) {
       localStorage.setItem(CATEGORIES_KEY, JSON.stringify(newCategories));
       return;
@@ -2388,7 +2399,7 @@ const App: React.FC = () => {
 
   // Helper to save settings to Firestore
   const saveUserSettings = async (updates: any) => {
-    if (!user) return;
+    if (!user || accountDeletingRef.current) return;
     try {
       await setDoc(doc(db, 'userSettings', user.uid), updates, { merge: true });
     } catch (error) {
@@ -2450,13 +2461,18 @@ const App: React.FC = () => {
   const handleDeleteAccount = async () => {
     if (deleteConfirmText.trim() !== '刪除帳號') return;
     setIsDeletingAccount(true);
+    accountDeletingRef.current = true;
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     try {
       const deleteFn = httpsCallable(functions, 'deleteMyAccount');
       await deleteFn({ confirm: '刪除帳號' });
       setIsDeleteAccountOpen(false);
       await handleLogout();
       showToast('帳號與資料已刪除，謝謝你使用烘焙靈感箱');
+      // 等登出完成、畫面清空後再恢復（下一個登入的人才能正常存檔）
+      setTimeout(() => { accountDeletingRef.current = false; }, 3000);
     } catch (error: any) {
+      accountDeletingRef.current = false;
       console.error('Delete account error:', error);
       const msg = String(error?.message || '');
       showToast(/[\u4e00-\u9fff]/.test(msg) ? msg : '刪除失敗，請稍後再試或來信聯絡我們');
@@ -3615,6 +3631,7 @@ const App: React.FC = () => {
     if ((view === AppView.CREATE || view === AppView.EDIT) && user && formRecipe.title) {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
       autoSaveTimerRef.current = setTimeout(async () => {
+        if (accountDeletingRef.current) return;
         try {
           await setDoc(doc(db, 'drafts', user.uid), {
             ...formRecipe,
