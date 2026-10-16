@@ -6206,7 +6206,7 @@ const App: React.FC = () => {
                             <tr key={u.id} className="hover:bg-orange-50/10 transition-colors">
                               <td className="p-4 pl-6 font-bold text-slate-700">
                                 <div>{u.email || '未提供 Email'}</div>
-                                <div className="text-[10px] text-slate-300 font-mono mt-0.5">{u.id}</div>
+                                <div className="text-xs text-slate-500 font-mono mt-1 break-all" title="UID：這個帳號的專屬編號">UID：{u.id}</div>
                               </td>
                               <td className="p-4 text-xs text-slate-400">
                                 {(() => {
