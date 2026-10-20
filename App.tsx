@@ -3056,6 +3056,8 @@ const App: React.FC = () => {
         const photo = r.productPhoto;
         delete r.productPhoto;
         if (!photo || sourceImages.length === 0) continue;
+        // AI 判斷框到的是文字卡片或背景，就不要拿來當封面
+        if (photo.containsText === true || photo.isRealFoodPhoto === false) continue;
         const source = sourceImages[Number(photo.imageIndex)] ?? (sourceImages.length === 1 ? sourceImages[0] : undefined);
         if (!source) continue;
         try {
