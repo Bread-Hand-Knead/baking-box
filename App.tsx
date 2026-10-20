@@ -5205,9 +5205,10 @@ const App: React.FC = () => {
                     {formRecipe.imageUrl ? (
                       <>
                         <img src={formRecipe.imageUrl} className="w-full h-full object-cover" alt="預覽" referrerPolicy="no-referrer" />
-                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
-                          <button onClick={() => recipeImageInputRef.current?.click()} className="p-3 bg-white/90 rounded-full text-orange-600 hover:bg-white transition-all transform hover:scale-110"><Camera size={24} /></button>
-                          <button onClick={() => setFormRecipe(prev => ({ ...prev, imageUrl: '' }))} className="p-3 bg-red-500/90 rounded-full text-white hover:bg-red-600 transition-all transform hover:scale-110"><Trash2 size={24} /></button>
+                        {/* 換照片／刪除照片：手機沒有滑鼠移上去的效果，所以按鈕一直顯示在右下角 */}
+                        <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                          <button type="button" onClick={() => recipeImageInputRef.current?.click()} aria-label="更換照片" title="更換照片" className="p-2.5 bg-white/90 rounded-full text-orange-600 shadow-md hover:bg-white transition-all active:scale-95"><Camera size={20} /></button>
+                          <button type="button" onClick={() => setFormRecipe(prev => ({ ...prev, imageUrl: '' }))} aria-label="刪除照片" title="刪除照片" className="p-2.5 bg-red-500/90 rounded-full text-white shadow-md hover:bg-red-600 transition-all active:scale-95"><Trash2 size={20} /></button>
                         </div>
                       </>
                     ) : (
