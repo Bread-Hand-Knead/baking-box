@@ -137,7 +137,10 @@ const AI_RECIPE_SCHEMA = {
           items: { type: "number" },
           description: "成品照片的位置 [ymin, xmin, ymax, xmax]，0~1000 的相對座標",
         },
+        isRealFoodPhoto: { type: "boolean", description: "框住的是不是清楚的成品實拍照（看得出麵包、蛋糕、點心本身）。背景、模糊底圖、桌布、裝飾圖案、文字卡片都填 false" },
+        containsText: { type: "boolean", description: "框住的範圍裡有沒有食譜文字、材料、步驟或標題文字。有的話填 true" },
       },
+      required: ["imageIndex", "box", "isRealFoodPhoto", "containsText"],
     },
   },
   required: ["title", "ingredients", "instructions"],
@@ -220,7 +223,9 @@ const buildImageRecipePrompt = (imageCount: number, extraText: string) =>
     `若同一份食譜有多個麵團（例如黑色、藍色麵團），請分別放入不同的材料區塊，並用 mainSectionName、customSectionName 等欄位標示麵團名稱。` +
     `請忽略浮水印、頁碼、課程平台標誌與廣告文字。若照片上有老師/師傅名字，請填入 master。` +
     `若照片中有這份食譜的「成品實拍照」（麵包、蛋糕、點心本身的照片，不是文字或表格），請在 productPhoto 填入 imageIndex（第幾張照片，從 0 開始）` +
-    `與 box [ymin, xmin, ymax, xmax]（0~1000 的相對座標），只框住成品照片本身，不要包含周圍的文字、標題或邊框；沒有成品照片就不要填 productPhoto。）` +
+    `與 box [ymin, xmin, ymax, xmax]（0~1000 的相對座標），只框住成品照片本身，不要包含周圍的文字、標題或邊框；沒有成品照片就不要填 productPhoto。` +
+    `注意：影片截圖或講義常把文字放在半透明卡片上，後面墊著模糊的桌面、盤子或成品底圖，這種「文字卡片＋背景」不算成品照片，不要填 productPhoto。` +
+    `只有在框住的範圍裡「沒有任何食譜文字」、而且清楚看得到成品本身時才填；不確定就不要填。）` +
     (extraText.trim() ? `\n\n使用者補充說明：\n${extraText}` : "")
   );
 
