@@ -5097,8 +5097,9 @@ const App: React.FC = () => {
                         onClick={() => toggleNoteExpand(kn.id)}
                         className="p-5 bg-orange-50/20 rounded-2xl border border-orange-50 relative group transition-all hover:shadow-sm cursor-pointer select-none"
                       >
+                        {/* 電腦版：編輯／移除在右上角，滑鼠移上去才出現 */}
                         <div 
-                          className="absolute top-4 right-4 flex gap-2 text-xs opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10"
+                          className="absolute top-4 right-4 hidden md:flex gap-2 text-xs md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <button 
@@ -5134,15 +5135,50 @@ const App: React.FC = () => {
                             移除
                           </button>
                         </div>
-                        <div className="flex justify-between items-start mb-2 pr-12">
-                          <h4 className="font-bold text-slate-800 text-base flex-1 pr-2">{kn.title}</h4>
-                          <div className="flex items-center gap-2 shrink-0">
+                        {/* 手機版：標題自己一整行，老師和按鈕放在標題下面 */}
+                        <div className="mb-2 md:flex md:justify-between md:items-start md:pr-12">
+                          <h4 className="font-bold text-slate-800 text-base md:flex-1 md:pr-2">{kn.title}</h4>
+                          <div className="flex items-center gap-2 mt-2 md:mt-0 md:shrink-0">
                             {kn.master && (
-                              <span className="text-xs text-orange-500 font-bold bg-white px-2.5 py-1 rounded-lg shadow-sm">
+                              <span className="text-xs text-orange-500 font-bold bg-white px-2.5 py-1 rounded-lg shadow-sm truncate min-w-0">
                                 {kn.master}
                               </span>
                             )}
-                            <span className="text-slate-400 text-xs font-bold w-4 h-4 flex items-center justify-center">
+                            <div className="flex md:hidden gap-2 text-xs ml-auto shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              setNewNote({ title: kn.title, master: kn.master || '', content: kn.content, image_url: kn.image_url || '' });
+                              setEditingNoteId(kn.id);
+                              try {
+                                const formElement = document.getElementById('knowledge-form');
+                                if (formElement) {
+                                  formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                } else {
+                                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }
+                              } catch (e) {
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                              }
+                            }} 
+                            className="px-2.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-600 font-bold rounded-lg transition-all active:scale-95 shadow-sm"
+                          >
+                            編輯
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => triggerConfirm(() => {
+                              setKnowledge(knowledge.filter(k => k.id !== kn.id));
+                              if (editingNoteId === kn.id) {
+                                handleCancelEditNote();
+                              }
+                            })} 
+                            className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-500 font-bold rounded-lg transition-all active:scale-95 shadow-sm"
+                          >
+                            移除
+                          </button>
+                            </div>
+                            <span className="text-slate-400 text-xs font-bold w-4 h-4 flex items-center justify-center shrink-0">
                               {isExpanded ? '▼' : '▶'}
                             </span>
                           </div>
