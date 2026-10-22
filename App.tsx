@@ -233,7 +233,7 @@ const RelatedRecipesSection: React.FC<{
                       className="w-full text-left px-4 py-3 hover:bg-orange-50 rounded-2xl transition-all flex items-center gap-3 group"
                     >
                       <div className="w-10 h-10 rounded-xl bg-slate-100 overflow-hidden shrink-0 border border-slate-200 group-hover:border-orange-200 transition-all">
-                        <img src={r.imageUrl || 'https://picsum.photos/100/100?random=' + r.id} className="w-full h-full object-cover" alt={r.title} />
+                        {r.imageUrl ? <img src={r.imageUrl} className="w-full h-full object-cover" alt={r.title} /> : <RecipeImagePlaceholder variant="thumb" />}
                       </div>
                       <div className="min-w-0">
                         <p className="font-black text-slate-700 text-sm truncate">{r.title}</p>
@@ -259,7 +259,7 @@ const RelatedRecipesSection: React.FC<{
                 className="w-full h-full flex items-center gap-4 text-left"
               >
                 <div className="w-14 h-14 rounded-2xl overflow-hidden border-2 border-white shadow-sm shrink-0">
-                  <img src={r.imageUrl || 'https://picsum.photos/150/150?random=' + r.id} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={r.title} />
+                  {r.imageUrl ? <img src={r.imageUrl} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={r.title} /> : <RecipeImagePlaceholder variant="thumb" />}
                 </div>
                 <div className="min-w-0 flex-1">
                   <span className="text-[9px] font-black text-orange-400 uppercase tracking-widest">{r.category}</span>
@@ -465,10 +465,22 @@ const renderHighlightedText = (text: string, isTitle: boolean = false) => {
   });
 };
 
+// 沒有放照片時顯示的底圖（不再隨機抓網路照片）
+const RecipeImagePlaceholder: React.FC<{ variant?: 'thumb' | 'card' | 'large' }> = ({ variant = 'card' }) => (
+  <div className="w-full h-full bg-gradient-to-br from-orange-50 to-amber-100 flex flex-col items-center justify-center gap-2">
+    <img
+      src={`${(import.meta as any).env?.BASE_URL || '/'}favicon.svg`}
+      alt=""
+      className={`opacity-50 ${variant === 'thumb' ? 'w-2/3 h-2/3' : variant === 'card' ? 'w-16 h-16' : 'w-24 h-24'}`}
+    />
+    {variant !== 'thumb' && <span className="text-xs font-bold text-orange-300">還沒有照片</span>}
+  </div>
+);
+
 const RecipeCard: React.FC<{ recipe: Recipe; onClick: (r: Recipe) => void }> = ({ recipe, onClick }) => (
   <div onClick={() => onClick(recipe)} className="bg-white rounded-[32px] overflow-hidden border border-orange-50 shadow-sm hover:shadow-md transition-all cursor-pointer group">
     <div className="aspect-[16/10] relative overflow-hidden">
-      <img src={recipe.imageUrl || 'https://picsum.photos/400/250?random=' + recipe.id} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={recipe.title} />
+      {recipe.imageUrl ? <img src={recipe.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={recipe.title} /> : <RecipeImagePlaceholder variant="card" />}
       {recipe.isTried && (
         <div className="absolute bottom-4 right-4 px-4 py-1.5 bg-orange-100/90 backdrop-blur-sm text-orange-600 text-xs font-black rounded-full border border-orange-200/50 shadow-sm">⏳ 待嘗試</div>
       )}
@@ -6498,7 +6510,7 @@ const App: React.FC = () => {
                 {/* 右側：配方圖片 */}
                 <div className="flex-1 min-h-[300px] sm:min-h-0">
                   <div className="relative h-full w-full aspect-video sm:aspect-square rounded-[32px] sm:rounded-[48px] overflow-hidden shadow-2xl border-4 border-white/50 group">
-                    <img src={selectedRecipe.imageUrl || 'https://picsum.photos/800/800?random=' + selectedRecipe.id} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={selectedRecipe.title} />
+                    {selectedRecipe.imageUrl ? <img src={selectedRecipe.imageUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={selectedRecipe.title} /> : <RecipeImagePlaceholder variant="large" />}
                   </div>
                 </div>
               </div>
@@ -6506,9 +6518,11 @@ const App: React.FC = () => {
               {/* PDF 專用區塊 (螢幕上顯示為 no-print，但在列印時會顯示這個原本的佈局) */}
               <div className="hidden print:block space-y-4">
                 {/* 列印照片：放在正方形範圍內，完整顯示不裁切（長方形照片會等比例縮小） */}
-                <div className="relative aspect-square flex items-center justify-center print-float-img">
-                  <img src={selectedRecipe.imageUrl || 'https://picsum.photos/800/450?random=' + selectedRecipe.id} className="max-w-full max-h-full object-contain rounded-2xl" alt={selectedRecipe.title} />
-                </div>
+                {selectedRecipe.imageUrl && (
+                  <div className="relative aspect-square flex items-center justify-center print-float-img">
+                    <img src={selectedRecipe.imageUrl} className="max-w-full max-h-full object-contain rounded-2xl" alt={selectedRecipe.title} />
+                  </div>
+                )}
                 <div className="space-y-2">
                   <h2 className="text-2xl font-black text-slate-800 leading-tight mb-2 whitespace-pre-wrap">{selectedRecipe.title}</h2>
                   <div className="flex flex-wrap gap-x-6 gap-y-2 text-base font-bold text-slate-500 print:text-[16px] print:text-slate-700 print:gap-x-12">
