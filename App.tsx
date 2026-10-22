@@ -465,6 +465,8 @@ const renderHighlightedText = (text: string, isTitle: boolean = false) => {
   });
 };
 
+const NO_PHOTO_FILTER = '📷 沒有照片';
+
 // 沒有放照片時顯示的底圖（不再隨機抓網路照片）
 const RecipeImagePlaceholder: React.FC<{ variant?: 'thumb' | 'card' | 'large' }> = ({ variant = 'card' }) => (
   <div className="w-full h-full bg-gradient-to-br from-orange-50 to-amber-100 flex flex-col items-center justify-center gap-2">
@@ -1985,7 +1987,7 @@ const PAGE_HELP: Partial<Record<AppView, { title: string; tips: PageHelpTip[] }>
     tips: [
       { icon: '🔍', title: '搜尋食譜', text: '輸入食譜名稱或材料（例如「奶油」）。輸入「#」加標籤名稱可以依標籤找，也可以直接點下方的熱門標籤。' },
       { icon: '🤖', title: 'AI 問答', text: '在搜尋框打一個問題，再按「AI 問答」，AI 會依照你的食譜和筆記回答，並附上參考來源，點一下就能打開。問得越具體越準，例如「蝶豆花吐司的烤溫」。' },
-      { icon: '📂', title: '分類與排序', text: '用分類按鈕篩選食譜，「⏳ 待嘗試」可以看還沒做過的。排序可以依建立日期、最後修改、分類或標題。' },
+      { icon: '📂', title: '分類與排序', text: '用分類按鈕篩選食譜，「⏳ 待嘗試」可以看還沒做過的，「📷 沒有照片」可以挑出還沒放照片的。排序可以依建立日期、最後修改、分類或標題。' },
       { icon: '💾', title: '備份', text: '看到「已安全備份至雲端」代表登入後會自動同步。「匯出備份」可以把所有食譜存成檔案，「匯入備份」可以從檔案還原。' },
       { icon: '☰', title: '選單', text: '左上角的選單可以登入／登出、查看會員方案和本月 AI 使用次數。' },
     ],
@@ -2859,6 +2861,7 @@ const App: React.FC = () => {
       const matchCategory = 
         activeCategory === '全部' ? true :
         activeCategory === '⏳ 待嘗試' ? r.isTried :
+        activeCategory === NO_PHOTO_FILTER ? !String(r.imageUrl || '').trim() :
         r.category === activeCategory;
 
       const matchSubCategory = 
@@ -4491,7 +4494,7 @@ const App: React.FC = () => {
                 <div className="flex flex-col gap-3 flex-1">
                   <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-1 flex-nowrap shrink-0 scroll-smooth touch-pan-x">
                     <span className="text-[12px] font-black text-slate-300 uppercase tracking-widest whitespace-nowrap">分類篩選</span>
-                    {['⏳ 待嘗試', '全部', ...categories.map(c => c.name)].map(cat => (
+                    {['⏳ 待嘗試', NO_PHOTO_FILTER, '全部', ...categories.map(c => c.name)].map(cat => (
                       <button 
                         key={cat} 
                         onClick={() => {
@@ -4503,12 +4506,13 @@ const App: React.FC = () => {
                         className={`px-6 py-2.5 rounded-full text-[18px] font-bold whitespace-nowrap transition-all shadow-sm shrink-0 ${activeCategory === cat ? 'bg-[#E67E22] text-white shadow-md' : 'bg-white text-orange-400 border border-orange-100 hover:border-orange-300'}`}
                       >
                         {cat}
+                        {cat === NO_PHOTO_FILTER && <span className="ml-1.5 text-[14px] opacity-80">({recipes.filter(r => !String(r.imageUrl || '').trim()).length})</span>}
                       </button>
                     ))}
                   </div>
 
                   {/* 子分類標籤動態顯示 */}
-                  {activeCategory !== '全部' && activeCategory !== '⏳ 待嘗試' && (categories.find(c => c.name === activeCategory)?.subcategories?.length || 0) > 0 && (
+                  {activeCategory !== '全部' && activeCategory !== '⏳ 待嘗試' && activeCategory !== NO_PHOTO_FILTER && (categories.find(c => c.name === activeCategory)?.subcategories?.length || 0) > 0 && (
                     <motion.div 
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
