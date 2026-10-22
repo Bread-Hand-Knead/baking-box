@@ -5097,9 +5097,9 @@ const App: React.FC = () => {
                         onClick={() => toggleNoteExpand(kn.id)}
                         className="p-5 bg-orange-50/20 rounded-2xl border border-orange-50 relative group transition-all hover:shadow-sm cursor-pointer select-none"
                       >
-                        {/* 電腦版：編輯／移除在右上角，滑鼠移上去才出現 */}
+                        {/* 寬螢幕（視窗夠寬）：編輯／移除在右上角，滑鼠移上去才出現 */}
                         <div 
-                          className="absolute top-4 right-4 hidden md:flex gap-2 text-xs md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10"
+                          className="absolute top-4 right-4 hidden xl:flex gap-2 text-xs xl:opacity-0 xl:group-hover:opacity-100 transition-opacity z-10"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <button 
@@ -5135,16 +5135,16 @@ const App: React.FC = () => {
                             移除
                           </button>
                         </div>
-                        {/* 手機版：標題自己一整行，老師和按鈕放在標題下面 */}
-                        <div className="mb-2 md:flex md:justify-between md:items-start md:pr-12">
-                          <h4 className="font-bold text-slate-800 text-base md:flex-1 md:pr-2">{kn.title}</h4>
-                          <div className="flex items-center gap-2 mt-2 md:mt-0 md:shrink-0">
+                        {/* 手機、平板、電腦半個視窗：標題自己一整行，老師和按鈕放在標題下面 */}
+                        <div className="mb-2 xl:flex xl:justify-between xl:items-start xl:pr-12">
+                          <h4 className="font-bold text-slate-800 text-base xl:flex-1 xl:pr-2">{kn.title}</h4>
+                          <div className="flex items-center gap-2 mt-2 xl:mt-0 xl:shrink-0">
                             {kn.master && (
                               <span className="text-xs text-orange-500 font-bold bg-white px-2.5 py-1 rounded-lg shadow-sm truncate min-w-0">
                                 {kn.master}
                               </span>
                             )}
-                            <div className="flex md:hidden gap-2 text-xs ml-auto shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex xl:hidden gap-2 text-xs ml-auto shrink-0" onClick={(e) => e.stopPropagation()}>
                           <button 
                             type="button"
                             onClick={() => {
