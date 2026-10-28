@@ -442,7 +442,7 @@ const Toast: React.FC<{
         title="點一下關閉"
         className={`pointer-events-auto cursor-pointer bg-white/90 backdrop-blur-md border border-emerald-100 px-6 py-3 rounded-2xl shadow-xl flex items-center gap-3 transition-all duration-200 ease-out ${isAnimating ? 'scale-100 opacity-100 translate-y-0' : 'scale-95 opacity-0 translate-y-4'}`}
       >
-        <span className="text-emerald-500 text-lg">✅</span>
+        <span className="text-lg">{/失敗|錯誤|無法|不能|找不到|上限|太大|太長|太慢|請先/.test(message) ? '⚠️' : '✅'}</span>
         <span className="text-slate-800 font-black text-sm">{message}</span>
         <span className="text-slate-300 text-xs font-black ml-1">✕</span>
       </div>
@@ -3118,7 +3118,10 @@ const App: React.FC = () => {
       // 後端回傳的中文錯誤訊息直接顯示
       showToast(message);
     } else {
-      showToast(fallback);
+      // 附上錯誤代碼，方便查是哪裡出問題
+      const shortCode = code.replace(/^functions\//, '') || 'unknown';
+      const detail = message && message.toLowerCase() !== shortCode.toLowerCase() ? ` / ${message.slice(0, 60)}` : '';
+      showToast(`${fallback}（代碼：${shortCode}${detail}）`);
     }
   };
 
